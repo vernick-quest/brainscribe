@@ -1088,7 +1088,7 @@ export default function TutorSession({
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: 'var(--bg-page)' }}>
+    <div className="flex flex-col h-dvh overflow-hidden" style={{ backgroundColor: 'var(--bg-page)' }}>
 
       <Navbar user={user} profile={profile} />
 
@@ -1119,10 +1119,11 @@ export default function TutorSession({
             </svg>
             New assignment
           </a>
-          {/* Close button — mobile only */}
-          <button className="md:hidden w-7 h-7 flex items-center justify-center rounded-lg"
+          {/* Close button — mobile only (44px tap target) */}
+          <button className="md:hidden w-11 h-11 -mr-2 flex items-center justify-center rounded-lg"
             style={{ color: 'var(--text-subtle)' }}
-            onClick={() => setSidebarOpen(false)}>
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close menu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
@@ -1287,10 +1288,11 @@ export default function TutorSession({
           {/* Main row */}
           <div className="flex items-center gap-0 px-3 py-2.5" style={{ minHeight: 52 }}>
 
-            {/* Hamburger — mobile only */}
-            <button className="md:hidden mr-2 w-8 h-8 flex items-center justify-center rounded-lg shrink-0"
+            {/* Hamburger — mobile only (44px tap target per design system) */}
+            <button className="md:hidden -ml-2 mr-1 w-11 h-11 flex items-center justify-center rounded-lg shrink-0"
               style={{ color: 'var(--text-subtle)' }}
-              onClick={() => setSidebarOpen(true)}>
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M3 12h18M3 6h18M3 18h18"/>
               </svg>
