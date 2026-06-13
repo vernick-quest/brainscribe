@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PERSONAS as PERSONA_DATA, PersonaAvatar } from '@/lib/personas'
 import SubjectPicker from '@/components/SubjectPicker'
@@ -9,6 +9,15 @@ const PERSONAS = Object.entries(PERSONA_DATA).map(([id, p]) => ({ id, ...p }))
 
 const ACCEPTED = '.jpg,.jpeg,.png,.webp,.gif,.pdf'
 const MAX_MB = 5
+
+// Shown one at a time while the session is being created, so the few-second
+// wait reads as deliberate work rather than a stall.
+const PROGRESS_MESSAGES = [
+  'Reading your assignment…',
+  'Spotting the key requirements…',
+  'Building your outline…',
+  'Setting up your coach…',
+]
 
 export default function NewSessionForm() {
   const [assignment, setAssignment]             = useState('')
@@ -21,8 +30,18 @@ export default function NewSessionForm() {
   const [uploading, setUploading]               = useState(false)
   const [uploadError, setUploadError]           = useState('')
   const [uploadedFileName, setUploadedFileName] = useState('')
+  const [progressStep, setProgressStep]         = useState(0)
   const fileInputRef = useRef(null)
   const router = useRouter()
+
+  // Advance the progress message while loading; reset when idle.
+  useEffect(() => {
+    if (!loading) { setProgressStep(0); return }
+    const t = setInterval(() => {
+      setProgressStep(s => Math.min(s + 1, PROGRESS_MESSAGES.length - 1))
+    }, 1700)
+    return () => clearInterval(t)
+  }, [loading])
 
   async function handleFile(file) {
     if (!file) return
@@ -252,7 +271,7 @@ export default function NewSessionForm() {
         className="w-full text-white font-bold rounded-full py-3 transition disabled:opacity-50"
         style={{ backgroundColor: 'var(--accent)' }}
       >
-        {loading ? 'Starting…' : `Start writing with ${selectedPersona?.name ?? 'BrainScribe'}`}
+        {loading ? PROGRESS_MESSAGES[progressStep] : `Start writing with ${selectedPersona?.name ?? 'BrainScribe'}`}
       </button>
     </form>
   )
