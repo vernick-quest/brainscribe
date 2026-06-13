@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
 import Navbar from './Navbar'
@@ -185,6 +185,31 @@ function buildConfirmMessage(persona, paragraph, isThin, thinNote) {
   return lines[persona] ?? lines.marcus
 }
 
+// ── Live caption ──────────────────────────────────────────────────────────────
+// Owns its own text state so the 30ms word-sync updates during audio playback
+// re-render only this small bubble, not the whole TutorSession tree. The parent
+// drives it imperatively via a ref (set/clear) instead of parent state.
+const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref) {
+  const [text, setText] = useState('')
+  useImperativeHandle(ref, () => ({
+    set: (t) => setText(t),
+    clear: () => setText(''),
+  }), [])
+  useEffect(() => {
+    if (text) bottomRef?.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [text, bottomRef])
+  if (!text) return null
+  return (
+    <div className="flex justify-start">
+      <PersonaAvatar personaId={persona} size={28} className="mr-2 mt-1 shrink-0" />
+      <div className="rounded-2xl rounded-bl-sm px-4 py-3 max-w-lg text-sm leading-relaxed"
+        style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)' }}>
+        {renderMarkdown(text)}<span className="animate-pulse ml-0.5">▋</span>
+      </div>
+    </div>
+  )
+})
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TutorSession({
@@ -203,7 +228,7 @@ export default function TutorSession({
   )
   const [paragraphs, setParagraphs]       = useState(initialParagraphs)
   const [scaffold, setScaffold]           = useState(initialScaffold)
-  const [tutorText, setTutorText]         = useState('')
+  const captionRef                        = useRef(null)
   const [pendingScribe, setPendingScribe] = useState(null)
   const [phase, setPhase]                 = useState('waiting')
   const [textInput, setTextInput]         = useState('')
@@ -251,7 +276,7 @@ export default function TutorSession({
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, tutorText])
+  }, [messages])
 
   useEffect(() => {
     if (!activePanel) return
@@ -298,7 +323,7 @@ export default function TutorSession({
     stopCurrentAudio()
     const cleanText = stripMarkdown(text)
     const words = cleanText.split(' ')
-    setTutorText('')
+    captionRef.current?.clear()
 
     // Character-proportional word boundary times (0..1 fraction of total duration)
     function buildBoundaries(wordList) {
@@ -317,7 +342,7 @@ export default function TutorSession({
         const elapsed = Date.now() - startTime
         const fraction = elapsed / durationMs
         while (wordIdx < words.length && fraction >= boundaries[wordIdx]) wordIdx++
-        setTutorText(words.slice(0, wordIdx).join(' '))
+        captionRef.current?.set(words.slice(0, wordIdx).join(' '))
         if (wordIdx >= words.length) { clearInterval(timer); audioTimerRef.current = null; resolve() }
       }, 30)
       audioTimerRef.current = timer
@@ -359,7 +384,7 @@ export default function TutorSession({
     setPhase('tutor-thinking')
     await playWithSync(text, activePersona)
     setMessages([...history, { role: 'assistant', content: text, persona: activePersona }])
-    setTutorText('')
+    captionRef.current?.clear()
     setPhase('listening')
   }
 
@@ -502,7 +527,7 @@ export default function TutorSession({
 
   async function askTutor(history, activePersona = persona, displayHistory = null) {
     setPhase('tutor-thinking')
-    setTutorText('…')
+    captionRef.current?.set('…')
 
     try {
       const res = await fetch('/api/tutor', {
@@ -519,7 +544,7 @@ export default function TutorSession({
 
       if (!res.ok) {
         console.error('Tutor API error:', res.status, await res.text())
-        setTutorText('')
+        captionRef.current?.clear()
         setPhase('listening')
         return
       }
@@ -545,11 +570,11 @@ export default function TutorSession({
       await playWithSync(displayText, activePersona)
 
       setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
-      setTutorText('')
+      captionRef.current?.clear()
       setPhase(hasDictateSignal ? 'dictating' : 'listening')
     } catch (err) {
       console.error('askTutor failed:', err)
-      setTutorText('')
+      captionRef.current?.clear()
       setPhase('listening')
     }
   }
@@ -840,7 +865,7 @@ export default function TutorSession({
     setPhase('preview')
     await playWithSync(confirmMsg, persona)
     setMessages(historyWithConfirm)
-    setTutorText('')
+    captionRef.current?.clear()
   }
 
   // ── Assembly handler (smooth confirmed components into prose) ────────────────
@@ -880,7 +905,7 @@ export default function TutorSession({
       setPhase('preview')
       await playWithSync(confirmMsg, persona)
       setMessages(historyWithConfirm)
-      setTutorText('')
+      captionRef.current?.clear()
     } catch (err) {
       console.error('[assemble]', err)
       setPhase('listening')
@@ -1513,15 +1538,7 @@ export default function TutorSession({
               )
             ))}
 
-            {tutorText && (
-              <div className="flex justify-start">
-                <PersonaAvatar personaId={persona} size={28} className="mr-2 mt-1 shrink-0" />
-                <div className="rounded-2xl rounded-bl-sm px-4 py-3 max-w-lg text-sm leading-relaxed"
-                  style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)' }}>
-                  {renderMarkdown(tutorText)}<span className="animate-pulse ml-0.5">▋</span>
-                </div>
-              </div>
-            )}
+            <LiveCaption ref={captionRef} persona={persona} bottomRef={chatBottomRef} />
 
             {phase === 'scribe-thinking' && (
               <div className="flex justify-start">
