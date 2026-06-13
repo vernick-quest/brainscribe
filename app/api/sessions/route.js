@@ -1,98 +1,74 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { logAnthropicUsage } from '@/lib/usage'
 
 const anthropic = new Anthropic()
 
-async function generateTitle(assignmentText) {
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 30,
-    messages: [{
-      role: 'user',
-      content: `Read this assignment and generate a short default title in the format "[Writing type] on/about [topic]" — for example: "Essay on your favorite season", "Persuasive essay on school uniforms", "Narrative about a memorable experience". Keep it under 7 words. No quotes, no punctuation at the end.\n\nAssignment: ${assignmentText.slice(0, 400)}`,
-    }],
-  })
-  return response.content[0].text.trim().replace(/^["']|["']$/g, '')
-}
-
 function extractJSON(text) {
   try { return JSON.parse(text) } catch {}
-  const match = text.match(/\[[\s\S]*\]/)
+  const match = text.match(/\{[\s\S]*\}/)
   if (match) { try { return JSON.parse(match[0]) } catch {} }
   return null
 }
 
-async function generateSummary(assignmentText) {
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
-    system: 'You are a precise JSON generator. You output ONLY valid JSON arrays — no explanation, no markdown, no code fences.',
-    messages: [{
-      role: 'user',
-      content: `Extract the key requirements from this assignment into a JSON array. Each item must have "label" (short category like "Format", "Topic", "Must include", "Length", "Goal") and "detail" (concise value). 3–6 bullets max, only include what is explicitly stated.
-
-Output format:
-[
-  { "label": "Format", "detail": "5-paragraph essay (introduction, 3 body paragraphs, conclusion)" },
-  { "label": "Topic", "detail": "Your favorite season and why you love it" },
-  { "label": "Must include", "detail": "Thesis statement, one specific detail per body paragraph, transition words" },
-  { "label": "Length", "detail": "300–400 words" }
+// Default 5-paragraph essay outline — used if the model omits/garbles the outline.
+const FALLBACK_OUTLINE = [
+  { title: 'Introduction', placeholder: 'Grab the reader\'s attention, give some background, and state your main argument.', checklist: [{ label: 'Hook', checked: false }, { label: 'Background context', checked: false }, { label: 'Thesis statement', checked: false }], preview: null, paragraph: null, done: false },
+  { title: 'Body Paragraph 1', placeholder: 'Present your first supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
+  { title: 'Body Paragraph 2', placeholder: 'Present your second supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
+  { title: 'Body Paragraph 3', placeholder: 'Present your third supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
+  { title: 'Conclusion', placeholder: 'Restate your thesis, summarize your main points, and leave the reader with a final thought.', checklist: [{ label: 'Restate thesis', checked: false }, { label: 'Summarize main points', checked: false }, { label: 'Closing thought', checked: false }], preview: null, paragraph: null, done: false },
 ]
 
-Assignment:
-${assignmentText}`,
-    }],
-  })
-  return extractJSON(response.content[0].text.trim())
-}
-
-async function generateOutline(assignmentText) {
+// Single Haiku call that produces the title, requirement summary, and section
+// outline together — replaces three separate calls that each re-read the
+// assignment. Per-field fallbacks keep session creation resilient to a bad parse.
+async function generateSessionMeta(assignmentText) {
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1200,
+    max_tokens: 2000,
     system: 'You are a precise JSON generator. Output ONLY valid JSON — no explanation, no markdown, no code fences.',
     messages: [{
       role: 'user',
-      content: `Read this writing assignment carefully. Your job is to figure out exactly how many sections the student needs to write, then build a scaffold for each one.
+      content: `Read this writing assignment and produce a single JSON object with three keys: "title", "summary", and "outline".
 
-STRUCTURE RULES — follow strictly:
-- If the assignment says "one paragraph" or "a paragraph": create exactly 1 section
-- If it says "two paragraphs", "three paragraphs", etc.: create exactly that many sections
-- If it specifies a structure ("intro, three body paragraphs, conclusion"): follow it exactly — that's 5 sections
-- If it's a short-answer or single response with no structure specified: 1 section
-- If it's a narrative/story with no structure specified: use Setup, Rising Action, Climax, Resolution
-- If it's an argumentative or expository essay with no structure specified: use Introduction, Body Paragraph 1, Body Paragraph 2, Body Paragraph 3, Conclusion
-- Never invent extra sections beyond what the assignment requires
+"title": a short default title in the format "[Writing type] on/about [topic]" — e.g. "Essay on your favorite season", "Persuasive essay on school uniforms". Under 7 words, no quotes, no trailing punctuation.
 
-CONTENT RULES — make every field specific to THIS assignment:
-- "title": match the assignment's own terminology when possible
-- "placeholder": one sentence describing what THIS section needs to accomplish for THIS specific topic (not generic boilerplate)
-- "checklist": 2–4 concrete things the student must include in this section, specific to the topic and assignment
+"summary": a JSON array of the key requirements. Each item has "label" (short category like "Format", "Topic", "Must include", "Length", "Goal") and "detail" (concise value). 3–6 items max, only what is explicitly stated.
 
-Return a JSON array. Each item must have exactly these fields:
-- "title": string
-- "placeholder": string (specific to this assignment's topic)
-- "checklist": [{ "label": "...", "checked": false }, ...]
-- "preview": null
-- "paragraph": null
-- "done": false
+"outline": a JSON array of the sections the student must write. STRUCTURE RULES — follow strictly:
+- "one paragraph"/"a paragraph" → exactly 1 section
+- "two paragraphs", "three paragraphs", etc. → exactly that many
+- a specified structure ("intro, three body paragraphs, conclusion") → follow it exactly (that's 5)
+- short-answer/single response with no structure specified → 1 section
+- narrative/story with no structure specified → Setup, Rising Action, Climax, Resolution
+- argumentative/expository essay with no structure specified → Introduction, Body Paragraph 1, Body Paragraph 2, Body Paragraph 3, Conclusion
+- never invent extra sections beyond what the assignment requires
+Each outline item has exactly: "title" (string), "placeholder" (one sentence specific to THIS section and topic), "checklist" (array of 2–4 { "label": string, "checked": false } specific to this section), "preview": null, "paragraph": null, "done": false.
+
+Output shape:
+{
+  "title": "Essay on your favorite season",
+  "summary": [{ "label": "Format", "detail": "5-paragraph essay" }, { "label": "Length", "detail": "300–400 words" }],
+  "outline": [{ "title": "Introduction", "placeholder": "...", "checklist": [{ "label": "Hook", "checked": false }], "preview": null, "paragraph": null, "done": false }]
+}
 
 Assignment:
 ${assignmentText}`,
     }],
   })
 
-  const parsed = extractJSON(response.content[0].text)
-  if (parsed && parsed.length > 0) return parsed
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens })
 
-  // Fallback: 5-paragraph essay
-  return [
-    { title: 'Introduction', placeholder: 'Grab the reader\'s attention, give some background, and state your main argument.', checklist: [{ label: 'Hook', checked: false }, { label: 'Background context', checked: false }, { label: 'Thesis statement', checked: false }], preview: null, paragraph: null, done: false },
-    { title: 'Body Paragraph 1', placeholder: 'Present your first supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
-    { title: 'Body Paragraph 2', placeholder: 'Present your second supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
-    { title: 'Body Paragraph 3', placeholder: 'Present your third supporting point with a specific example or detail.', checklist: [{ label: 'Topic sentence', checked: false }, { label: 'Supporting evidence', checked: false }, { label: 'Connection to thesis', checked: false }], preview: null, paragraph: null, done: false },
-    { title: 'Conclusion', placeholder: 'Restate your thesis, summarize your main points, and leave the reader with a final thought.', checklist: [{ label: 'Restate thesis', checked: false }, { label: 'Summarize main points', checked: false }, { label: 'Closing thought', checked: false }], preview: null, paragraph: null, done: false },
-  ]
+  const parsed = extractJSON(response.content[0].text) ?? {}
+
+  const title = typeof parsed.title === 'string' && parsed.title.trim()
+    ? parsed.title.trim().replace(/^["']|["']$/g, '')
+    : null
+  const summary = Array.isArray(parsed.summary) ? parsed.summary : null
+  const outline = Array.isArray(parsed.outline) && parsed.outline.length > 0 ? parsed.outline : FALLBACK_OUTLINE
+
+  return { title, summary, outline }
 }
 
 export async function POST(request) {
@@ -104,11 +80,9 @@ export async function POST(request) {
   if (!assignmentText) return Response.json({ error: 'Missing assignment' }, { status: 400 })
 
   try {
-    // Generate title, outline, summary — and create the session DB row — all in parallel
-    const [title, outline, summary, { data, error }] = await Promise.all([
-      generateTitle(assignmentText),
-      generateOutline(assignmentText),
-      generateSummary(assignmentText),
+    // One AI call for all metadata, in parallel with creating the session row
+    const [{ title, summary, outline }, { data, error }] = await Promise.all([
+      generateSessionMeta(assignmentText),
       supabase
         .from('sessions')
         .insert({
