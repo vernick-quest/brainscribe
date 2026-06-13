@@ -22,9 +22,15 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
   const [starting, setStarting] = useState(false)
   const connectionRef = useRef(null)
   const finalTextRef = useRef('')
+  const readyTimerRef = useRef(null)
+
+  function clearReadyTimer() {
+    if (readyTimerRef.current) { clearTimeout(readyTimerRef.current); readyTimerRef.current = null }
+  }
 
   useEffect(() => {
     return () => {
+      clearReadyTimer()
       safeClose(connectionRef.current)
     }
   }, [])
@@ -66,11 +72,22 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
       })
       connectionRef.current = connection
 
-      // Only switch to "listening" once the WebSocket is actually OPEN.
-      // If the user taps stop before this fires, the socket is in CONNECTING
-      // state and close() produces a 1006 — waiting for OPEN guarantees a
-      // clean 1000 close whenever the user stops.
+      // The "ready to speak" state must wait for SESSION_STARTED — the server's
+      // signal that the transcription session is live. OPEN only means the
+      // WebSocket handshake finished; audio sent between OPEN and SESSION_STARTED
+      // isn't transcribed, which dropped the user's first words. We still keep an
+      // OPEN-driven fallback timer so the button can't get stuck "connecting" if
+      // SESSION_STARTED is ever missed.
       connection.on(RealtimeEvents.OPEN, () => {
+        clearReadyTimer()
+        readyTimerRef.current = setTimeout(() => {
+          setStarting(false)
+          setListening(true)
+        }, 1500)
+      })
+
+      connection.on(RealtimeEvents.SESSION_STARTED, () => {
+        clearReadyTimer()
         setStarting(false)
         setListening(true)
       })
@@ -91,6 +108,7 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
 
       connection.on(RealtimeEvents.CLOSE, () => {
         // Covers both normal stop and any unexpected server-side close
+        clearReadyTimer()
         setListening(false)
         setStarting(false)
       })
@@ -103,6 +121,7 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
   }
 
   function stopListening() {
+    clearReadyTimer()
     const conn = connectionRef.current
     connectionRef.current = null
 
