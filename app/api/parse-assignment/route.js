@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { logAnthropicUsage } from '@/lib/usage'
 
 const anthropic = new Anthropic()
 
@@ -73,6 +74,8 @@ If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
       ],
     }],
   })
+
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens })
 
   const extracted = response.content[0].text.trim()
 

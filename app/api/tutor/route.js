@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
-import { logAnthropicUsage } from '@/lib/usage'
+import { recordAnthropicUsage } from '@/lib/usage'
 
 const anthropic = new Anthropic()
 
@@ -77,11 +77,7 @@ export async function POST(request) {
 
   after(async () => {
     const { inputTokens, outputTokens, savedText } = await resultReady
-    try {
-      await logAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId })
-    } catch (e) {
-      console.error('[tutor] usage log failed:', e)
-    }
+    await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId })
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,

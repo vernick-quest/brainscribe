@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { logAnthropicUsage } from '@/lib/usage'
 
 const anthropic = new Anthropic()
 
@@ -42,6 +43,8 @@ Assignment:
 ${assignmentText}`,
     }],
   })
+
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId: id })
 
   const raw = response.content[0].text.trim()
   const summary = extractJSON(raw)
