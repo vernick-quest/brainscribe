@@ -13,20 +13,16 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Fast-path admin redirect using a minimal query
-  const { data: roleCheck } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (roleCheck?.role === 'admin') redirect('/admin')
-
+  // Single profile fetch — all fields needed for routing and render in one round trip
   const { data: adminProfile, error: profileError } = await supabase
     .from('profiles')
     .select('role, full_name, email, coppa_consent_required, coppa_consent_given')
     .eq('id', user.id)
     .single()
   if (profileError) console.error('[dashboard] profile fetch error:', profileError.message)
+
+  // Fast-path admin redirect (admins are never students on this page)
+  if (adminProfile?.role === 'admin') redirect('/admin')
 
   // Check for admin impersonation
   const imp = await getImpersonation(adminProfile)
