@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { scribeSystemPrompt } from '@/lib/prompts'
 import { logAnthropicUsage } from '@/lib/usage'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 
 const anthropic = new Anthropic()
 
@@ -9,6 +10,8 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (!await checkRateLimit(`scribe:${user.id}`, 30, 60)) return rateLimited()
 
   const { spokenText, sessionId, activeChecklist = [] } = await request.json()
 

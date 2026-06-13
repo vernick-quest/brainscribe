@@ -3,6 +3,7 @@ import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 
 const anthropic = new Anthropic()
 
@@ -10,6 +11,8 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (!await checkRateLimit(`tutor:${user.id}`, 40, 60)) return rateLimited()
 
   const { sessionId, messages, assignment, persona = 'marcus', scaffold = null } = await request.json()
 

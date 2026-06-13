@@ -1,6 +1,7 @@
 import { PERSONAS } from '@/lib/prompts'
 import { createClient } from '@/lib/supabase/server'
 import { logElevenLabsUsage } from '@/lib/usage'
+import { checkRateLimit } from '@/lib/ratelimit'
 
 const MODEL_ID = 'eleven_turbo_v2_5'
 
@@ -8,6 +9,8 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+
+  if (!await checkRateLimit(`speak:${user.id}`, 60, 60)) return new Response('Too many requests', { status: 429 })
 
   const { text, persona = 'marcus', sessionId = null } = await request.json()
   if (!text) return new Response('Missing text', { status: 400 })

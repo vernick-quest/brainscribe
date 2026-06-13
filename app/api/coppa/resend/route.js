@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -7,6 +8,10 @@ export async function POST() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (!await checkRateLimit(`coppa-resend:${user.id}`, 5, 3600)) {
+    return rateLimited('Too many consent emails sent. Please try again later.')
+  }
 
   const service = createServiceClient()
 
