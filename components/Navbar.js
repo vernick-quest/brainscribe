@@ -97,15 +97,17 @@ export default function Navbar({ user, profile }) {
               )}
             </div>
 
-            {/* Sign out */}
+            {/* Sign out — POST form (GET logout would be CSRF-able) */}
             <div style={{ borderTop: '1px solid var(--border-default)' }} className="py-1">
-              <a href="/api/auth/signout"
-                className="flex items-center px-4 py-2 text-sm transition"
-                style={{ color: 'var(--status-error)' }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                Sign out
-              </a>
+              <form action="/api/auth/signout" method="POST">
+                <button type="submit"
+                  className="w-full text-left flex items-center px-4 py-2 text-sm transition"
+                  style={{ color: 'var(--status-error)' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                  Sign out
+                </button>
+              </form>
             </div>
 
           </div>
