@@ -75,7 +75,7 @@ If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens })
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
 
   const extracted = response.content[0].text.trim()
 

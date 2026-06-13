@@ -23,7 +23,7 @@ const FALLBACK_OUTLINE = [
 // Single Haiku call that produces the title, requirement summary, and section
 // outline together — replaces three separate calls that each re-read the
 // assignment. Per-field fallbacks keep session creation resilient to a bad parse.
-async function generateSessionMeta(assignmentText) {
+async function generateSessionMeta(assignmentText, userId) {
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 2000,
@@ -58,7 +58,7 @@ ${assignmentText}`,
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens })
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId })
 
   const parsed = extractJSON(response.content[0].text) ?? {}
 
@@ -82,7 +82,7 @@ export async function POST(request) {
   try {
     // One AI call for all metadata, in parallel with creating the session row
     const [{ title, summary, outline }, { data, error }] = await Promise.all([
-      generateSessionMeta(assignmentText),
+      generateSessionMeta(assignmentText, user.id),
       supabase
         .from('sessions')
         .insert({

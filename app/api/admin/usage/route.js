@@ -52,6 +52,21 @@ export async function GET() {
     console.error('[usage] ElevenLabs fetch failed:', e)
   }
 
+  // Per-user cost across both services (graceful empty if migration 013 not applied)
+  const { data: userRows, error: byUserError } = await supabase.rpc('usage_by_user', { days: 30 })
+  if (byUserError) console.error('[usage] usage_by_user rpc failed:', byUserError.message)
+
+  const byUser = (userRows ?? []).map(r => ({
+    userId: r.user_id,
+    email: r.email,
+    fullName: r.full_name,
+    anthropicCost: Number(r.anthropic_cost) || 0,
+    elevenlabsCost: Number(r.elevenlabs_cost) || 0,
+    totalCost: Number(r.total_cost) || 0,
+    anthropicCalls: Number(r.anthropic_calls) || 0,
+    elevenlabsChars: Number(r.elevenlabs_chars) || 0,
+  }))
+
   return Response.json({
     anthropic: {
       totalCost,
@@ -64,5 +79,6 @@ export async function GET() {
         .map(([day, s]) => ({ day, ...s })),
     },
     elevenlabs,
+    byUser,
   })
 }

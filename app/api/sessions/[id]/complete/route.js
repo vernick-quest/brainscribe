@@ -67,7 +67,7 @@ export async function PATCH(request, { params }) {
 
   const essay = paragraphs?.map(p => p.scribed_text).join('\n\n') ?? ''
 
-  analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text })
+  analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
     .catch(e => console.error('[analyzeWriting complete]', e))
 
   return NextResponse.json({ ok: true })

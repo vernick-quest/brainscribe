@@ -310,7 +310,7 @@ function UsageTab() {
     <p className="text-sm text-center py-12" style={{ color: 'var(--status-error, #dc2626)' }}>Failed to load: {error}</p>
   )
 
-  const { anthropic, elevenlabs } = data ?? {}
+  const { anthropic, elevenlabs, byUser } = data ?? {}
 
   // ElevenLabs: characters remaining
   const elPct = elevenlabs ? Math.min(100, (elevenlabs.characterCount / elevenlabs.characterLimit) * 100) : 0
@@ -416,6 +416,40 @@ function UsageTab() {
               </div>
             )}
           </>
+        )}
+      </div>
+
+      {/* Cost per user — both services, last 30 days */}
+      <div className="rounded-2xl p-5 space-y-3"
+        style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Cost Per User — Last 30 Days</p>
+          <span className="text-[10px]" style={{ color: 'var(--text-subtle)' }}>ElevenLabs is an allocated estimate</span>
+        </div>
+
+        {!byUser || byUser.length === 0 ? (
+          <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No per-user usage yet. Appears once users run sessions after this update.</p>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 text-[10px] uppercase tracking-wide pb-1"
+              style={{ color: 'var(--text-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+              <span className="flex-1">User</span>
+              <span className="w-20 text-right">Anthropic</span>
+              <span className="w-20 text-right">ElevenLabs</span>
+              <span className="w-20 text-right font-bold">Total</span>
+            </div>
+            {byUser.map(u => (
+              <div key={u.userId} className="flex items-center gap-3 text-xs py-1.5">
+                <span className="flex-1 min-w-0">
+                  <span className="font-semibold block truncate" style={{ color: 'var(--text-strong)' }}>{u.fullName ?? 'Unknown'}</span>
+                  <span className="block truncate" style={{ color: 'var(--text-subtle)' }}>{u.email}</span>
+                </span>
+                <span className="w-20 text-right" style={{ color: 'var(--text-muted)' }}>${u.anthropicCost.toFixed(4)}</span>
+                <span className="w-20 text-right" style={{ color: 'var(--text-muted)' }}>${u.elevenlabsCost.toFixed(4)}</span>
+                <span className="w-20 text-right font-bold" style={{ color: 'var(--text-strong)' }}>${u.totalCost.toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

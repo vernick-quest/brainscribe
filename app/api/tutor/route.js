@@ -77,7 +77,7 @@ export async function POST(request) {
 
   after(async () => {
     const { inputTokens, outputTokens, savedText } = await resultReady
-    await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId })
+    await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,

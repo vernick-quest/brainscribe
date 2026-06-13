@@ -1,9 +1,15 @@
 import { PERSONAS } from '@/lib/prompts'
+import { createClient } from '@/lib/supabase/server'
+import { logElevenLabsUsage } from '@/lib/usage'
 
 const MODEL_ID = 'eleven_turbo_v2_5'
 
 export async function POST(request) {
-  const { text, persona = 'marcus' } = await request.json()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const { text, persona = 'marcus', sessionId = null } = await request.json()
   if (!text) return new Response('Missing text', { status: 400 })
 
   const voiceId = PERSONAS[persona]?.voiceId ?? PERSONAS.marcus.voiceId
@@ -34,6 +40,9 @@ export async function POST(request) {
     console.error('ElevenLabs error:', err)
     return new Response('TTS failed', { status: 500 })
   }
+
+  // ElevenLabs bills per character of input text. Log after the response.
+  logElevenLabsUsage({ characters: text.length, sessionId, userId: user.id })
 
   return new Response(res.body, {
     headers: {

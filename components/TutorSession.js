@@ -328,7 +328,7 @@ export default function TutorSession({
         const res = await fetch('/api/speak', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: cleanText, persona: activePersona }),
+          body: JSON.stringify({ text: cleanText, persona: activePersona, sessionId: session.id }),
         })
         if (!res.ok) throw new Error('TTS failed')
 
@@ -370,7 +370,7 @@ export default function TutorSession({
         const res = await fetch('/api/speak', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona }),
+          body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona, sessionId: session.id }),
         })
         if (!res.ok) throw new Error('TTS failed')
         const blob = await res.blob()

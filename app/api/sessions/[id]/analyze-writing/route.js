@@ -41,6 +41,7 @@ export async function POST(request, { params }) {
     sessionId: id,
     essay,
     assignmentText: session.assignment_text,
+    userId: user.id,
   })
 
   if (!writingProfile) {

@@ -38,6 +38,6 @@ STRICT RULES:
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens })
+  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
   return Response.json({ assembled: response.content[0].text.trim() })
 }
