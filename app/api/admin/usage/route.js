@@ -8,29 +8,26 @@ export async function GET() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Anthropic — last 30 days
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const { data: rows } = await supabase
-    .from('api_usage')
-    .select('created_at, model, input_tokens, output_tokens, cost_usd')
-    .eq('service', 'anthropic')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
+  // Anthropic — last 30 days, aggregated by day in Postgres (returns ~30 rows
+  // instead of every usage row). Falls back to no data if the rollup function
+  // hasn't been applied yet.
+  const { data: daily, error: rollupError } = await supabase.rpc('anthropic_usage_daily', { days: 30 })
+  if (rollupError) console.error('[usage] rollup rpc failed:', rollupError.message)
 
-  const byDay = {}
   let totalCost = 0, totalInput = 0, totalOutput = 0, totalCalls = 0
+  const byDay = {}
 
-  for (const r of rows ?? []) {
-    const day = r.created_at.slice(0, 10)
-    if (!byDay[day]) byDay[day] = { cost: 0, calls: 0, input: 0, output: 0 }
-    byDay[day].cost   += r.cost_usd ?? 0
-    byDay[day].calls  += 1
-    byDay[day].input  += r.input_tokens  ?? 0
-    byDay[day].output += r.output_tokens ?? 0
-    totalCost   += r.cost_usd ?? 0
-    totalInput  += r.input_tokens  ?? 0
-    totalOutput += r.output_tokens ?? 0
-    totalCalls  += 1
+  for (const r of daily ?? []) {
+    byDay[r.day] = {
+      cost: Number(r.cost) || 0,
+      calls: Number(r.calls) || 0,
+      input: Number(r.input) || 0,
+      output: Number(r.output) || 0,
+    }
+    totalCost   += Number(r.cost)   || 0
+    totalCalls  += Number(r.calls)  || 0
+    totalInput  += Number(r.input)  || 0
+    totalOutput += Number(r.output) || 0
   }
 
   // ElevenLabs — live subscription data
