@@ -1,0 +1,92 @@
+<!-- @dsCard group="App" viewport="1280x800" name="BrainScribe — student app" subtitle="Login → pick a tutor → voice session → teacher transcript" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrainScribe</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { font-family: var(--font-sans); background: var(--bg-page); color: var(--text-body); }
+  #root { height: 100vh; overflow: auto; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel" src="AppData.jsx"></script>
+  <script type="text/babel" src="AppHeader.jsx"></script>
+  <script type="text/babel" src="LoginScreen.jsx"></script>
+  <script type="text/babel" src="TutorPickerScreen.jsx"></script>
+  <script type="text/babel" src="DashboardScreen.jsx"></script>
+  <script type="text/babel" src="SessionScreen.jsx"></script>
+  <script type="text/babel" src="TranscriptScreen.jsx"></script>
+  <script type="text/babel">
+    function DemoRoleSwitch({ screen, onStudent, onTeacher }) {
+      // Clearly-marked DEMO control — not part of the student UI. In the real
+      // product, teachers/parents reach transcripts from their own account.
+      const onTeacherSide = screen === 'transcript'
+      if (screen === 'login') return null
+      return (
+        <div style={{
+          position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 100,
+          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 14px',
+          background: 'var(--navy-900)', color: 'var(--cream-50)', borderRadius: 'var(--radius-pill)',
+          boxShadow: 'var(--shadow-lg)', fontFamily: 'var(--font-sans)',
+        }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>Demo · view as</span>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.12)', borderRadius: 'var(--radius-pill)', padding: 3 }}>
+            <button onClick={onStudent} style={{
+              border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-pill)', padding: '5px 14px',
+              fontSize: 'var(--text-sm)', fontWeight: 600, fontFamily: 'inherit',
+              background: onTeacherSide ? 'transparent' : 'var(--accent)', color: onTeacherSide ? 'var(--cream-50)' : '#fff',
+            }}>Student</button>
+            <button onClick={onTeacher} style={{
+              border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-pill)', padding: '5px 14px',
+              fontSize: 'var(--text-sm)', fontWeight: 600, fontFamily: 'inherit',
+              background: onTeacherSide ? 'var(--accent)' : 'transparent', color: '#fff',
+            }}>Teacher</button>
+          </div>
+        </div>
+      )
+    }
+
+    function App() {
+      const [screen, setScreen] = React.useState('login')
+      const [tutorKey, setTutorKey] = React.useState('sage')
+      const [assignment, setAssignment] = React.useState(window.BS_ASSIGNMENT)
+      const tutor = window.BS_TUTORS.find(t => t.persona === tutorKey)
+
+      function renderScreen() {
+        if (screen === 'login')
+          return <window.LoginScreen onContinue={() => setScreen('picker')} />
+        if (screen === 'picker')
+          return <window.TutorPickerScreen onPick={(k) => { setTutorKey(k); setScreen('dashboard') }} />
+        if (screen === 'dashboard')
+          return <window.DashboardScreen tutor={tutor} onStart={(a) => { setAssignment(a); setScreen('session') }}
+            onHome={() => setScreen('dashboard')} />
+        if (screen === 'session')
+          return <window.SessionScreen tutor={tutor} assignment={assignment}
+            onFinish={() => setScreen('transcript')} onHome={() => setScreen('dashboard')} />
+        if (screen === 'transcript')
+          return <window.TranscriptScreen tutor={tutor} onHome={() => setScreen('transcript')} />
+        return null
+      }
+
+      return (
+        <React.Fragment>
+          {renderScreen()}
+          <DemoRoleSwitch screen={screen}
+            onStudent={() => setScreen(s => s === 'transcript' ? 'dashboard' : s)}
+            onTeacher={() => setScreen('transcript')} />
+        </React.Fragment>
+      )
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+  </script>
+</body>
+</html>

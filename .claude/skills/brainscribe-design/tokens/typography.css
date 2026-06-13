@@ -1,0 +1,53 @@
+/* ============================================================
+   BrainScribe — Typography tokens
+   Display: Bricolage Grotesque · UI/Body: Plus Jakarta Sans
+   Verbatim: JetBrains Mono
+   ============================================================ */
+
+:root {
+  /* Families */
+  --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Weights */
+  --fw-regular:  400; /* @kind font */
+  --fw-medium:   500; /* @kind font */
+  --fw-semibold: 600; /* @kind font */
+  --fw-bold:     700; /* @kind font */
+  --fw-extra:    800; /* @kind font */
+
+  /* Type scale (1.20 minor-third-ish, tuned) */
+  --text-xs:   0.75rem;   /* 12 — meta, captions */
+  --text-sm:   0.875rem;  /* 14 — secondary UI */
+  --text-base: 1rem;      /* 16 — body */
+  --text-md:   1.125rem;  /* 18 — lead body / chat */
+  --text-lg:   1.375rem;  /* 22 — card titles */
+  --text-xl:   1.75rem;   /* 28 — section heads */
+  --text-2xl:  2.25rem;   /* 36 — page titles */
+  --text-3xl:  3rem;      /* 48 — display */
+  --text-4xl:  4rem;      /* 64 — hero display */
+
+  /* Line heights */
+  --leading-tight:   1.1;
+  --leading-snug:    1.25;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;   /* reading essays — generous for focus */
+
+  /* Letter spacing */
+  --tracking-tight:  -0.02em;   /* display */
+  --tracking-normal: 0;
+  --tracking-wide:   0.04em;
+  --tracking-caps:   0.08em;    /* uppercase eyebrows / labels */
+
+  /* Semantic roles */
+  --type-hero:    var(--fw-extra) var(--text-4xl)/var(--leading-tight) var(--font-display);
+  --type-display: var(--fw-bold)  var(--text-3xl)/var(--leading-tight) var(--font-display);
+  --type-title:   var(--fw-bold)  var(--text-2xl)/var(--leading-snug)  var(--font-display);
+  --type-heading: var(--fw-semibold) var(--text-xl)/var(--leading-snug) var(--font-display);
+  --type-subhead: var(--fw-semibold) var(--text-lg)/var(--leading-snug) var(--font-sans);
+  --type-lead:    var(--fw-regular) var(--text-md)/var(--leading-relaxed) var(--font-sans);
+  --type-body:    var(--fw-regular) var(--text-base)/var(--leading-relaxed) var(--font-sans);
+  --type-ui:      var(--fw-medium) var(--text-sm)/var(--leading-normal) var(--font-sans);
+  --type-meta:    var(--fw-medium) var(--text-xs)/var(--leading-normal) var(--font-sans);
+}

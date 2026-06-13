@@ -1,0 +1,9 @@
+/* BrainScribe webfonts.
+   Loaded from Google Fonts CDN. The intended families are:
+   - Bricolage Grotesque — display / headings (warm, modern, expressive)
+   - Plus Jakarta Sans   — UI / body (friendly geometric sans, highly legible)
+   - JetBrains Mono      — verbatim / raw-transcript text
+   NOTE: served from fonts.gstatic.com rather than self-hosted binaries.
+   See readme.md "Visual Foundations → Type" for the self-hosting flag. */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..600&family=JetBrains+Mono:wght@400;500;600&display=swap');

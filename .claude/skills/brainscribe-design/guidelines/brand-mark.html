@@ -1,0 +1,46 @@
+<!-- @dsCard group="Brand" viewport="700x240" name="Icon mark & clear space" subtitle="Full bulb on light surfaces; the badge for dark or app-icon use" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg-page); padding: 24px 26px; }
+  .wrap { display: flex; gap: 28px; align-items: stretch; }
+  .block { display: flex; flex-direction: column; gap: 10px; }
+  .block__label { font-size: var(--text-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+  .tiles { display: flex; gap: 14px; }
+  .tile { width: 96px; height: 96px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+  .tile img { width: 64px; height: 64px; object-fit: contain; display: block; }
+  .cream { background: var(--cream-100); }
+  .white { background: var(--white); }
+  .navy  { background: var(--navy-800); }
+  .cap { text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 7px; }
+  .divider { width: 1px; background: var(--border-default); }
+  /* badge tiles have no shadow/radius of their own — the badge carries its field */
+  .badge-tile { width: 96px; height: 96px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-lg); }
+  .badge-tile img { width: 84px; height: 84px; object-fit: contain; display: block; filter: drop-shadow(var(--shadow-sm)); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="block">
+      <span class="block__label">Full mark · light surfaces only</span>
+      <div class="tiles">
+        <div><div class="tile cream"><img src="../assets/brainscribe-bulb.png" alt="bulb on cream"></div><div class="cap">on paper</div></div>
+        <div><div class="tile white"><img src="../assets/brainscribe-bulb.png" alt="bulb on white"></div><div class="cap">on white</div></div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="block">
+      <span class="block__label">Badge · app icon &amp; dark surfaces</span>
+      <div class="tiles">
+        <div><div class="badge-tile" style="background: var(--cream-200);"><img src="../assets/brainscribe-mark.png" alt="badge isolated"></div><div class="cap">in isolation</div></div>
+        <div><div class="badge-tile navy"><img src="../assets/brainscribe-mark-navy.png" alt="outline on navy"></div><div class="cap">on navy</div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

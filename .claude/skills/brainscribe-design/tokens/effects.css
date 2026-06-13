@@ -1,0 +1,40 @@
+/* ============================================================
+   BrainScribe — Radii, shadows, borders, motion
+   Soft rounded corners (friendly, never sharp). Shadows are warm
+   and low — soft paper lift, not hard drop. Motion is gentle:
+   ease-out fades and small lifts, never bouncy or jarring.
+   ============================================================ */
+
+:root {
+  /* Radii — rounded & friendly */
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   14px;   /* default cards / inputs */
+  --radius-lg:   20px;   /* feature cards */
+  --radius-xl:   28px;
+  --radius-pill: 999px;  /* chips, mic, tutor avatars */
+
+  /* Borders */
+  --border-hair: 1px solid var(--border-default);
+  --border-line: 1.5px solid var(--border-default);
+  --border-focus: 2px solid var(--ring);
+
+  /* Shadows — warm-tinted, soft, layered (navy-ink shadow, low alpha) */
+  --shadow-xs: 0 1px 2px rgba(20, 56, 90, 0.06);
+  --shadow-sm: 0 2px 6px rgba(20, 56, 90, 0.07);
+  --shadow-md: 0 6px 18px rgba(20, 56, 90, 0.09);
+  --shadow-lg: 0 14px 38px rgba(20, 56, 90, 0.12);
+  --shadow-spark: 0 8px 24px rgba(240, 129, 30, 0.28);  /* glow under the mic / CTAs */
+  --shadow-inset: inset 0 1px 2px rgba(20, 56, 90, 0.06);
+
+  /* Focus ring (box-shadow form) */
+  --focus-ring: 0 0 0 3px rgba(248, 154, 46, 0.45);
+  --focus-ring-navy: 0 0 0 3px rgba(110, 151, 189, 0.45);
+
+  /* Motion */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-soft:  cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --dur-fast:   120ms; /* @kind other */
+  --dur-base:   200ms; /* @kind other */
+  --dur-slow:   360ms; /* @kind other */
+}

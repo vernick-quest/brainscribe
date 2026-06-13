@@ -16,3 +16,22 @@ export async function POST(request) {
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json(data)
 }
+
+export async function PATCH(request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { sessionId, position, scribedText } = await request.json()
+
+  const { data, error } = await supabase
+    .from('paragraphs')
+    .update({ scribed_text: scribedText })
+    .eq('session_id', sessionId)
+    .eq('position', position)
+    .select()
+    .single()
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json(data)
+}

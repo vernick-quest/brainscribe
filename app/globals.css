@@ -1,1 +1,179 @@
+/* ── Fonts ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @import "tailwindcss";
+
+/* ── Color scale ───────────────────────────────────────────── */
+:root {
+  /* Navy */
+  --navy-50:  #EEF4F9;
+  --navy-100: #E0EBF4;
+  --navy-200: #C2D6E8;
+  --navy-300: #9CBBD7;
+  --navy-400: #6E97BD;
+  --navy-500: #3E78A8;
+  --navy-600: #2A6191;
+  --navy-700: #1D4D78;
+  --navy-800: #14385A;
+  --navy-900: #0E2942;
+
+  /* Orange */
+  --orange-50:  #FEF6EC;
+  --orange-100: #FCEAD0;
+  --orange-200: #FBD9A6;
+  --orange-300: #FBB85A;
+  --orange-400: #F89A2E;
+  --orange-500: #F0811E;
+  --orange-600: #E0710F;
+  --orange-700: #C25E0C;
+  --orange-800: #9A4A0C;
+
+  /* Cream / warm neutrals */
+  --cream-50:  #FFFEF9;
+  --cream-100: #FDFBF3;
+  --cream-200: #F8F3E8;
+  --cream-300: #F1EADB;
+  --cream-400: #E7DECB;
+
+  --ink-900: #211D17;
+  --ink-700: #4A4439;
+  --ink-600: #6B6353;
+  --ink-500: #8C8474;
+  --ink-400: #B2A994;
+  --ink-300: #D6CFBE;
+
+  /* Semantic hues */
+  --green-500: #2E9E6B;
+  --green-100: #E4F4EB;
+  --amber-500: #D98A1F;
+  --amber-100: #FBEED6;
+  --red-500:   #D1503C;
+  --red-100:   #FBE6E1;
+
+  --white: #FFFFFF;
+
+  /* ── Semantic aliases ──────────────────────────────────────── */
+
+  /* Surfaces */
+  --bg-page:        var(--cream-100);
+  --bg-page-alt:    var(--cream-200);
+  --surface-card:   var(--white);
+  --surface-muted:  var(--cream-200);
+  --surface-sunken: var(--cream-300);
+  --surface-ink:    var(--navy-800);
+  --surface-spark:  var(--orange-50);
+
+  /* Text */
+  --text-strong:    var(--navy-800);
+  --text-body:      var(--ink-900);
+  --text-muted:     var(--ink-500);
+  --text-subtle:    var(--ink-400);
+  --text-on-dark:   var(--cream-50);
+  --text-on-accent: var(--white);
+  --text-link:      var(--navy-600);
+
+  /* Brand roles */
+  --accent:        var(--orange-500);
+  --accent-hover:  var(--orange-600);
+  --accent-press:  var(--orange-700);
+  --accent-soft:   var(--orange-100);
+  --primary:       var(--navy-800);
+  --primary-hover: var(--navy-900);
+  --primary-soft:  var(--navy-100);
+
+  /* Lines & focus */
+  --border-default: var(--cream-400);
+  --border-strong:  var(--ink-300);
+  --border-accent:  var(--orange-300);
+  --ring:           var(--orange-400);
+  --ring-navy:      var(--navy-400);
+
+  /* Status */
+  --status-success:    var(--green-500);
+  --status-success-bg: var(--green-100);
+  --status-thin:       var(--amber-500);
+  --status-thin-bg:    var(--amber-100);
+  --status-error:      var(--red-500);
+  --status-error-bg:   var(--red-100);
+
+  /* Tutor persona accents */
+  --tutor-coach:  #2E9E6B;  /* Marcus  — green   */
+  --tutor-spark:  #C4782A;  /* Zoe     — amber   */
+  --tutor-sage:   #2A6191;  /* Alistair — navy   */
+  --tutor-quill:  #1F9FA6;  /* Verity  — teal    */
+  --tutor-muse:   #8A5BC2;  /* Owen    — violet  */
+  --tutor-nova:   #DB5A87;  /* Jade    — rose    */
+
+  /* Radii */
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-xs:    0 1px 2px rgba(20, 56, 90, 0.06);
+  --shadow-sm:    0 2px 6px rgba(20, 56, 90, 0.07);
+  --shadow-md:    0 6px 18px rgba(20, 56, 90, 0.09);
+  --shadow-lg:    0 14px 38px rgba(20, 56, 90, 0.12);
+  --shadow-spark: 0 8px 24px rgba(240, 129, 30, 0.28);
+  --shadow-inset: inset 0 1px 2px rgba(20, 56, 90, 0.06);
+  --focus-ring:   0 0 0 3px rgba(248, 154, 46, 0.45);
+
+  /* Motion */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:  120ms;
+  --dur-base:  200ms;
+  --dur-slow:  360ms;
+
+  /* Typography */
+  --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  /* Spacing */
+  --width-prose: 42rem;
+  --width-form:  28rem;
+  --width-app:   72rem;
+  --tap-min:     44px;
+
+  /* ── Legacy aliases (keeps existing components working) ───── */
+  --brand-orange:      var(--orange-500);
+  --brand-amber:       var(--amber-500);
+  --brand-navy:        var(--navy-800);
+  --brand-navy-light:  var(--navy-600);
+  --brand-cream:       var(--cream-100);
+  --brand-cream-dark:  var(--cream-300);
+}
+
+/* ── Base styles ───────────────────────────────────────────── */
+html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-page);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+/* Transcript / raw spoken text */
+.font-mono, code, pre {
+  font-family: var(--font-mono);
+}
+
+/* Section completion celebration toast */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

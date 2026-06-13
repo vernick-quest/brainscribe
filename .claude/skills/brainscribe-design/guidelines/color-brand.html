@@ -1,0 +1,36 @@
+<!-- @dsCard group="Colors" viewport="700x190" name="Brand colors" subtitle="Navy ink + orange spark on cream paper" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg-page); padding: 22px; }
+  .row { display: flex; gap: 16px; }
+  .sw { flex: 1; border-radius: var(--radius-md); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; }
+  .name { font-weight: var(--fw-bold); font-size: var(--text-base); }
+  .hex { font-family: var(--font-mono); font-size: var(--text-xs); opacity: 0.85; }
+  .tag { font-size: var(--text-xs); font-weight: var(--fw-semibold); text-transform: uppercase; letter-spacing: var(--tracking-caps); opacity: 0.7; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw" style="background: var(--navy-800); color: var(--cream-50);">
+      <span class="tag">Primary · trust</span>
+      <div><div class="name">Navy 800</div><div class="hex">#14385A</div></div>
+    </div>
+    <div class="sw" style="background: var(--orange-500); color: #fff;">
+      <span class="tag">Accent · voice</span>
+      <div><div class="name">Orange 500</div><div class="hex">#F0811E</div></div>
+    </div>
+    <div class="sw" style="background: var(--cream-100); color: var(--ink-900); border: var(--border-hair);">
+      <span class="tag">Paper · surface</span>
+      <div><div class="name">Cream 100</div><div class="hex">#FDFBF3</div></div>
+    </div>
+    <div class="sw" style="background: var(--ink-900); color: var(--cream-50);">
+      <span class="tag">Ink · body text</span>
+      <div><div class="name">Ink 900</div><div class="hex">#211D17</div></div>
+    </div>
+  </div>
+</body>
+</html>

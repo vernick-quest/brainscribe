@@ -1,0 +1,30 @@
+export default function SiteFooter() {
+  return (
+    <footer style={{
+      borderTop: '1px solid var(--border-default)',
+      backgroundColor: 'var(--brand-cream)',
+      padding: '28px 40px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: 12,
+    }}>
+      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        © 2025 BrainScribe &nbsp;·&nbsp; Built by a parent, for parents.
+      </p>
+      <nav style={{ display: 'flex', gap: 20 }}>
+        {[
+          { href: '/about',   label: 'About' },
+          { href: '/privacy', label: 'Privacy Policy' },
+        ].map(({ href, label }) => (
+          <a key={href} href={href}
+            className="hover:underline"
+            style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textDecoration: 'none' }}>
+            {label}
+          </a>
+        ))}
+      </nav>
+    </footer>
+  )
+}

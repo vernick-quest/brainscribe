@@ -1,0 +1,80 @@
+<!-- @dsCard group="Components" viewport="700x440" name="Core — Button, Badge, Card, Avatar" subtitle="Buttons, pills, surfaces & avatars" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg-page); padding: 24px; color: var(--text-body); }
+  .group { margin-bottom: 22px; }
+  .lbl { font-size: var(--text-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); margin-bottom: 12px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel">
+    const { Button, Badge, Card, Avatar } = window.BrainScribeDesignSystem_eceaf4
+    function Demo() {
+      return (
+        <div>
+          <div className="group">
+            <div className="lbl">Buttons</div>
+            <div className="row" style={{ marginBottom: 12 }}>
+              <Button variant="primary">Start writing</Button>
+              <Button variant="navy">Continue</Button>
+              <Button variant="secondary">Edit</Button>
+              <Button variant="soft">Hint</Button>
+              <Button variant="ghost">Discard</Button>
+            </div>
+            <div className="row">
+              <Button size="sm">Small</Button>
+              <Button size="md">Medium</Button>
+              <Button size="lg">Large</Button>
+              <Button disabled>Disabled</Button>
+            </div>
+          </div>
+
+          <div className="group">
+            <div className="lbl">Badges</div>
+            <div className="row">
+              <Badge tone="success" dot>Added to essay</Badge>
+              <Badge tone="thin">Thin — build on this</Badge>
+              <Badge tone="navy">In progress</Badge>
+              <Badge tone="accent">Listening</Badge>
+              <Badge tone="neutral">Draft</Badge>
+            </div>
+          </div>
+
+          <div className="group">
+            <div className="lbl">Avatars</div>
+            <div className="row">
+              <Avatar tutor="sage" name="Sage" size="lg" />
+              <Avatar tutor="zip" name="Zip" size="lg" />
+              <Avatar tutor="coach" name="Coach" size="lg" />
+              <Avatar tutor="muse" name="Muse" size="lg" />
+              <Avatar name="Maya" />
+              <Avatar name="Liam" size="sm" />
+            </div>
+          </div>
+
+          <div className="group" style={{ marginBottom: 0 }}>
+            <div className="lbl">Cards</div>
+            <div className="cards">
+              <Card>Paper card with a hairline border.</Card>
+              <Card variant="muted">Muted cream block.</Card>
+              <Card variant="ink">Dark navy panel.</Card>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />)
+  </script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!-- @dsCard group="Components" viewport="700x720" name="Tutor — Mic, Chat, Scribe & Persona" subtitle="The voice-first coaching primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg-page); padding: 24px; color: var(--text-body); }
+  .group { margin-bottom: 24px; }
+  .lbl { font-size: var(--text-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); margin-bottom: 12px; }
+  .mics { display: flex; gap: 28px; align-items: center; }
+  .chat { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+  .tutors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel">
+    const { MicButton, ChatBubble, ScribePreview, TutorCard } = window.BrainScribeDesignSystem_eceaf4
+
+    // Reads its text aloud with the browser's SpeechSynthesis, passing real
+    // word-boundary offsets to ChatBubble so the highlight syncs to speech.
+    // If boundary events aren't supported, ChatBubble's own estimated pace runs.
+    function ReadAloudBubble({ children }) {
+      const [speaking, setSpeaking] = React.useState(false)
+      const [char, setChar] = React.useState(null)
+      const timerRef = React.useRef(null)
+      function toggle() {
+        const synth = window.speechSynthesis
+        if (speaking) {
+          synth && synth.cancel(); clearTimeout(timerRef.current)
+          setSpeaking(false); setChar(null); return
+        }
+        // Drive the read-along window by estimated duration so it always runs,
+        // even where audio is blocked; real boundary events refine the cursor.
+        const ms = Math.max(1600, (children.length / 13.5) * 1000 + 400)
+        setChar(0); setSpeaking(true)
+        timerRef.current = setTimeout(() => { setSpeaking(false); setChar(null) }, ms)
+        if (synth) {
+          synth.cancel()
+          const u = new SpeechSynthesisUtterance(children)
+          u.rate = 0.95
+          u.onboundary = (e) => { if (e.charIndex != null) setChar(e.charIndex) }
+          try { synth.speak(u) } catch (_) {}
+        }
+      }
+      return (
+        <ChatBubble role="tutor" speaking={speaking} spokenChar={char} onSpeak={toggle}>
+          {children}
+        </ChatBubble>
+      )
+    }
+
+    function Demo() {
+      const [picked, setPicked] = React.useState('sage')
+      return (
+        <div>
+          <div className="group">
+            <div className="lbl">Mic button — rest & listening</div>
+            <div className="mics">
+              <MicButton />
+              <MicButton listening />
+              <MicButton size="sm" />
+              <MicButton disabled />
+            </div>
+          </div>
+
+          <div className="group">
+            <div className="lbl">Chat bubbles — tap 🔊 to read aloud (words highlight in sync)</div>
+            <div className="chat">
+              <ReadAloudBubble>What's the strongest reason you believe that?</ReadAloudBubble>
+              <ChatBubble role="student">Because he never listened to his friends until it was too late.</ChatBubble>
+              <ReadAloudBubble>Great — can you point to a moment in the story that shows it?</ReadAloudBubble>
+            </div>
+          </div>
+
+          <div className="group">
+            <div className="lbl">Scribe preview</div>
+            <ScribePreview
+              paragraph="The main character changes because at the start he doesn't listen to anyone, but after his friend leaves he realizes how much he relied on them."
+              isThin
+              thinNote="You shared a good starting idea — let's build on it!"
+              onApprove={() => {}} onEdit={() => {}} onDiscard={() => {}}
+            />
+          </div>
+
+          <div className="group" style={{ marginBottom: 0 }}>
+            <div className="lbl">Tutor persona picker</div>
+            <div className="tutors">
+              <TutorCard persona="sage" name="Sage" style="Methodical · calm" description="Breaks big assignments into clear, ordered steps." selected={picked==='sage'} onSelect={() => setPicked('sage')} />
+              <TutorCard persona="zip" name="Zip" style="Energetic · brisk" description="Keeps momentum with quick, punchy questions." selected={picked==='zip'} onSelect={() => setPicked('zip')} />
+              <TutorCard persona="coach" name="Coach" style="Steady · encouraging" description="Celebrates progress and builds confidence." selected={picked==='coach'} onSelect={() => setPicked('coach')} />
+              <TutorCard persona="muse" name="Muse" style="Imaginative · playful" description="Sparks ideas with vivid what-ifs and analogies." selected={picked==='muse'} onSelect={() => setPicked('muse')} />
+              <TutorCard persona="quill" name="Quill" style="Curious · precise" description="Digs into details and presses gently for evidence." selected={picked==='quill'} onSelect={() => setPicked('quill')} />
+              <TutorCard persona="nova" name="Nova" style="Bold · expressive" description="Pushes for a strong voice and a point of view." selected={picked==='nova'} onSelect={() => setPicked('nova')} />
+            </div>
+          </div>
+        </div>
+      )
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />)
+  </script>
+</body>
+</html>

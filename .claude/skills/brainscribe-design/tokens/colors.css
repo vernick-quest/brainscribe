@@ -1,0 +1,108 @@
+/* ============================================================
+   BrainScribe — Color tokens
+   Brand DNA: deep navy ink + warm orange "spark" on cream paper.
+   Warm, supportive, modern. Orange = voice & energy; navy = trust.
+   ============================================================ */
+
+:root {
+  /* ---- Navy (primary / trust / ink-blue) ---- */
+  --navy-50:  #EEF4F9;
+  --navy-100: #E0EBF4;
+  --navy-200: #C2D6E8;
+  --navy-300: #9CBBD7;
+  --navy-400: #6E97BD;
+  --navy-500: #3E78A8;
+  --navy-600: #2A6191;
+  --navy-700: #1D4D78;
+  --navy-800: #14385A;   /* the "BRAIN" wordmark navy — core brand */
+  --navy-900: #0E2942;
+
+  /* ---- Orange (warm accent / voice / spark) ---- */
+  --orange-50:  #FEF6EC;
+  --orange-100: #FCEAD0;
+  --orange-200: #FBD9A6;
+  --orange-300: #FBB85A;   /* golden highlight in the bulb */
+  --orange-400: #F89A2E;
+  --orange-500: #F0811E;   /* core accent — the lightbulb orange */
+  --orange-600: #E0710F;
+  --orange-700: #C25E0C;
+  --orange-800: #9A4A0C;
+
+  /* ---- Warm neutrals (paper + ink) ---- */
+  --cream-50:  #FFFEF9;
+  --cream-100: #FDFBF3;   /* page background — "paper" */
+  --cream-200: #F8F3E8;
+  --cream-300: #F1EADB;
+  --cream-400: #E7DECB;   /* warm hairline / divider */
+
+  --ink-900: #211D17;     /* primary body text — warm near-black */
+  --ink-700: #4A4439;
+  --ink-600: #6B6353;
+  --ink-500: #8C8474;     /* muted / secondary text */
+  --ink-400: #B2A994;
+  --ink-300: #D6CFBE;
+
+  /* ---- Semantic hues ---- */
+  --green-500: #2E9E6B;   /* success / "added to essay" */
+  --green-100: #E4F4EB;
+  --amber-500: #D98A1F;   /* "thin paragraph — build on this" */
+  --amber-100: #FBEED6;
+  --red-500:   #D1503C;   /* error / discard */
+  --red-100:   #FBE6E1;
+
+  --white: #FFFFFF;
+
+  /* ============================================================
+     Semantic aliases — reference these in components, not raw scale
+     ============================================================ */
+
+  /* Surfaces */
+  --bg-page:          var(--cream-100);
+  --bg-page-alt:      var(--cream-200);
+  --surface-card:     var(--white);
+  --surface-muted:    var(--cream-200);
+  --surface-sunken:   var(--cream-300);
+  --surface-ink:      var(--navy-800);   /* dark panels / footers */
+  --surface-spark:    var(--orange-50);  /* warm tint blocks */
+
+  /* Text */
+  --text-strong:   var(--navy-800);   /* headings */
+  --text-body:     var(--ink-900);
+  --text-muted:    var(--ink-500);
+  --text-subtle:   var(--ink-400);
+  --text-on-dark:  var(--cream-50);
+  --text-on-accent: var(--white);
+  --text-link:     var(--navy-600);
+
+  /* Brand roles */
+  --accent:         var(--orange-500);  /* voice / spark / primary CTA */
+  --accent-hover:   var(--orange-600);
+  --accent-press:   var(--orange-700);
+  --accent-soft:    var(--orange-100);
+  --primary:        var(--navy-800);    /* structural primary */
+  --primary-hover:  var(--navy-900);
+  --primary-soft:   var(--navy-100);
+
+  /* Lines & focus */
+  --border-default: var(--cream-400);
+  --border-strong:  var(--ink-300);
+  --border-accent:  var(--orange-300);
+  --ring:           var(--orange-400);  /* focus ring — warm */
+  --ring-navy:      var(--navy-400);
+
+  /* Status */
+  --status-success:    var(--green-500);
+  --status-success-bg: var(--green-100);
+  --status-thin:       var(--amber-500);
+  --status-thin-bg:    var(--amber-100);
+  --status-error:      var(--red-500);
+  --status-error-bg:   var(--red-100);
+
+  /* Tutor persona accents — six coaching styles */
+  --tutor-sage:   #2A6191;  /* Sage  — methodical · calm (navy) */
+  --tutor-spark:  #F0811E;  /* Zip   — energetic · brisk (orange) */
+  --tutor-coach:  #2E9E6B;  /* Coach — steady · encouraging (green) */
+  --tutor-muse:   #8A5BC2;  /* Muse  — imaginative · playful (violet) */
+  --tutor-quill:  #1F9FA6;  /* Quill — curious · precise (teal) */
+  --tutor-nova:   #DB5A87;  /* Nova  — bold · expressive (rose) */
+}

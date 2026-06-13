@@ -1,0 +1,39 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Semantic status" subtitle="Success, thin-paragraph, and error — soft, never alarming" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg-page); padding: 22px; }
+  .row { display: flex; gap: 14px; }
+  .item { flex: 1; border-radius: var(--radius-md); padding: 14px; }
+  .dot { width: 22px; height: 22px; border-radius: var(--radius-pill); margin-bottom: 10px; }
+  .t { font-weight: var(--fw-bold); font-size: var(--text-sm); color: var(--text-strong); }
+  .d { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+  .h { font-family: var(--font-mono); font-size: 10px; color: var(--text-subtle); margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="item" style="background: var(--status-success-bg);">
+      <div class="dot" style="background: var(--status-success);"></div>
+      <div class="t">Success</div>
+      <div class="d">Added to your essay ✓</div>
+      <div class="h">#2E9E6B</div>
+    </div>
+    <div class="item" style="background: var(--status-thin-bg);">
+      <div class="dot" style="background: var(--status-thin);"></div>
+      <div class="t">Thin</div>
+      <div class="d">Good start — let's build on it</div>
+      <div class="h">#D98A1F</div>
+    </div>
+    <div class="item" style="background: var(--status-error-bg);">
+      <div class="dot" style="background: var(--status-error);"></div>
+      <div class="t">Discard</div>
+      <div class="d">Gentle, reversible removal</div>
+      <div class="h">#D1503C</div>
+    </div>
+  </div>
+</body>
+</html>

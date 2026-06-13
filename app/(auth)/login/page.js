@@ -12,31 +12,58 @@ function LoginContent() {
   async function signInWithGoogle() {
     const supabase = createClient()
     const redirectTo = `${window.location.origin}/api/auth/callback${inviteToken ? `?next=/invite?token=${inviteToken}` : ''}`
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo },
-    })
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
-      <div className="bg-white rounded-2xl shadow-lg p-10 max-w-md w-full text-center space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-indigo-700">BrainScribe</h1>
-          <p className="text-gray-500 mt-2 text-sm">Your voice-first writing tutor</p>
+    <div className="flex-1 flex flex-col items-center justify-center px-6 py-12"
+      style={{ backgroundColor: 'var(--bg-page)' }}>
+
+      {/* Logo — above the card */}
+      <img
+        src="/brainscribe-logo.png"
+        alt="BrainScribe"
+        style={{ width: 280, maxWidth: '80%', height: 'auto', marginBottom: '2rem' }}
+      />
+
+      {/* Card */}
+      <div className="w-full p-10 space-y-6 text-center"
+        style={{
+          maxWidth: '28rem',
+          backgroundColor: 'var(--surface-card)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-md)',
+          border: '1px solid transparent',
+        }}>
+
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
+            Welcome back
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Your voice-first writing coach.
+          </p>
         </div>
 
         {error && (
-          <p className="text-red-500 text-sm bg-red-50 rounded-lg p-3">
+          <p className="text-sm rounded-xl p-3" style={{ color: 'var(--status-error)', backgroundColor: 'var(--status-error-bg)' }}>
             Sign-in failed. Please try again.
           </p>
         )}
 
         <button
           onClick={signInWithGoogle}
-          className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 px-4 text-gray-700 font-medium hover:bg-gray-50 transition"
+          className="w-full flex items-center justify-center gap-3 rounded-2xl py-3.5 px-4 font-semibold transition"
+          style={{
+            border: '1.5px solid var(--border-strong)',
+            color: 'var(--text-body)',
+            backgroundColor: 'var(--surface-card)',
+            fontSize: '0.9375rem',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.backgroundColor = 'var(--surface-spark)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--surface-card)' }}
         >
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -45,18 +72,93 @@ function LoginContent() {
           Continue with Google
         </button>
 
-        <p className="text-xs text-gray-400">
-          BrainScribe is invite-only. You&apos;ll need an invite link from a teacher or parent.
+      </div>
+
+      {/* Who it's for */}
+      <div className="w-full mt-10" style={{ maxWidth: '52rem' }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-5 text-center"
+          style={{ color: 'var(--text-subtle)' }}>
+          Who it's for
         </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            {
+              label: 'Students',
+              heading: 'Sign in directly.',
+              body: 'Choose a coach. Talk through your assignment. The words are always yours.',
+              iconBg: 'var(--navy-100)',
+              iconColor: 'var(--navy-700)',
+              labelColor: 'var(--navy-700)',
+              icon: (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                </svg>
+              ),
+            },
+            {
+              label: 'Parents',
+              heading: 'Join via invite link.',
+              body: "See what's happening across all your kids — without sitting next to them at 11pm.",
+              iconBg: 'var(--status-success-bg)',
+              iconColor: 'var(--status-success)',
+              labelColor: 'var(--status-success)',
+              icon: (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              ),
+            },
+            {
+              label: 'Teachers',
+              heading: 'Join via invite link.',
+              body: 'Track assignment progress across all your students. Read the transcript. Trust the work.',
+              iconBg: 'var(--surface-spark)',
+              iconColor: 'var(--accent)',
+              labelColor: 'var(--accent)',
+              icon: (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="2" y="3" width="20" height="14" rx="2"/>
+                  <path d="M7 13h4"/>
+                  <path d="M7 10h10"/>
+                  <path d="M9 20h6"/>
+                  <path d="M12 17v3"/>
+                </svg>
+              ),
+            },
+          ].map(({ label, heading, body, iconBg, iconColor, labelColor, icon }) => (
+            <div key={label} className="p-6 space-y-3"
+              style={{
+                backgroundColor: 'var(--surface-card)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+              }}>
+              <div className="w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: iconBg, color: iconColor }}>
+                {icon}
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1"
+                  style={{ color: labelColor }}>
+                  {label}
+                </p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+                  {heading}
+                </p>
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                {body}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginContent />
-    </Suspense>
-  )
+  return <Suspense><LoginContent /></Suspense>
 }
