@@ -38,7 +38,8 @@ export default async function ParentDashboardPage() {
       service.from('sessions')
         .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label')
         .in('student_id', studentIds)
-        .order('updated_at', { ascending: false }),
+        .order('updated_at', { ascending: false })
+        .limit(100),
     ])
     children = profileData ?? []
     sessions = sessionData ?? []

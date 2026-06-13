@@ -99,7 +99,8 @@ export default async function AssignmentPage({ params }) {
       .from('sessions')
       .select('id, assignment_text, persona, created_at, updated_at, status, subject, subject_custom_label')
       .eq('student_id', session.student_id)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(50),
     service
       .from('paragraph_scaffolds')
       .select('*')

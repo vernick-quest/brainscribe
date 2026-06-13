@@ -48,6 +48,7 @@ export default async function DashboardPage() {
     .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label')
     .eq('student_id', targetId)
     .order('updated_at', { ascending: false })
+    .limit(50)
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 

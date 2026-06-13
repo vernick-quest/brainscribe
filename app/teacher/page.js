@@ -38,6 +38,7 @@ export default async function TeacherDashboardPage() {
       .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, subject, subject_custom_label')
       .in('id', sessionIds)
       .order('updated_at', { ascending: false })
+      .limit(100)
 
     sessions = sessionData ?? []
 
