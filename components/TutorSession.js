@@ -113,6 +113,16 @@ function updateComponentItem(scaffold, paraIdx, componentId, updater) {
 // Strips scaffold stream tokens + [DICTATE] from display text
 const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]/g
 
+// Display text for a still-streaming buffer: strips complete tokens, and also
+// drops a trailing partial token (e.g. "[ACT" before its "]" has arrived) so
+// half-emitted tokens never flash on screen mid-stream.
+function liveDisplay(raw) {
+  let t = raw.replace(ALL_TOKEN_RE, '')
+  const lastOpen = t.lastIndexOf('[')
+  if (lastOpen !== -1 && !t.slice(lastOpen).includes(']')) t = t.slice(0, lastOpen)
+  return t.trimStart()
+}
+
 // ── Greeting ───────────────────────────────────────────────────────────────────
 
 function buildGreeting(persona, name, scaffold) {
@@ -637,13 +647,16 @@ export default function TutorSession({
         return
       }
 
+      // Stream the coach's words into the caption as they generate, so the
+      // student gets immediate feedback instead of a static "…".
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let full = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        full += decoder.decode(value)
+        full += decoder.decode(value, { stream: true })
+        captionRef.current?.set(liveDisplay(full) || '…')
       }
 
       // Parse scaffold tokens and update scaffold state
@@ -655,7 +668,10 @@ export default function TutorSession({
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
 
-      await playWithSync(displayText, activePersona)
+      // Text is already on screen from streaming — play the audio over it
+      // (no word-by-word re-type, which would reset the visible caption).
+      captionRef.current?.set(displayText)
+      await replayAudioOnly(displayText, activePersona)
 
       setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
       captionRef.current?.clear()
