@@ -210,6 +210,103 @@ const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref)
   )
 })
 
+// ── Reply composer ────────────────────────────────────────────────────────────
+// Owns the text-input state and textarea, so per-keystroke typing and live
+// speech-interim updates re-render only the footer — not the whole TutorSession.
+// Renders the 'listening' or 'dictating' footer and calls onSubmit with the
+// final text. (Note: the previous inline textareas had a duplicate `style` prop,
+// so React dropped the first object and the border/background never rendered;
+// the styles below merge both into the intended design.)
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit }) {
+  const [text, setText] = useState('')
+  const textareaRef = useRef(null)
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }, [text])
+
+  function resetHeight() {
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+  function submit() {
+    const t = text.trim()
+    if (!t) return
+    setText('')
+    resetHeight()
+    onSubmit(t)
+  }
+
+  if (mode === 'dictating') {
+    return (
+      <div className="border-t-2 flex flex-col gap-2 px-5 py-3"
+        style={{ borderColor: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+            🎙 Dictation mode — say your paragraph
+          </span>
+          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Stop mic before editing text</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <MicButton
+            disabled={false}
+            assignmentKeyterms={assignmentKeyterms}
+            onInterim={(t) => setText(t)}
+            onFinal={(t) => { if (t) { setText(''); resetHeight(); onSubmit(t) } }}
+          />
+          <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+              placeholder="Speak or type your paragraph here…"
+              rows={1}
+              className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
+              style={{ color: 'var(--text-body)', border: '2px solid var(--accent)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
+            />
+            <button type="submit" disabled={!text.trim()}
+              className="text-sm text-white font-semibold rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
+              style={{ backgroundColor: 'var(--accent)' }}>
+              Add to essay →
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
+      <MicButton
+        disabled={false}
+        assignmentKeyterms={assignmentKeyterms}
+        onInterim={(t) => setText(t)}
+        onFinal={(t) => { if (t) setText(t) }}
+      />
+      <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+          placeholder="Type or speak your reply…"
+          rows={1}
+          className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
+          style={{ color: 'var(--text-body)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
+        />
+        <button type="submit" disabled={!text.trim()}
+          className="text-sm text-white rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
+          style={{ backgroundColor: 'var(--accent)' }}>
+          Send
+        </button>
+      </form>
+    </div>
+  )
+})
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TutorSession({
@@ -231,7 +328,6 @@ export default function TutorSession({
   const captionRef                        = useRef(null)
   const [pendingScribe, setPendingScribe] = useState(null)
   const [phase, setPhase]                 = useState('waiting')
-  const [textInput, setTextInput]         = useState('')
   const [persona, setPersona]             = useState(session.persona ?? 'marcus')
   const [showPersonaPicker, setShowPersonaPicker] = useState(false)
   const [sessionTitle, setSessionTitle]   = useState(session.title ?? null)
@@ -265,7 +361,6 @@ export default function TutorSession({
 
   const sidebarRenameRef  = useRef(null)
   const chatBottomRef     = useRef(null)
-  const textareaRef       = useRef(null)
   const titleInputRef     = useRef(null)
   const hasGreeted        = useRef(false)
   const audioRef          = useRef(null)
@@ -286,13 +381,6 @@ export default function TutorSession({
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [activePanel])
-
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-  }, [textInput])
 
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus()
@@ -909,21 +997,6 @@ export default function TutorSession({
     } catch (err) {
       console.error('[assemble]', err)
       setPhase('listening')
-    }
-  }
-
-  // ── Text input submit ────────────────────────────────────────────────────────
-
-  async function handleTextSubmit(e) {
-    e.preventDefault()
-    const text = textInput.trim()
-    if (!text) return
-    setTextInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    if (phase === 'dictating') {
-      await handleDictation(text)
-    } else {
-      await handleConversation(text)
     }
   }
 
@@ -1556,72 +1629,11 @@ export default function TutorSession({
 
           {/* Input area — changes based on phase */}
           {phase === 'listening' && (
-            <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
-              <MicButton
-                disabled={false}
-                assignmentKeyterms={assignmentKeyterms}
-                onInterim={(text) => setTextInput(text)}
-                onFinal={(text) => { if (text) setTextInput(text) }}
-              />
-              <form onSubmit={handleTextSubmit} className="flex-1 flex gap-2 items-end">
-                <textarea
-                  ref={textareaRef}
-                  value={textInput}
-                  onChange={e => setTextInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(e) } }}
-                  placeholder="Type or speak your reply…"
-                  rows={1}
-                  className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
-                  style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--ring)' }}
-                  style={{ color: 'var(--text-body)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
-                />
-                <button type="submit" disabled={!textInput.trim()}
-                  className="text-sm text-white rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
-                  style={{ backgroundColor: 'var(--accent)' }}>
-                  Send
-                </button>
-              </form>
-            </div>
+            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} />
           )}
 
           {phase === 'dictating' && (
-            <div className="border-t-2 flex flex-col gap-2 px-5 py-3"
-              style={{ borderColor: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                  🎙 Dictation mode — say your paragraph
-                </span>
-                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Stop mic before editing text</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <MicButton
-                  disabled={false}
-                  assignmentKeyterms={assignmentKeyterms}
-                  onInterim={(text) => setTextInput(text)}
-                  onFinal={(text) => {
-                    if (text) { setTextInput(''); if (textareaRef.current) textareaRef.current.style.height = 'auto'; handleDictation(text) }
-                  }}
-                />
-                <form onSubmit={handleTextSubmit} className="flex-1 flex gap-2 items-end">
-                  <textarea
-                    ref={textareaRef}
-                    value={textInput}
-                    onChange={e => setTextInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(e) } }}
-                    placeholder="Speak or type your paragraph here…"
-                    rows={1}
-                    className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
-                    style={{ border: '2px solid var(--border-accent)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--ring)' }}
-                    style={{ color: 'var(--text-body)', borderColor: 'var(--accent)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
-                  />
-                  <button type="submit" disabled={!textInput.trim()}
-                    className="text-sm text-white font-semibold rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
-                    style={{ backgroundColor: 'var(--accent)' }}>
-                    Add to essay →
-                  </button>
-                </form>
-              </div>
-            </div>
+            <ReplyComposer mode="dictating" assignmentKeyterms={assignmentKeyterms} onSubmit={handleDictation} />
           )}
 
           {phase === 'preview' && pendingScribe && (
