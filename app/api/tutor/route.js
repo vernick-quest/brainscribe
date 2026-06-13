@@ -20,6 +20,15 @@ export async function POST(request) {
     return Response.json({ error: 'Missing fields' }, { status: 400 })
   }
 
+  // Source the assignment from the DB rather than trusting the client. The user
+  // client + RLS returns the row only if the caller may read this session, so a
+  // student can't run the coach against arbitrary text on someone else's session.
+  // Falls back to the body when RLS doesn't grant a read (e.g. an admin who is
+  // impersonating a student) — an acceptable trust boundary since admins are trusted.
+  const { data: sessionRow } = await supabase
+    .from('sessions').select('assignment_text').eq('id', sessionId).single()
+  const effectiveAssignment = sessionRow?.assignment_text ?? assignment
+
   // Claude API only allows 'user' and 'assistant' roles, and the first message must be 'user'.
   // The local greeting is never saved to the DB, so the history sent from the client can start
   // with an assistant message — strip any leading assistant messages and unknown fields.
@@ -32,7 +41,7 @@ export async function POST(request) {
   // Split the system prompt: the large static prefix (persona + rules + guardrails,
   // ~5.7k tokens, identical every turn) is marked for Anthropic prompt caching so it
   // bills at ~10% on cache hits. Only the small assignment/scaffold tail varies.
-  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, assignment, scaffold)
+  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold)
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
