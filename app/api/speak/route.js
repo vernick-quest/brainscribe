@@ -12,10 +12,10 @@ export async function POST(request) {
 
   if (!await checkRateLimit(`speak:${user.id}`, 60, 60)) return new Response('Too many requests', { status: 429 })
 
-  const { text, persona = 'marcus', sessionId = null } = await request.json()
+  const { text, persona = 'owen', sessionId = null } = await request.json()
   if (!text) return new Response('Missing text', { status: 400 })
 
-  const voiceId = PERSONAS[persona]?.voiceId ?? PERSONAS.marcus.voiceId
+  const voiceId = PERSONAS[persona]?.voiceId ?? PERSONAS.owen.voiceId
 
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,

@@ -29,12 +29,12 @@ function renderMarkdown(text) {
 // ── Persona display metadata ───────────────────────────────────────────────────
 
 const PERSONA_META = {
-  marcus: { name: 'Marcus',  emoji: '🎯' },
+  deon: { name: 'Deon',  emoji: '🎯' },
   zoe:    { name: 'Zoe',     emoji: '✨' },
-  oliver: { name: 'Alistair', emoji: '🎩' },
-  isla:   { name: 'Verity',  emoji: '🌿' },
-  sam:    { name: 'Owen',    emoji: '☀️' },
-  jordan: { name: 'Jade',    emoji: '⚡' },
+  alistair: { name: 'Alistair', emoji: '🎩' },
+  matilda:   { name: 'Matilda',  emoji: '🌿' },
+  owen:    { name: 'Owen',    emoji: '☀️' },
+  jade: { name: 'Jade',    emoji: '⚡' },
 }
 
 // ── Scaffold helpers ───────────────────────────────────────────────────────────
@@ -150,52 +150,52 @@ function buildGreeting(persona, name, scaffold) {
 
   if (!hasScaffold) {
     const g = {
-      marcus: `Hey ${name}. I've read the assignment. Have you started writing anything? Paste it below if so — if not, we'll build from scratch.`,
+      deon: `Hey ${name}. I've read the assignment. Have you started writing anything? Paste it below if so — if not, we'll build from scratch.`,
       zoe:    `Hi ${name}! I've read your assignment — have you written anything yet? Paste it below, or if you're starting fresh, no worries at all — we'll figure it out together!`,
-      oliver: `Hello ${name}. I'm Alistair. I've read the assignment. Before we begin — have you written anything so far? Paste it below if you have. If not, no matter — we'll work through it.`,
-      isla:   `Hi ${name} — I'm Verity, lovely to meet you. I've read through your assignment. Have you started anything yet? That's completely fine if not — we'll find our way in together.`,
-      sam:    `Hi ${name}. I'm Owen. I've had a look at your assignment. There's no rush — we'll just take this one step at a time. Have you written anything so far? If not, that's totally okay.`,
-      jordan: `hey ${name}! okay I read the assignment — have you started anything yet? paste it below if you have. if not, no stress at all, we'll just figure it out together.`,
+      alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Before we begin — have you written anything so far? Paste it below if you have. If not, no matter — we'll work through it.`,
+      matilda:   `Hi ${name} — I'm Matilda — Tilly, if you like — lovely to meet you. I've read through your assignment. Have you started anything yet? That's completely fine if not — we'll find our way in together.`,
+      owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. There's no rush — we'll just take this one step at a time. Have you written anything so far? If not, that's totally okay.`,
+      jade: `hey ${name}! okay I read the assignment — have you started anything yet? paste it below if you have. if not, no stress at all, we'll just figure it out together.`,
     }
-    return g[persona] ?? g.marcus
+    return g[persona] ?? g.owen
   }
 
   if (allDone) {
     const g = {
-      marcus: `Hey ${name}. Your essay is done. Every part of it. Nice work.`,
+      deon: `Hey ${name}. Your essay is done. Every part of it. Nice work.`,
       zoe:    `Hi ${name}! You finished your whole essay — every single part! I'm so proud of you. It's ready!`,
-      oliver: `Hello ${name}. It's Alistair. Your essay is complete. Every part of it. Well done.`,
-      isla:   `Hi ${name} — it's Verity. Your essay is finished. Every part of it. That's a real accomplishment.`,
-      sam:    `Hi ${name}. It's Owen. Your essay is done — every part of it. You did that. All of it.`,
-      jordan: `hey ${name}! your essay is done — like actually done. every single part. that's huge.`,
+      alistair: `Hello ${name}. It's Alistair. Your essay is complete. Every part of it. Well done.`,
+      matilda:   `Hi ${name} — it's Matilda. Your essay is finished. Every part of it. That's a real accomplishment.`,
+      owen:    `Hi ${name}. It's Owen. Your essay is done — every part of it. You did that. All of it.`,
+      jade: `hey ${name}! your essay is done — like actually done. every single part. that's huge.`,
     }
-    return g[persona] ?? g.marcus
+    return g[persona] ?? g.owen
   }
 
   if (anyDone) {
     const done = scaffold.components.filter(p => p.status === 'complete').length
     const total = scaffold.components.length
     const g = {
-      marcus: `Hey ${name}. ${done} of ${total} paragraphs done. Let's keep going.`,
+      deon: `Hey ${name}. ${done} of ${total} paragraphs done. Let's keep going.`,
       zoe:    `Welcome back, ${name}! You've already finished ${done} of ${total} paragraphs — let's keep the momentum going!`,
-      oliver: `Hello ${name}. Alistair here. ${done} of ${total} paragraphs done — solid progress. Let's carry on.`,
-      isla:   `Hello ${name} — Verity here, welcome back. You've got ${done} of ${total} paragraphs done. Let's pick up where we left off.`,
-      sam:    `Hi ${name}. Owen here. ${done} out of ${total} paragraphs done — that's real progress. Let's take the next step together.`,
-      jordan: `hey ${name}! back at it — ${done} of ${total} paragraphs done. let's just keep going.`,
+      alistair: `Hello ${name}. Alistair here. ${done} of ${total} paragraphs done — solid progress. Let's carry on.`,
+      matilda:   `Hello ${name} — Matilda here, welcome back. You've got ${done} of ${total} paragraphs done. Let's pick up where we left off.`,
+      owen:    `Hi ${name}. Owen here. ${done} out of ${total} paragraphs done — that's real progress. Let's take the next step together.`,
+      jade: `hey ${name}! back at it — ${done} of ${total} paragraphs done. let's just keep going.`,
     }
-    return g[persona] ?? g.marcus
+    return g[persona] ?? g.owen
   }
 
   // Has scaffold but nothing complete yet
   const g = {
-    marcus: `Hey ${name}. I've read your assignment. Let's start building your essay. What do you already know about this topic?`,
+    deon: `Hey ${name}. I've read your assignment. Let's start building your essay. What do you already know about this topic?`,
     zoe:    `Hi ${name}! I've read your assignment and I'm excited to dig in! What's the first thing that pops into your head about this?`,
-    oliver: `Hello ${name}. I'm Alistair. I've read the assignment. Let's begin. What do you already know about this subject?`,
-    isla:   `Hi ${name} — I'm Verity, lovely to meet you. I've had a read through your assignment. I'm curious — what do you already think about this topic?`,
-    sam:    `Hi ${name}. I'm Owen. I've had a look at your assignment. No rush. What's the first thing that comes to mind when you think about this?`,
-    jordan: `hey ${name}! okay I read your assignment. have you started anything yet? if not, no stress. let's just start talking. what do you already know about this?`,
+    alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Let's begin. What do you already know about this subject?`,
+    matilda:   `Hi ${name} — I'm Matilda — Tilly, if you like — lovely to meet you. I've had a read through your assignment. I'm curious — what do you already think about this topic?`,
+    owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. No rush. What's the first thing that comes to mind when you think about this?`,
+    jade: `hey ${name}! okay I read your assignment. have you started anything yet? if not, no stress. let's just start talking. what do you already know about this?`,
   }
-  return g[persona] ?? g.marcus
+  return g[persona] ?? g.owen
 }
 
 // ── Scribe confirmation message ────────────────────────────────────────────────
@@ -203,14 +203,14 @@ function buildGreeting(persona, name, scaffold) {
 function buildConfirmMessage(persona, paragraph, isThin, thinNote) {
   const thin = isThin && thinNote ? ` Just a heads-up: ${thinNote}` : ''
   const lines = {
-    marcus: `Alright, here's what I've got:\n\n"${paragraph}"\n\nDoes that sound right?${thin}`,
+    deon: `Alright, here's what I've got:\n\n"${paragraph}"\n\nDoes that sound right?${thin}`,
     zoe:    `Okay, here's what I heard!\n\n"${paragraph}"\n\nDoes that sound like you?${thin}`,
-    oliver: `Right, let me read that back:\n\n"${paragraph}"\n\nDoes that sound right to you?${thin}`,
-    isla:   `Here's what I heard you say:\n\n"${paragraph}"\n\nDoes that feel like yours?${thin}`,
-    sam:    `Okay, here's what we've got:\n\n"${paragraph}"\n\nDoes that sound right? We can change anything.${thin}`,
-    jordan: `okay here's what I got:\n\n"${paragraph}"\n\ndoes that sound like you?${thin}`,
+    alistair: `Right, let me read that back:\n\n"${paragraph}"\n\nDoes that sound right to you?${thin}`,
+    matilda:   `Here's what I heard you say:\n\n"${paragraph}"\n\nDoes that feel like yours?${thin}`,
+    owen:    `Okay, here's what we've got:\n\n"${paragraph}"\n\nDoes that sound right? We can change anything.${thin}`,
+    jade: `okay here's what I got:\n\n"${paragraph}"\n\ndoes that sound like you?${thin}`,
   }
-  return lines[persona] ?? lines.marcus
+  return lines[persona] ?? lines.owen
 }
 
 // ── Live caption ──────────────────────────────────────────────────────────────
@@ -380,7 +380,7 @@ export default function TutorSession({
   const captionRef                        = useRef(null)
   const [pendingScribe, setPendingScribe] = useState(null)
   const [phase, setPhase]                 = useState('waiting')
-  const [persona, setPersona]             = useState(session.persona ?? 'marcus')
+  const [persona, setPersona]             = useState(session.persona ?? 'owen')
   const [showPersonaPicker, setShowPersonaPicker] = useState(false)
   const [sessionTitle, setSessionTitle]   = useState(session.title ?? null)
   const [titleExpanded, setTitleExpanded] = useState(false)
@@ -473,7 +473,7 @@ export default function TutorSession({
     hasGreeted.current = true
     if (initialMessages.length > 0) { setPhase('listening'); return }
     greetedSessions.add(session.id)
-    const activePersona = session.persona ?? 'marcus'
+    const activePersona = session.persona ?? 'owen'
     const greeting = buildGreeting(activePersona, studentName, initialScaffold)
     deliverTutorMessage(greeting, [], activePersona)
   }, [])
@@ -1301,7 +1301,7 @@ export default function TutorSession({
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 flex flex-col">
           <div className="flex-1 space-y-1">
             {sidebarSessions.map(s => {
-              const meta = PERSONA_META[s.persona ?? 'marcus']
+              const meta = PERSONA_META[s.persona ?? 'owen']
               const isActive = s.id === session.id
               const rawTitle = isActive ? (sessionTitle ?? s.title) : s.title
               const displayTitle = rawTitle || s.assignment_text.slice(0, 120)

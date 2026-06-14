@@ -8,7 +8,7 @@ export async function PATCH(request, { params }) {
   const { id } = await params
   const { persona } = await request.json()
 
-  if (!['marcus', 'zoe', 'oliver', 'isla', 'sam', 'jordan'].includes(persona)) {
+  if (!['deon', 'zoe', 'alistair', 'matilda', 'owen', 'jade'].includes(persona)) {
     return Response.json({ error: 'Invalid persona' }, { status: 400 })
   }
 

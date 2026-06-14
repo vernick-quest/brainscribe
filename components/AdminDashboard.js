@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 
-const PERSONA_EMOJI = { marcus: '🎯', zoe: '✨', oliver: '🎩', isla: '🌿', sam: '☀️', jordan: '⚡' }
+const PERSONA_EMOJI = { deon: '🎯', zoe: '✨', alistair: '🎩', matilda: '🌿', owen: '☀️', jade: '⚡' }
 const ROLE_COLOR = {
   student: { bg: 'var(--accent-soft)', text: 'var(--accent)' },
   parent:  { bg: 'var(--status-success-bg)', text: 'var(--status-success)' },

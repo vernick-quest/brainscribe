@@ -14,7 +14,7 @@ export async function POST(request) {
 
   if (!await checkRateLimit(`tutor:${user.id}`, 40, 60)) return rateLimited()
 
-  const { sessionId, messages, assignment, persona = 'marcus', scaffold = null } = await request.json()
+  const { sessionId, messages, assignment, persona = 'owen', scaffold = null } = await request.json()
 
   if (!sessionId || !messages || !assignment) {
     return Response.json({ error: 'Missing fields' }, { status: 400 })

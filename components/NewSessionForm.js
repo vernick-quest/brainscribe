@@ -21,7 +21,7 @@ const PROGRESS_MESSAGES = [
 
 export default function NewSessionForm() {
   const [assignment, setAssignment]             = useState('')
-  const [persona, setPersona]                   = useState('marcus')
+  const [persona, setPersona]                   = useState('owen')
   const [subject, setSubject]                   = useState('unspecified')
   const [subjectCustomLabel, setSubjectCustomLabel] = useState('')
   const [teacherEmail, setTeacherEmail]         = useState('')
@@ -226,7 +226,7 @@ export default function NewSessionForm() {
                 key={p.id}
                 type="button"
                 onClick={() => setPersona(p.id)}
-                className="flex items-center gap-3 rounded-2xl p-3 text-left transition"
+                className="relative flex items-center gap-3 rounded-2xl p-3 text-left transition"
                 style={{
                   border: `2px solid ${selected ? p.color : 'transparent'}`,
                   backgroundColor: selected ? 'var(--surface-card)' : 'var(--bg-page-alt)',
@@ -237,11 +237,17 @@ export default function NewSessionForm() {
                 onMouseEnter={e => { if (!selected) e.currentTarget.style.backgroundColor = 'var(--surface-muted)' }}
                 onMouseLeave={e => { if (!selected) e.currentTarget.style.backgroundColor = 'var(--bg-page-alt)' }}
               >
+                {p.isDefault && (
+                  <span className="absolute top-1.5 right-1.5 text-[8px] font-black uppercase rounded-full px-1.5 py-0.5"
+                    style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', letterSpacing: 'var(--tracking-wide)' }}>
+                    Default
+                  </span>
+                )}
                 <PersonaAvatar personaId={p.id} size={36} />
                 <div className="min-w-0">
                   <p className="font-bold leading-tight truncate"
                     style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)', fontSize: 'var(--text-base)' }}>
-                    {p.name}
+                    {p.name}{p.nickname ? ` (${p.nickname})` : ''}
                   </p>
                   <span className="text-[10px] font-black uppercase flex flex-col leading-tight"
                     style={{ color: p.color, letterSpacing: 'var(--tracking-wide)' }}>

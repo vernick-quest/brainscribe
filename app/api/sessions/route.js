@@ -76,7 +76,7 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { assignmentText, persona = 'marcus', subject = 'unspecified', subjectCustomLabel } = await request.json()
+  const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel } = await request.json()
   if (!assignmentText) return Response.json({ error: 'Missing assignment' }, { status: 400 })
 
   try {
