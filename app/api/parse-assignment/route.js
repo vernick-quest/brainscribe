@@ -65,9 +65,17 @@ export async function POST(request) {
         fileBlock,
         {
           type: 'text',
-          text: `Extract the writing assignment instructions from this ${typeMeta.kind === 'document' ? 'PDF' : 'image'}.
+          text: `Extract the writing assignment from this ${typeMeta.kind === 'document' ? 'PDF' : 'image'}.
 
-Return ONLY the assignment text — the actual prompt, instructions, or requirements the student must follow. Do not include teacher names, class headers, due dates, grading rubrics, or any content that is not part of the core writing task.
+Capture everything the student needs to know about WHAT to write and HOW it must be structured — this drives the coaching, so don't lose it:
+- the prompt/topic
+- the form or format (essay, narrative, haiku, poem, list, lab report, cover letter, etc.)
+- the required structure (number of paragraphs, lines, sections, or parts)
+- length requirements
+- required elements (thesis, evidence, specific sections, syllable counts, rhyme scheme, etc.)
+If a rubric or checklist describes structural or content requirements, INCLUDE those — that's often where the format is specified.
+
+Leave out only pure administrative noise that doesn't change what the student writes: teacher/student names, class headers, due dates, point values, and grading-only criteria (e.g. "Grammar — 10 pts").
 
 If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
         },
