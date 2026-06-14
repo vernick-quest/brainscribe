@@ -635,7 +635,9 @@ export default function TutorSession({
       const type = m[1]
       const payload = m[2]
 
-      if (type === 'SCAFFOLD') {
+      // A scaffold is built once. Ignore any re-emitted SCAFFOLD once one exists,
+      // so a repeated token can't wipe the student's already-locked components.
+      if (type === 'SCAFFOLD' && !currentScaffold?.components?.length) {
         const parts = payload.split(':')
         const assignType = parts[0]
         const count = parseInt(parts[1])
@@ -683,9 +685,13 @@ export default function TutorSession({
       else if (type === 'DONE' && sc) {
         const componentId = payload
         const paraIdx = sc.current_paragraph_index ?? 0
-        sc = updateComponentItem(sc, paraIdx, componentId, item => ({
-          ...item, status: 'confirmed', text: item.nuggetText ?? item.text ?? '',
-        }))
+        sc = updateComponentItem(sc, paraIdx, componentId, item => {
+          const text = item.nuggetText ?? item.text ?? ''
+          // Never confirm a component with no content — it'd render a blank "✓" line.
+          // It needs a NUGGET (the actual words) before it can be locked in.
+          if (!text) return item
+          return { ...item, status: 'confirmed', text }
+        })
         changed = true
       }
 
