@@ -354,6 +354,11 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   )
 })
 
+// Sessions that have already shown their opening greeting, keyed by session id.
+// Module-level (not a ref) so it survives a component remount — a remount would
+// otherwise reset the per-instance hasGreeted ref and deliver the greeting twice.
+const greetedSessions = new Set()
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TutorSession({
@@ -462,9 +467,10 @@ export default function TutorSession({
   }, [sidebarRenamingId])
 
   useEffect(() => {
-    if (hasGreeted.current) return
+    if (hasGreeted.current || greetedSessions.has(session.id)) return
     hasGreeted.current = true
     if (initialMessages.length > 0) { setPhase('listening'); return }
+    greetedSessions.add(session.id)
     const activePersona = session.persona ?? 'marcus'
     const greeting = buildGreeting(activePersona, studentName, initialScaffold)
     deliverTutorMessage(greeting, [], activePersona)
