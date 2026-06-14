@@ -230,6 +230,8 @@ const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref)
 const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
+  const micRef = useRef(null)
+  const editingRef = useRef(false)
 
   useEffect(() => {
     const el = textareaRef.current
@@ -249,6 +251,21 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     onSubmit(t)
   }
 
+  // Live transcription writes into the box. Once the student starts editing,
+  // ignore further interim updates so we don't clobber their changes. A mic
+  // (re)start fires onInterim('') which re-enables transcription.
+  function handleInterim(t) {
+    if (t === '') { editingRef.current = false; setText(''); return }
+    if (!editingRef.current) setText(t)
+  }
+  // Any manual edit (typing or paste) silently stops the mic so it can't keep
+  // overwriting, and flags that we're now editing.
+  function handleEdit(value) {
+    micRef.current?.stop()
+    editingRef.current = true
+    setText(value)
+  }
+
   if (mode === 'dictating') {
     return (
       <div className="border-t-2 flex flex-col gap-2 px-5 py-3"
@@ -257,20 +274,21 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
             🎙 Dictation mode — say your paragraph
           </span>
-          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Stop mic before editing text</span>
+          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Editing pauses the mic</span>
         </div>
         <div className="flex items-center gap-3">
           <MicButton
+            ref={micRef}
             disabled={false}
             assignmentKeyterms={assignmentKeyterms}
-            onInterim={(t) => setText(t)}
-            onFinal={(t) => { if (t) { setText(''); resetHeight(); onSubmit(t) } }}
+            onInterim={handleInterim}
+            onFinal={(t) => { if (t) { editingRef.current = false; setText(''); resetHeight(); onSubmit(t) } }}
           />
           <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
             <textarea
               ref={textareaRef}
               value={text}
-              onChange={e => setText(e.target.value)}
+              onChange={e => handleEdit(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
               placeholder="Speak or type your paragraph here…"
               rows={1}
@@ -291,16 +309,17 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   return (
     <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
       <MicButton
+        ref={micRef}
         disabled={false}
         assignmentKeyterms={assignmentKeyterms}
-        onInterim={(t) => setText(t)}
-        onFinal={(t) => { if (t) setText(t) }}
+        onInterim={handleInterim}
+        onFinal={(t) => { if (t && !editingRef.current) setText(t) }}
       />
       <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => handleEdit(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
           placeholder="Type or speak your reply…"
           rows={1}

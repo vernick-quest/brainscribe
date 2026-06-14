@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { Scribe, RealtimeEvents } from '@elevenlabs/client'
 
 // Module-level patch — runs once when MicButton is first imported.
@@ -17,7 +17,7 @@ import { Scribe, RealtimeEvents } from '@elevenlabs/client'
   }
 })()
 
-export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyterms = [] }) {
+function MicButton({ onInterim, onFinal, disabled, assignmentKeyterms = [] }, ref) {
   const [listening, setListening] = useState(false)
   const [starting, setStarting] = useState(false)
   const connectionRef = useRef(null)
@@ -45,6 +45,21 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
     }
     try { conn.close() } catch {}
   }
+
+  // Imperative stop — closes the mic WITHOUT firing onFinal. Used when the
+  // student starts editing the transcribed text: we kill the mic so it stops
+  // overwriting their edits, but we must not submit or clobber what they typed.
+  function stopSilently() {
+    clearReadyTimer()
+    const conn = connectionRef.current
+    if (!conn) return
+    connectionRef.current = null
+    finalTextRef.current = ''
+    setListening(false)
+    setStarting(false)
+    safeClose(conn)
+  }
+  useImperativeHandle(ref, () => ({ stop: stopSilently, isActive: () => !!connectionRef.current }), [])
 
   async function startListening() {
     if (starting || listening) return
@@ -135,24 +150,37 @@ export default function MicButton({ onInterim, onFinal, disabled, assignmentKeyt
 
   const busy = starting || listening
   return (
-    <button
-      onClick={busy ? stopListening : startListening}
-      disabled={disabled}
-      className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-      style={{ backgroundColor: listening ? 'var(--status-error)' : starting ? 'var(--accent-hover)' : 'var(--accent)' }}
-      title={listening ? 'Tap to stop' : starting ? 'Connecting…' : 'Tap to speak'}
-    >
-      <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-        {listening ? (
-          <rect x="6" y="6" width="12" height="12" rx="2" />
-        ) : starting ? (
-          <circle cx="12" cy="12" r="5" opacity="0.7">
-            <animate attributeName="opacity" values="0.7;0.3;0.7" dur="1s" repeatCount="indefinite" />
-          </circle>
-        ) : (
-          <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6.5 9a.5.5 0 0 1 .5.5 7 7 0 0 1-6.5 6.97V20h2.5a.5.5 0 0 1 0 1h-6a.5.5 0 0 1 0-1H11v-2.53A7 7 0 0 1 4.5 10.5a.5.5 0 0 1 1 0 6 6 0 0 0 12 0 .5.5 0 0 1 .5-.5z" />
-        )}
-      </svg>
-    </button>
+    <div className="relative shrink-0">
+      {/* Expanding "live" halo — only while actually listening, so it's clearly
+          distinct from the gentle connecting pulse. */}
+      {listening && (
+        <>
+          <span className="absolute inset-0 rounded-full animate-ping" style={{ backgroundColor: 'var(--status-error)', opacity: 0.4 }} />
+          <span className="absolute -inset-1 rounded-full" style={{ border: '2px solid var(--status-error)', opacity: 0.6 }} />
+        </>
+      )}
+      <button
+        onClick={busy ? stopListening : startListening}
+        disabled={disabled}
+        className="relative w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        style={{ backgroundColor: listening ? 'var(--status-error)' : starting ? 'var(--accent-hover)' : 'var(--accent)' }}
+        title={listening ? 'Listening — tap to stop' : starting ? 'Connecting…' : 'Tap to speak'}
+        aria-label={listening ? 'Listening — tap to stop' : starting ? 'Connecting' : 'Tap to speak'}
+      >
+        <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+          {listening ? (
+            <rect x="6" y="6" width="12" height="12" rx="2" />
+          ) : starting ? (
+            <circle cx="12" cy="12" r="5" opacity="0.7">
+              <animate attributeName="opacity" values="0.7;0.3;0.7" dur="1s" repeatCount="indefinite" />
+            </circle>
+          ) : (
+            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6.5 9a.5.5 0 0 1 .5.5 7 7 0 0 1-6.5 6.97V20h2.5a.5.5 0 0 1 0 1h-6a.5.5 0 0 1 0-1H11v-2.53A7 7 0 0 1 4.5 10.5a.5.5 0 0 1 1 0 6 6 0 0 0 12 0 .5.5 0 0 1 .5-.5z" />
+          )}
+        </svg>
+      </button>
+    </div>
   )
 }
+
+export default forwardRef(MicButton)
