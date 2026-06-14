@@ -32,7 +32,7 @@ const PERSONA_META = {
   deon: { name: 'Deon',  emoji: '🎯' },
   zoe:    { name: 'Zoe',     emoji: '✨' },
   alistair: { name: 'Alistair', emoji: '🎩' },
-  matilda:   { name: 'Matilda',  emoji: '🌿' },
+  matilda:   { name: 'Tilly',  emoji: '🌿' },
   owen:    { name: 'Owen',    emoji: '☀️' },
   jade: { name: 'Jade',    emoji: '⚡' },
 }
@@ -153,7 +153,7 @@ function buildGreeting(persona, name, scaffold) {
       deon: `Hey ${name}. I've read the assignment. Have you started writing anything? Paste it below if so — if not, we'll build from scratch.`,
       zoe:    `Hi ${name}! I've read your assignment — have you written anything yet? Paste it below, or if you're starting fresh, no worries at all — we'll figure it out together!`,
       alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Before we begin — have you written anything so far? Paste it below if you have. If not, no matter — we'll work through it.`,
-      matilda:   `Hi ${name} — I'm Matilda — Tilly, if you like — lovely to meet you. I've read through your assignment. Have you started anything yet? That's completely fine if not — we'll find our way in together.`,
+      matilda:   `Hi ${name} — I'm Tilly, lovely to meet you. I've read through your assignment. Have you started anything yet? That's completely fine if not — we'll find our way in together.`,
       owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. There's no rush — we'll just take this one step at a time. Have you written anything so far? If not, that's totally okay.`,
       jade: `hey ${name}! okay I read the assignment — have you started anything yet? paste it below if you have. if not, no stress at all, we'll just figure it out together.`,
     }
@@ -165,7 +165,7 @@ function buildGreeting(persona, name, scaffold) {
       deon: `Hey ${name}. Your essay is done. Every part of it. Nice work.`,
       zoe:    `Hi ${name}! You finished your whole essay — every single part! I'm so proud of you. It's ready!`,
       alistair: `Hello ${name}. It's Alistair. Your essay is complete. Every part of it. Well done.`,
-      matilda:   `Hi ${name} — it's Matilda. Your essay is finished. Every part of it. That's a real accomplishment.`,
+      matilda:   `Hi ${name} — it's Tilly. Your essay is finished. Every part of it. That's a real accomplishment.`,
       owen:    `Hi ${name}. It's Owen. Your essay is done — every part of it. You did that. All of it.`,
       jade: `hey ${name}! your essay is done — like actually done. every single part. that's huge.`,
     }
@@ -179,7 +179,7 @@ function buildGreeting(persona, name, scaffold) {
       deon: `Hey ${name}. ${done} of ${total} paragraphs done. Let's keep going.`,
       zoe:    `Welcome back, ${name}! You've already finished ${done} of ${total} paragraphs — let's keep the momentum going!`,
       alistair: `Hello ${name}. Alistair here. ${done} of ${total} paragraphs done — solid progress. Let's carry on.`,
-      matilda:   `Hello ${name} — Matilda here, welcome back. You've got ${done} of ${total} paragraphs done. Let's pick up where we left off.`,
+      matilda:   `Hello ${name} — Tilly here, welcome back. You've got ${done} of ${total} paragraphs done. Let's pick up where we left off.`,
       owen:    `Hi ${name}. Owen here. ${done} out of ${total} paragraphs done — that's real progress. Let's take the next step together.`,
       jade: `hey ${name}! back at it — ${done} of ${total} paragraphs done. let's just keep going.`,
     }
@@ -191,7 +191,7 @@ function buildGreeting(persona, name, scaffold) {
     deon: `Hey ${name}. I've read your assignment. Let's start building your essay. What do you already know about this topic?`,
     zoe:    `Hi ${name}! I've read your assignment and I'm excited to dig in! What's the first thing that pops into your head about this?`,
     alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Let's begin. What do you already know about this subject?`,
-    matilda:   `Hi ${name} — I'm Matilda — Tilly, if you like — lovely to meet you. I've had a read through your assignment. I'm curious — what do you already think about this topic?`,
+    matilda:   `Hi ${name} — I'm Tilly, lovely to meet you. I've had a read through your assignment. I'm curious — what do you already think about this topic?`,
     owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. No rush. What's the first thing that comes to mind when you think about this?`,
     jade: `hey ${name}! okay I read your assignment. have you started anything yet? if not, no stress. let's just start talking. what do you already know about this?`,
   }
