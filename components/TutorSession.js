@@ -468,6 +468,23 @@ export default function TutorSession({
     })
   }
 
+  // Fetch TTS for a chunk of text and return a playable blob URL (no playback).
+  async function fetchTts(text, activePersona = persona) {
+    const res = await fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona, sessionId: session.id }),
+    })
+    if (!res.ok) throw new Error('TTS failed')
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
+  }
+
+  async function playTtsUrl(url) {
+    await playClip(url)
+    try { URL.revokeObjectURL(url) } catch {}
+  }
+
   async function playWithSync(text, activePersona = persona) {
     stopCurrentAudio()
     const cleanText = stripMarkdown(text)
@@ -686,15 +703,33 @@ export default function TutorSession({
       }
 
       // Stream the coach's words into the caption as they generate, so the
-      // student gets immediate feedback instead of a static "…".
+      // student gets immediate feedback instead of a static "…". As soon as the
+      // first sentence is complete, start speaking it — the rest is generated and
+      // its audio fetched while that first sentence plays, so the voice starts
+      // much sooner than waiting for the whole reply + its full TTS.
+      stopCurrentAudio()
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let full = ''
+      let firstSentence = null
+      let firstPlay = null
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         full += decoder.decode(value, { stream: true })
         captionRef.current?.set(liveDisplay(full) || '…')
+
+        if (!firstSentence) {
+          const clean = liveDisplay(full)
+          const m = clean.match(/^\s*(.+?[.!?])(\s|$)/s)
+          // Only split off a first sentence if there's clearly more coming after it
+          if (m && m[1].trim().length >= 8 && clean.length > m[1].length + 1) {
+            firstSentence = m[1].trim()
+            firstPlay = (async () => {
+              try { await playTtsUrl(await fetchTts(firstSentence, activePersona)) } catch {}
+            })()
+          }
+        }
       }
 
       // Parse scaffold tokens and update scaffold state
@@ -705,11 +740,22 @@ export default function TutorSession({
 
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
-
-      // Text is already on screen from streaming — play the audio over it
-      // (no word-by-word re-type, which would reset the visible caption).
       captionRef.current?.set(displayText)
-      await replayAudioOnly(displayText, activePersona)
+
+      if (firstSentence) {
+        // Remainder after the first sentence; fetch its audio now (overlaps the
+        // first sentence still playing), then play once the first finishes.
+        const remainder = displayText.slice(firstSentence.length).trim()
+        const remainderUrl = remainder ? fetchTts(remainder, activePersona).catch(() => null) : null
+        await firstPlay
+        if (remainderUrl) {
+          const url = await remainderUrl
+          if (url) await playTtsUrl(url)
+        }
+      } else {
+        // Single short reply (no mid-stream sentence boundary) — speak it whole.
+        await replayAudioOnly(displayText, activePersona)
+      }
 
       setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
       captionRef.current?.clear()
