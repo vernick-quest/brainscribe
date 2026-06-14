@@ -403,6 +403,8 @@ export default function TutorSession({
   const [editDraft, setEditDraft]                   = useState('')
   const [editingComponent, setEditingComponent]     = useState(null) // { paraIdx, componentId }
   const [componentEditDraft, setComponentEditDraft] = useState('')
+  const [lockingComponent, setLockingComponent]     = useState(null) // { paraIdx, componentId } — manual lock-in fallback
+  const [lockDraft, setLockDraft]                   = useState('')
   const [currentSubject, setCurrentSubject]         = useState(session.subject ?? 'unspecified')
   const [subjectCustomLabel, setSubjectCustomLabel] = useState(session.subject_custom_label ?? '')
   const [savingSubject, setSavingSubject]           = useState(false)
@@ -675,9 +677,11 @@ export default function TutorSession({
           const componentId = payload.slice(0, colonIdx)
           const nuggetText = payload.slice(colonIdx + 1)
           const paraIdx = sc.current_paragraph_index ?? 0
-          sc = updateComponentItem(sc, paraIdx, componentId, item => ({
-            ...item, status: 'candidate', nuggetText,
-          }))
+          // Don't downgrade an already-locked component back to a candidate — a
+          // late/stray NUGGET shouldn't undo something the student confirmed.
+          sc = updateComponentItem(sc, paraIdx, componentId, item =>
+            item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
+          )
           changed = true
         }
       }
@@ -1241,6 +1245,8 @@ export default function TutorSession({
 
   const fullEssay    = paragraphs.map(p => p.scribed_text).filter(Boolean).join('\n\n')
   const currentMeta  = PERSONA_META[persona]
+  // Student's most recent reply — prefilled into the manual lock-in fallback.
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
   const assignmentKeyterms = []
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -2137,6 +2143,52 @@ export default function TutorSession({
                                         Keep going →
                                       </button>
                                     </div>
+                                  )}
+
+                                  {/* Fallback lock-in for custom parts: if the coach never proposed
+                                      a candidate, let the student lock the active part in directly
+                                      (prefilled with their last reply). Only shows for a WORKING
+                                      custom part — never alongside the candidate buttons above or a
+                                      confirmed line, so it can't duplicate. */}
+                                  {!isComplete && para.type === 'custom' && item.status === 'working' && phase === 'listening' && (
+                                    (lockingComponent?.paraIdx === paraIdx && lockingComponent?.componentId === item.id) ? (
+                                      <div className="mt-1.5 space-y-1.5">
+                                        <textarea
+                                          value={lockDraft}
+                                          onChange={e => setLockDraft(e.target.value)}
+                                          rows={2}
+                                          placeholder="Type or paste this part's final words…"
+                                          className="w-full text-xs rounded-lg border-2 px-2.5 py-1.5 focus:outline-none resize-none leading-relaxed"
+                                          style={{ color: 'var(--text-body)', borderColor: 'var(--accent)', backgroundColor: 'var(--surface-card)' }}
+                                          autoFocus
+                                        />
+                                        <div className="flex gap-1.5">
+                                          <button
+                                            onClick={() => { confirmNugget(paraIdx, item.id, lockDraft.trim()); setLockingComponent(null) }}
+                                            disabled={!lockDraft.trim()}
+                                            className="text-[10px] font-semibold rounded-lg px-2.5 py-1 text-white transition disabled:opacity-40"
+                                            style={{ backgroundColor: 'var(--status-success)' }}
+                                          >
+                                            Lock it in ✓
+                                          </button>
+                                          <button
+                                            onClick={() => setLockingComponent(null)}
+                                            className="text-[10px] font-semibold rounded-lg px-2.5 py-1 border transition"
+                                            style={{ borderColor: 'var(--border-default)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => { setLockDraft(item.nuggetText || lastUserMessage || ''); setLockingComponent({ paraIdx, componentId: item.id }) }}
+                                        className="mt-1.5 text-[10px] font-semibold rounded-lg px-2.5 py-1 transition"
+                                        style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                      >
+                                        ✎ Lock in this part
+                                      </button>
+                                    )
                                   )}
                                 </div>
                               </div>
