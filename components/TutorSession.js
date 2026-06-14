@@ -373,8 +373,10 @@ export default function TutorSession({
   const chatBottomRef     = useRef(null)
   const titleInputRef     = useRef(null)
   const hasGreeted        = useRef(false)
-  const audioRef          = useRef(null)
+  const audioRef          = useRef(null)   // single persistent <audio>, unlocked on first gesture
   const audioTimerRef     = useRef(null)
+  const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
+  const audioUnlockedRef  = useRef(false)
 
   const barPanelRef       = useRef(null)
   const router           = useRouter()
@@ -382,6 +384,28 @@ export default function TutorSession({
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Mobile browsers block audio.play() unless it's first triggered inside a user
+  // gesture. The coach's audio plays after an async fetch (and, for voice, a
+  // WebSocket callback), so it's outside any gesture and gets blocked — the coach
+  // types but stays silent. Unlock a single reusable <audio> on the first tap/key,
+  // then reuse that element for every clip so playback is allowed thereafter.
+  useEffect(() => {
+    function unlock() {
+      const el = getAudioEl()
+      // 1-frame silent WAV — playing it within the gesture unlocks the element.
+      el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+      el.play().then(() => { el.pause(); el.currentTime = 0; audioUnlockedRef.current = true }).catch(() => {})
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [])
 
   useEffect(() => {
     if (!activePanel) return
@@ -411,10 +435,37 @@ export default function TutorSession({
 
   // ── Audio / TTS ─────────────────────────────────────────────────────────────
 
+  function getAudioEl() {
+    if (!audioRef.current) {
+      const el = new Audio()
+      el.preload = 'auto'
+      audioRef.current = el
+    }
+    return audioRef.current
+  }
+
   function stopCurrentAudio() {
+    playSeqRef.current++   // invalidate any in-flight playback
     if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
-    if (audioRef.current) { try { audioRef.current.pause() } catch {} audioRef.current = null }
+    const el = audioRef.current
+    if (el) { try { el.pause() } catch {} }
     window.speechSynthesis?.cancel()
+  }
+
+  // Plays a TTS blob URL on the single unlocked element. Resolves when the clip
+  // ends, errors, or is superseded by a newer playback. onMeta(durationMs) fires
+  // once metadata loads (used by the word-sync caption).
+  function playClip(url, onMeta) {
+    const el = getAudioEl()
+    const seq = ++playSeqRef.current
+    return new Promise((resolve) => {
+      const done = () => { if (playSeqRef.current === seq) resolve() }
+      el.onended = done
+      el.onerror = () => { try { URL.revokeObjectURL(url) } catch {} ; done() }
+      el.onloadedmetadata = () => { if (playSeqRef.current === seq) onMeta?.((el.duration || 3) * 1000) }
+      el.src = url
+      el.play().catch(() => { done() })   // resolve even if blocked, so the flow continues
+    })
   }
 
   async function playWithSync(text, activePersona = persona) {
@@ -431,51 +482,43 @@ export default function TutorSession({
       return lengths.map(len => { const f = cum / total; cum += len; return f })
     }
 
-    function startWordTimer(durationMs, resolve) {
+    function startWordTimer(durationMs) {
       const boundaries = buildBoundaries(words)
       const startTime = Date.now()
       let wordIdx = 0
       const timer = setInterval(() => {
-        if (audioTimerRef.current !== timer) { clearInterval(timer); resolve(); return }
+        if (audioTimerRef.current !== timer) { clearInterval(timer); return }
         const elapsed = Date.now() - startTime
         const fraction = elapsed / durationMs
         while (wordIdx < words.length && fraction >= boundaries[wordIdx]) wordIdx++
         captionRef.current?.set(words.slice(0, wordIdx).join(' '))
-        if (wordIdx >= words.length) { clearInterval(timer); audioTimerRef.current = null; resolve() }
+        if (wordIdx >= words.length) { clearInterval(timer); audioTimerRef.current = null }
       }, 30)
       audioTimerRef.current = timer
     }
 
-    return new Promise(async (resolve) => {
-      try {
-        const res = await fetch('/api/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: cleanText, persona: activePersona, sessionId: session.id }),
-        })
-        if (!res.ok) throw new Error('TTS failed')
+    try {
+      const res = await fetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, persona: activePersona, sessionId: session.id }),
+      })
+      if (!res.ok) throw new Error('TTS failed')
 
-        const blob = await res.blob()
-        const url  = URL.createObjectURL(blob)
-        const audio = new Audio(url)
-        audioRef.current = audio
-
-        await new Promise(r => { audio.onloadedmetadata = r; audio.onerror = r })
-        if (audioRef.current !== audio) { URL.revokeObjectURL(url); resolve(); return }
-
-        const durationMs = (audio.duration || 3) * 1000
-        audio.play().catch(() => {})
-        audio.onended = () => { URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null }
-        startWordTimer(durationMs, resolve)
-
-      } catch {
-        const utterance = new SpeechSynthesisUtterance(cleanText)
-        utterance.rate = 0.95
-        window.speechSynthesis?.speak(utterance)
-        // Estimate ~120 words/min for fallback
-        startWordTimer(words.length * 500, resolve)
-      }
-    })
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      // Reuse the unlocked element; the word-sync caption starts once duration is known.
+      await playClip(url, (durationMs) => startWordTimer(durationMs))
+      if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
+      captionRef.current?.set(words.join(' '))
+      try { URL.revokeObjectURL(url) } catch {}
+    } catch {
+      const utterance = new SpeechSynthesisUtterance(cleanText)
+      utterance.rate = 0.95
+      window.speechSynthesis?.speak(utterance)
+      startWordTimer(words.length * 500)
+      await new Promise(r => setTimeout(r, words.length * 500 + 200))
+    }
   }
 
   async function deliverTutorMessage(text, history, activePersona) {
@@ -488,30 +531,25 @@ export default function TutorSession({
 
   async function replayAudioOnly(text, activePersona = persona) {
     stopCurrentAudio()
-    return new Promise(async (resolve) => {
-      try {
-        const res = await fetch('/api/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona, sessionId: session.id }),
-        })
-        if (!res.ok) throw new Error('TTS failed')
-        const blob = await res.blob()
-        const url  = URL.createObjectURL(blob)
-        const audio = new Audio(url)
-        audioRef.current = audio
-        await new Promise(r => { audio.onloadedmetadata = r; audio.onerror = r })
-        if (audioRef.current !== audio) { URL.revokeObjectURL(url); resolve(); return }
-        audio.play().catch(() => {})
-        audio.onended = () => { URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null; resolve() }
-        audio.onerror  = () => { URL.revokeObjectURL(url); resolve() }
-      } catch {
+    try {
+      const res = await fetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona, sessionId: session.id }),
+      })
+      if (!res.ok) throw new Error('TTS failed')
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      await playClip(url)
+      try { URL.revokeObjectURL(url) } catch {}
+    } catch {
+      await new Promise(resolve => {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.rate = 0.95
         utterance.onend = resolve
         window.speechSynthesis?.speak(utterance)
-      }
-    })
+      })
+    }
   }
 
   async function replayMessage(content, index) {
