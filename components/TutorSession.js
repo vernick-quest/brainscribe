@@ -1170,6 +1170,10 @@ export default function TutorSession({
           </button>
         </div>
 
+        <p className="text-[10px] font-bold uppercase tracking-widest px-4 pb-1 shrink-0" style={{ color: 'var(--text-subtle)' }}>
+          Assignments
+        </p>
+
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 flex flex-col">
           <div className="flex-1 space-y-1">
             {sidebarSessions.map(s => {
