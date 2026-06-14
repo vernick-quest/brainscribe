@@ -38,13 +38,28 @@ export default async function TranscriptPage({ params }) {
     .eq('session_id', id)
     .order('position')
 
+  const { data: scaffold } = await supabase
+    .from('paragraph_scaffolds')
+    .select('components')
+    .eq('session_id', id)
+    .single()
+
   const { data: messages } = await supabase
     .from('messages')
     .select('role, content, created_at')
     .eq('session_id', id)
     .order('created_at')
 
-  const essay = paragraphs?.map(p => p.scribed_text).join('\n\n') ?? ''
+  // Final content lives in paragraphs for prose, but in the scaffold's confirmed
+  // components for non-prose forms (e.g. a haiku's lines). Fall back to the scaffold.
+  const scaffoldLines = (scaffold?.components ?? [])
+    .flatMap(sec => sec.items ?? [])
+    .filter(it => it.status === 'confirmed' && (it.text || it.nuggetText))
+    .map(it => it.text || it.nuggetText)
+
+  const essay = paragraphs?.length
+    ? paragraphs.map(p => p.scribed_text).join('\n\n')
+    : scaffoldLines.join('\n')
   const isStudent = profile?.role === 'student'
   const isComplete = session.status === 'complete'
   const backHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
@@ -117,7 +132,7 @@ export default async function TranscriptPage({ params }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                {isComplete ? 'Final essay' : 'Essay (in progress)'}
+                {isComplete ? 'Final draft' : 'Draft (in progress)'}
               </h2>
               {!isComplete && (
                 <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
@@ -128,8 +143,14 @@ export default async function TranscriptPage({ params }) {
             </div>
             {essay && <CopyButton text={essay} />}
           </div>
-          {!paragraphs?.length ? (
-            <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No paragraphs yet.</p>
+          {!paragraphs?.length && scaffoldLines.length > 0 ? (
+            <div className="space-y-1">
+              {scaffoldLines.map((line, i) => (
+                <p key={i} className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{line}</p>
+              ))}
+            </div>
+          ) : !paragraphs?.length ? (
+            <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>Nothing written yet.</p>
           ) : (
             <div className="space-y-4">
               {paragraphs.map((p, i) => (
