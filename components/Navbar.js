@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Navbar({ user, profile }) {
   const [open, setOpen] = useState(false)
   const [avatarError, setAvatarError] = useState(false)
   const dropdownRef = useRef(null)
+  const renderedUserId = user?.id ?? null
 
   const isAdmin = profile?.role === 'admin'
   const homeHref = profile?.role === 'teacher' ? '/teacher'
@@ -25,6 +27,36 @@ export default function Navbar({ user, profile }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // Cross-tab identity guard. A browser keeps ONE session cookie shared across
+  // every tab, so signing into a different account (or out) in another tab
+  // silently replaces this tab's session. When this tab regains focus, re-read
+  // who the cookie now belongs to; if it changed since this page was rendered,
+  // reload to show the real account — or bounce to /login if signed out — so a
+  // stale tab can never display, or act under, the wrong identity. The cheap
+  // cookie read (getSession) is fine here: this is a UX correctness check, and
+  // the server re-validates the session on the reload.
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function check() {
+      if (document.visibilityState !== 'visible') return
+      const { data: { session } } = await supabase.auth.getSession()
+      const currentId = session?.user?.id ?? null
+      if (currentId === renderedUserId) return
+      if (currentId) window.location.reload()
+      else window.location.href = '/login'
+    }
+
+    window.addEventListener('focus', check)
+    document.addEventListener('visibilitychange', check)
+    window.addEventListener('pageshow', check)
+    return () => {
+      window.removeEventListener('focus', check)
+      document.removeEventListener('visibilitychange', check)
+      window.removeEventListener('pageshow', check)
+    }
+  }, [renderedUserId])
 
   return (
     <header className="sticky top-0 z-20 px-6 py-3 flex items-center justify-between"
