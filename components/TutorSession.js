@@ -68,6 +68,15 @@ function paraTypeLabel(type) {
   return labels[type] ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Paragraph')
 }
 
+// Section header text. Multi-paragraph assignments number the paragraphs; a
+// single prose section shows just its type; a single non-prose section returns
+// '' (its line items + the "Your Draft" panel title already say everything).
+function sectionHeading(para, paraIdx, total) {
+  if (total > 1) return `Paragraph ${paraIdx + 1}: ${paraTypeLabel(para.type)}`
+  if (para.type === 'custom') return ''
+  return paraTypeLabel(para.type)
+}
+
 function getParaItems(paraType) {
   const make = (id) => ({ id, label: COMPONENT_LABELS[id] ?? id, status: 'locked', text: null, nuggetText: null })
   switch (paraType) {
@@ -80,7 +89,16 @@ function getParaItems(paraType) {
   }
 }
 
-function buildComponentTree(type, count) {
+function buildComponentTree(type, count, customLabels = null) {
+  // Custom (non-prose) structure: the coach supplies the section/line labels for
+  // forms that aren't standard prose paragraphs — haiku, poems, lists, etc.
+  // Rendered as a single section whose items are those labels (ids c0, c1, …).
+  if (type === 'custom' && customLabels?.length) {
+    const items = customLabels.map((label, i) => ({
+      id: `c${i}`, label, status: i === 0 ? 'working' : 'locked', text: null, nuggetText: null,
+    }))
+    return [{ index: 0, type: 'custom', status: 'working', summary: null, items }]
+  }
   if (count === 1) {
     const paraType = type === 'essay' ? 'introduction' : type
     return [{ index: 0, type: paraType, status: 'working', summary: null, items: getParaItems(paraType) }]
@@ -612,15 +630,21 @@ export default function TutorSession({
         const parts = payload.split(':')
         const assignType = parts[0]
         const count = parseInt(parts[1])
-        if (!isNaN(count) && count > 0) {
-          const components = buildComponentTree(assignType, count)
-          sc = { assignment_type: assignType, total_paragraphs: count, current_paragraph_index: 0, components, thesis: null }
+        // For custom (non-prose) assignments the coach lists the section labels in a
+        // 3rd, pipe-separated segment: [SCAFFOLD:custom:1:Line 1 — 5 syllables|…].
+        const customLabels = assignType === 'custom' && parts.length > 2
+          ? parts.slice(2).join(':').split('|').map(s => s.trim()).filter(Boolean)
+          : null
+        if ((!isNaN(count) && count > 0) || customLabels?.length) {
+          const components = buildComponentTree(assignType, count || 1, customLabels)
+          const totalParas = components.length
+          sc = { assignment_type: assignType, total_paragraphs: totalParas, current_paragraph_index: 0, components, thesis: null }
           newScaffoldCreated = true
           changed = true
           await fetch(`/api/scaffold/${session.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ assignmentType: assignType, totalParagraphs: count, components }),
+            body: JSON.stringify({ assignmentType: assignType, totalParagraphs: totalParas, components }),
           })
         }
       }
@@ -1249,6 +1273,10 @@ export default function TutorSession({
           </button>
         </div>
 
+        <p className="text-[10px] font-bold uppercase tracking-widest px-4 pb-1 shrink-0" style={{ color: 'var(--text-subtle)' }}>
+          Assignments
+        </p>
+
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 flex flex-col">
           <div className="flex-1 space-y-1">
             {sidebarSessions.map(s => {
@@ -1664,7 +1692,7 @@ export default function TutorSession({
 
         {/* ── Mobile tab bar ── */}
         <div className="md:hidden flex shrink-0" style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}>
-          {[['chat', 'Chat'], ['essay', 'Essay']].map(([tab, label]) => (
+          {[['chat', 'Coach'], ['essay', 'Draft']].map(([tab, label]) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className="flex-1 py-2.5 text-xs font-semibold transition"
               style={{
@@ -1675,6 +1703,9 @@ export default function TutorSession({
             </button>
           ))}
         </div>
+
+        {/* ── Coach + Draft (side by side on desktop, tabbed on mobile) ── */}
+        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
 
         {/* ── Tutor chat panel ── */}
         <div className={`flex-1 flex-col min-h-0 ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}
@@ -1789,12 +1820,12 @@ export default function TutorSession({
         </div>
 
         {/* ── Essay panel ── */}
-        <div className={`flex-1 flex-col min-h-0 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
-          style={{ backgroundColor: 'var(--bg-page)', borderTop: '2px solid var(--border-accent)' }}>
+        <div className={`flex-1 flex-col min-h-0 border-t-2 md:border-t-0 md:border-l-2 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
+          style={{ backgroundColor: 'var(--bg-page)', borderColor: 'var(--border-accent)' }}>
           <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
             <div className="flex items-center gap-3">
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Essay</p>
-              {scaffold && (
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Draft</p>
+              {scaffold && scaffold.total_paragraphs > 1 && (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
                   {scaffold.components.filter(p => p.status === 'complete').length} / {scaffold.total_paragraphs} paragraphs
                 </span>
@@ -1866,6 +1897,7 @@ export default function TutorSession({
               const allConfirmed  = (para.items ?? []).length > 0 && (para.items ?? []).every(c => c.status === 'confirmed') && !assembledPara && !isPending
               // Completed paragraphs collapse by default; toggled via header click
               const isExpanded    = isComplete ? (expandedParas[paraIdx] === true) : true
+              const heading       = sectionHeading(para, paraIdx, scaffold.total_paragraphs)
 
               return (
                 <div key={paraIdx} className="rounded-xl overflow-hidden transition-all"
@@ -1895,28 +1927,28 @@ export default function TutorSession({
                         <>
                           <span className="text-sm" style={{ color: 'var(--status-success)' }}>✓</span>
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
-                            Paragraph {paraIdx + 1}: {paraTypeLabel(para.type)}
+                            {heading || 'Done'}
                           </span>
                         </>
                       ) : isPending ? (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            Paragraph {paraIdx + 1}: {paraTypeLabel(para.type)} — confirming…
+                            {heading ? `${heading} — confirming…` : 'Confirming…'}
                           </span>
                         </>
                       ) : isCurrentPara ? (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            Paragraph {paraIdx + 1}: {paraTypeLabel(para.type)} — writing now
+                            {heading ? `${heading} — writing now` : 'Writing now'}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--border-strong)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
-                            Paragraph {paraIdx + 1}: {paraTypeLabel(para.type)}
+                            {heading || 'Locked'}
                           </span>
                         </>
                       )}
@@ -2179,6 +2211,7 @@ export default function TutorSession({
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
       </div>
