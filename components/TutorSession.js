@@ -2096,17 +2096,17 @@ export default function TutorSession({
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="group/comp relative mt-0.5 pr-8">
+                                      <div className="relative mt-0.5 pr-10">
                                         <p className="text-xs leading-snug" style={{ color: sc.text }}>
                                           "{itemText}"
                                         </p>
                                         <button
                                           onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
-                                          title="Edit component"
-                                          className="absolute top-0 right-0 opacity-0 group-hover/comp:opacity-100 transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
+                                          title="Revise this"
+                                          className="absolute top-0 right-0 transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
                                           style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
                                         >
-                                          Edit
+                                          Revise
                                         </button>
                                       </div>
                                     )
@@ -2143,16 +2143,29 @@ export default function TutorSession({
                             )
                           })}
 
-                          {/* Paragraph assembly button — all components confirmed, current paragraph only */}
+                          {/* All parts confirmed. Custom (non-prose) forms are already
+                              finished — the parts ARE the draft, so don't merge them into
+                              prose; offer to finish. Prose paragraphs get assembled. */}
                           {isCurrentPara && allConfirmed && (
-                            <button
-                              onClick={() => assembleCurrentParagraph(paraIdx, para)}
-                              disabled={phase !== 'listening'}
-                              className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
-                              style={{ backgroundColor: 'var(--primary)', color: 'white' }}
-                            >
-                              ✦ Assemble paragraph
-                            </button>
+                            para.type === 'custom' ? (
+                              <button
+                                onClick={markSessionComplete}
+                                disabled={phase !== 'listening' || sessionComplete}
+                                className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
+                                style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
+                              >
+                                {sessionComplete ? '✓ Finished' : '✓ Finish — all parts locked in'}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => assembleCurrentParagraph(paraIdx, para)}
+                                disabled={phase !== 'listening'}
+                                className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
+                                style={{ backgroundColor: 'var(--primary)', color: 'white' }}
+                              >
+                                ✦ Assemble paragraph
+                              </button>
+                            )
                           )}
                         </div>
                       )}
