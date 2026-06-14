@@ -1601,6 +1601,9 @@ export default function TutorSession({
           ))}
         </div>
 
+        {/* ── Coach + Draft (side by side on desktop, tabbed on mobile) ── */}
+        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+
         {/* ── Tutor chat panel ── */}
         <div className={`flex-1 flex-col min-h-0 ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}
           style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
@@ -1714,8 +1717,8 @@ export default function TutorSession({
         </div>
 
         {/* ── Essay panel ── */}
-        <div className={`flex-1 flex-col min-h-0 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
-          style={{ backgroundColor: 'var(--bg-page)', borderTop: '2px solid var(--border-accent)' }}>
+        <div className={`flex-1 flex-col min-h-0 border-t-2 md:border-t-0 md:border-l-2 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
+          style={{ backgroundColor: 'var(--bg-page)', borderColor: 'var(--border-accent)' }}>
           <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
             <div className="flex items-center gap-3">
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Draft</p>
@@ -2105,6 +2108,7 @@ export default function TutorSession({
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
       </div>
