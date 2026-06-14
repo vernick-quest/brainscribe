@@ -11,7 +11,7 @@ export default function SiteFooter() {
       gap: 12,
     }}>
       <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        © 2025 BrainScribe &nbsp;·&nbsp; Built by a parent, for parents.
+        © 2025 BrainScribe &nbsp;·&nbsp; Built by a parent who stayed up too late.
       </p>
       <nav style={{ display: 'flex', gap: 20 }}>
         {[
