@@ -8,10 +8,12 @@
 -- validation constraint. Run in the Supabase SQL Editor. Coordinate with the code
 -- deploy (run this around the same time as the deploy).
 
--- Normalize any stray whitespace first (a trailing space makes 'deon ' fail the
--- constraint even though 'deon' is valid).
-update sessions set persona = trim(persona);
+-- Drop any pre-existing constraint FIRST — otherwise a stale/partial constraint
+-- from an earlier run blocks the value UPDATEs (set persona='deon' would violate it).
+alter table sessions drop constraint if exists sessions_persona_check;
 
+-- Normalize stray whitespace, then remap old keys to the new names.
+update sessions set persona = trim(persona);
 update sessions set persona = 'deon'     where persona = 'marcus';
 update sessions set persona = 'alistair' where persona = 'oliver';
 update sessions set persona = 'matilda'  where persona = 'isla';
@@ -23,7 +25,5 @@ update sessions set persona = 'owen'
   where persona not in ('deon', 'zoe', 'alistair', 'matilda', 'owen', 'jade');
 
 alter table sessions alter column persona set default 'owen';
-
-alter table sessions drop constraint if exists sessions_persona_check;
 alter table sessions add constraint sessions_persona_check
   check (persona in ('deon', 'zoe', 'alistair', 'matilda', 'owen', 'jade'));
