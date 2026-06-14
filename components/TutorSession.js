@@ -582,10 +582,13 @@ export default function TutorSession({
   }
 
   async function deliverTutorMessage(text, history, activePersona) {
-    setPhase('tutor-thinking')
-    await playWithSync(text, activePersona)
-    setMessages([...history, { role: 'assistant', content: text, persona: activePersona }])
+    // Commit the greeting straight into the message list (history is always [] here,
+    // so this is idempotent: a stray re-run just re-sets the same single message) and
+    // never route it through the live caption — that caption is what was getting
+    // orphaned next to the committed copy. Audio plays over the shown text.
     captionRef.current?.clear()
+    setMessages([...history, { role: 'assistant', content: text, persona: activePersona }])
+    await replayAudioOnly(text, activePersona)
     setPhase('listening')
   }
 
