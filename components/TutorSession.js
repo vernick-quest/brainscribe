@@ -69,11 +69,11 @@ function paraTypeLabel(type) {
 }
 
 // Section header text. Multi-paragraph assignments number the paragraphs; a
-// single section drops the "Paragraph 1:" noise (and non-prose forms like a
-// haiku let their line items speak for themselves).
+// single prose section shows just its type; a single non-prose section returns
+// '' (its line items + the "Your Draft" panel title already say everything).
 function sectionHeading(para, paraIdx, total) {
   if (total > 1) return `Paragraph ${paraIdx + 1}: ${paraTypeLabel(para.type)}`
-  if (para.type === 'custom') return 'Your draft'
+  if (para.type === 'custom') return ''
   return paraTypeLabel(para.type)
 }
 
@@ -1585,7 +1585,7 @@ export default function TutorSession({
 
         {/* ── Mobile tab bar ── */}
         <div className="md:hidden flex shrink-0" style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}>
-          {[['chat', 'Chat'], ['essay', 'Essay']].map(([tab, label]) => (
+          {[['chat', 'Coach'], ['essay', 'Draft']].map(([tab, label]) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className="flex-1 py-2.5 text-xs font-semibold transition"
               style={{
@@ -1714,7 +1714,7 @@ export default function TutorSession({
           style={{ backgroundColor: 'var(--bg-page)', borderTop: '2px solid var(--border-accent)' }}>
           <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
             <div className="flex items-center gap-3">
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Assignment</p>
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Draft</p>
               {scaffold && scaffold.total_paragraphs > 1 && (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
                   {scaffold.components.filter(p => p.status === 'complete').length} / {scaffold.total_paragraphs} paragraphs
@@ -1787,6 +1787,7 @@ export default function TutorSession({
               const allConfirmed  = (para.items ?? []).length > 0 && (para.items ?? []).every(c => c.status === 'confirmed') && !assembledPara && !isPending
               // Completed paragraphs collapse by default; toggled via header click
               const isExpanded    = isComplete ? (expandedParas[paraIdx] === true) : true
+              const heading       = sectionHeading(para, paraIdx, scaffold.total_paragraphs)
 
               return (
                 <div key={paraIdx} className="rounded-xl overflow-hidden transition-all"
@@ -1816,28 +1817,28 @@ export default function TutorSession({
                         <>
                           <span className="text-sm" style={{ color: 'var(--status-success)' }}>✓</span>
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
-                            {sectionHeading(para, paraIdx, scaffold.total_paragraphs)}
+                            {heading || 'Done'}
                           </span>
                         </>
                       ) : isPending ? (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {sectionHeading(para, paraIdx, scaffold.total_paragraphs)} — confirming…
+                            {heading ? `${heading} — confirming…` : 'Confirming…'}
                           </span>
                         </>
                       ) : isCurrentPara ? (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {sectionHeading(para, paraIdx, scaffold.total_paragraphs)} — writing now
+                            {heading ? `${heading} — writing now` : 'Writing now'}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--border-strong)' }} />
                           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
-                            {sectionHeading(para, paraIdx, scaffold.total_paragraphs)}
+                            {heading || 'Locked'}
                           </span>
                         </>
                       )}
