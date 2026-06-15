@@ -3,8 +3,19 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import { PersonaAvatar } from '@/lib/personas'
 
-const PERSONA_EMOJI = { deon: '🎯', zoe: '✨', alistair: '🎩', matilda: '🌿', owen: '☀️', jade: '⚡' }
+// Line-art icons matching the login landing page (Feather/Lucide style). The
+// Students/Parents/Teachers glyphs are the same paths used there, so the admin
+// page reads as the same product.
+const ICON_PROPS = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+const IconStudents = () => (<svg {...ICON_PROPS}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>)
+const IconParents  = () => (<svg {...ICON_PROPS}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>)
+const IconTeachers = () => (<svg {...ICON_PROPS}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M7 13h4"/><path d="M7 10h10"/><path d="M9 20h6"/><path d="M12 17v3"/></svg>)
+const IconAssignments = () => (<svg {...ICON_PROPS}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>)
+const IconEye = () => (<svg {...ICON_PROPS} width="13" height="13"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
+const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>)
+
 const ROLE_COLOR = {
   student: { bg: 'var(--accent-soft)', text: 'var(--accent)' },
   parent:  { bg: 'var(--status-success-bg)', text: 'var(--status-success)' },
@@ -123,7 +134,7 @@ function RemoteInButton({ userId, role, name }) {
       onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--primary)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = 'var(--primary)' }}
       onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
     >
-      {loading ? '…' : '👁 Remote in'}
+      {loading ? '…' : <span className="flex items-center gap-1.5"><IconEye /> Remote in</span>}
     </button>
   )
 }
@@ -198,7 +209,7 @@ function SessionRow({ session, studentName, compact = false }) {
       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--surface-spark)' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.backgroundColor = 'var(--surface-card)' }}>
 
-      <span className="text-base shrink-0">{PERSONA_EMOJI[session.persona] ?? '✏️'}</span>
+      <PersonaAvatar personaId={session.persona ?? 'owen'} size={22} className="shrink-0" />
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
@@ -258,8 +269,11 @@ function StudentCard({ student, sessions, onRoleChanged }) {
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
           <button onClick={() => setOpen(o => !o)}
-            className="text-xs transition-transform"
-            style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}>▶</button>
+            className="flex items-center transition-transform"
+            style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
+            aria-label={open ? 'Collapse' : 'Expand'}>
+            <IconChevron />
+          </button>
         </div>
       </div>
 
@@ -559,17 +573,20 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
 
       <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
 
-        {/* Stats */}
+        {/* Stats — icon chips mirror the login landing page */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Students',    value: students.length,  emoji: '✏️' },
-            { label: 'Parents',     value: parents.length,   emoji: '👪' },
-            { label: 'Teachers',    value: teachers.length,  emoji: '📋' },
-            { label: 'Assignments', value: sessions.length,  emoji: '📝' },
+            { label: 'Students',    value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',           iconColor: 'var(--navy-700)' },
+            { label: 'Parents',     value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)',  iconColor: 'var(--status-success)' },
+            { label: 'Teachers',    value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',      iconColor: 'var(--accent)' },
+            { label: 'Assignments', value: sessions.length, Icon: IconAssignments, iconBg: '#EEF2FF',                   iconColor: '#4338CA' },
           ].map(s => (
             <div key={s.label} className="rounded-2xl p-5 text-center"
               style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
-              <p className="text-2xl mb-1">{s.emoji}</p>
+              <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2"
+                style={{ backgroundColor: s.iconBg, color: s.iconColor }}>
+                <s.Icon />
+              </div>
               <p className="text-3xl font-black" style={{ color: 'var(--text-strong)' }}>{s.value}</p>
               <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
             </div>
