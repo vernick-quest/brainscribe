@@ -176,6 +176,35 @@ function OnboardingBadge({ userId, complete }) {
   )
 }
 
+// ── Age flag ───────────────────────────────────────────────────
+// At-a-glance age bracket. Under-13 shows parental-consent state (a minor can't
+// use a coach until consent is given). "Age?" = never recorded (legacy account).
+function AgeBadge({ ageBracket, consentGiven }) {
+  let label, title, style
+  if (ageBracket === '13plus') {
+    label = '13+'; title = '13 or older'
+    style = { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+  } else if (ageBracket === 'under13') {
+    if (consentGiven) {
+      label = 'Under 13 ✓'; title = 'Under 13 — parental consent given'
+      style = { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
+    } else {
+      label = 'Under 13 ⏳'; title = 'Under 13 — parental consent pending (blocked from coaches)'
+      style = { backgroundColor: '#FEF3C7', color: '#92400E' }
+    }
+  } else {
+    label = 'Age?'; title = 'Age not recorded yet'
+    style = { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px dashed var(--border-strong)' }
+  }
+  return (
+    <span title={title}
+      className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
+      style={style}>
+      {label}
+    </span>
+  )
+}
+
 // ── Tab bar ────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }) {
   return (
@@ -265,6 +294,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
               {completedCount} ✓
             </span>
           )}
+          <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
           <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
@@ -307,6 +337,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{person.email}</p>
       </div>
       {meta && <p className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>{meta}</p>}
+      <AgeBadge ageBracket={person.age_bracket} consentGiven={person.coppa_consent_given} />
       <span className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>
         {formatDate(person.created_at)}
       </span>
