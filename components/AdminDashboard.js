@@ -128,6 +128,43 @@ function RemoteInButton({ userId, role, name }) {
   )
 }
 
+// ── Onboarding flag ───────────────────────────────────────────
+// At-a-glance: green = completed onboarding, grey = will be sent through it.
+// Click to toggle — resetting to "Not onboarded" routes them through onboarding
+// on their next sign-in (handy for testing).
+function OnboardingBadge({ userId, complete }) {
+  const [done, setDone] = useState(complete)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    const next = !done
+    setSaving(true)
+    const res = await fetch('/api/admin/set-onboarding', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, complete: next }),
+    })
+    if (res.ok) setDone(next)
+    setSaving(false)
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={saving}
+      title={done
+        ? 'Onboarded — click to reset (they’ll go through onboarding again next sign-in)'
+        : 'Not onboarded — click to mark complete'}
+      className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 transition shrink-0 cursor-pointer"
+      style={done
+        ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
+        : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}
+    >
+      {saving ? '…' : done ? 'Onboarded ✓' : 'Not onboarded'}
+    </button>
+  )
+}
+
 // ── Tab bar ────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }) {
   return (
@@ -217,6 +254,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
               {completedCount} ✓
             </span>
           )}
+          <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
           <button onClick={() => setOpen(o => !o)}

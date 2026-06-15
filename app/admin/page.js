@@ -25,7 +25,7 @@ export default async function AdminPage() {
     { data: allRelationships },
     { data: allAssignmentTeachers },
   ] = await Promise.all([
-    service.from('profiles').select('id, full_name, email, role, created_at, sessions_used').order('role').order('created_at'),
+    service.from('profiles').select('id, full_name, email, role, created_at, sessions_used, onboarding_complete').order('role').order('created_at'),
     service.from('sessions').select('id, title, assignment_text, status, student_id, persona, created_at, updated_at').order('updated_at', { ascending: false }),
     service.from('relationships').select('watcher_id, student_id'),
     service.from('assignment_teachers').select('session_id, teacher_id'),
