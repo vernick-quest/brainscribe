@@ -76,10 +76,37 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel } = await request.json()
+  const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
+          isOnboarding = false, onboardingPromptKey = null } = await request.json()
   if (!assignmentText) return Response.json({ error: 'Missing assignment' }, { status: 400 })
 
   try {
+    // Practice (onboarding) runs don't need AI-generated metadata — the prompt is
+    // a fixed warm-up, not a real assignment — so skip the Haiku meta call entirely
+    // and give it a fixed "Practice session" title. Saves a model call on every
+    // first-time user and keeps the practice row clearly distinct.
+    if (isOnboarding) {
+      const { data, error } = await supabase
+        .from('sessions')
+        .insert({
+          student_id: user.id,
+          assignment_text: assignmentText,
+          persona,
+          subject: 'unspecified',
+          title: 'Practice session',
+          is_onboarding: true,
+          onboarding_prompt_key: onboardingPromptKey,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[sessions POST] onboarding insert error:', error)
+        return Response.json({ error: error.message }, { status: 500 })
+      }
+      return Response.json(data)
+    }
+
     // One AI call for all metadata, in parallel with creating the session row
     const [{ title, summary, outline }, { data, error }] = await Promise.all([
       generateSessionMeta(assignmentText, user.id),

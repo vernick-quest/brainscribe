@@ -371,6 +371,7 @@ export default function TutorSession({
   initialTeachers = [],
   user = null,
   profile = null,
+  onboarding = false,
 }) {
   const [messages, setMessages]           = useState(
     initialMessages.map(m => m.role === 'assistant' ? { ...m, persona: session.persona } : m)
@@ -938,6 +939,14 @@ export default function TutorSession({
     try { await fetch(`/api/sessions/${session.id}/complete`, { method: 'PATCH' }) } catch (e) { console.error(e) }
   }
 
+  // Leaving the practice run early — mark onboarding done (so the dashboard won't
+  // bounce them back here) and head to the dashboard.
+  async function exitPractice() {
+    stopCurrentAudio()
+    try { await fetch('/api/onboarding/complete', { method: 'POST' }) } catch (e) { console.error(e) }
+    router.push('/dashboard')
+  }
+
   // ── Nugget panel actions ─────────────────────────────────────────────────────
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
@@ -1258,9 +1267,9 @@ export default function TutorSession({
 
       <div className="flex flex-1 overflow-hidden min-h-0">
 
-      {/* ── Sidebar ── */}
+      {/* ── Sidebar (hidden during a practice/onboarding run) ── */}
       {/* Mobile backdrop */}
-      {sidebarOpen && (
+      {!onboarding && sidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
           onClick={() => setSidebarOpen(false)} />
       )}
@@ -1269,6 +1278,7 @@ export default function TutorSession({
         md:static md:z-auto md:translate-x-0
         w-72 md:w-60 shrink-0
         transition-transform duration-200
+        ${onboarding ? 'hidden' : ''}
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `} style={{ backgroundColor: 'var(--bg-page-alt)', borderRight: '1px solid var(--border-default)' }}>
         <div className="px-3 py-3 flex items-center gap-2">
@@ -1450,21 +1460,36 @@ export default function TutorSession({
       {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0">
 
+        {/* ── Practice banner (onboarding only) ── */}
+        {onboarding && (
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
+            style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
+            <span className="font-bold uppercase tracking-widest">✎ Practice session</span>
+            <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just to get the feel of it — nothing here is graded.</span>
+            <button onClick={exitPractice}
+              className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>
+              Exit practice
+            </button>
+          </div>
+        )}
+
         {/* ── Assignment bar ── */}
         <div className="shrink-0" ref={barPanelRef} style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
 
           {/* Main row */}
           <div className="flex items-center gap-0 px-3 py-2.5" style={{ minHeight: 52 }}>
 
-            {/* Hamburger — mobile only (44px tap target per design system) */}
-            <button className="md:hidden -ml-2 mr-1 w-11 h-11 flex items-center justify-center rounded-lg shrink-0"
-              style={{ color: 'var(--text-subtle)' }}
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open menu">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M3 12h18M3 6h18M3 18h18"/>
-              </svg>
-            </button>
+            {/* Hamburger — mobile only (44px tap target per design system); hidden in practice (no sidebar) */}
+            {!onboarding && (
+              <button className="md:hidden -ml-2 mr-1 w-11 h-11 flex items-center justify-center rounded-lg shrink-0"
+                style={{ color: 'var(--text-subtle)' }}
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open menu">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M3 12h18M3 6h18M3 18h18"/>
+                </svg>
+              </button>
+            )}
 
             {/* LEFT: Coach + 3-dot */}
             <div className="flex items-center gap-2 shrink-0">
@@ -1473,8 +1498,8 @@ export default function TutorSession({
                 {currentMeta.name}
               </span>
 
-              {/* 3-dot coach menu — students only */}
-              {(profile?.role === 'student' || !profile?.role) && (
+              {/* 3-dot coach menu — students only; fixed to Owen during practice */}
+              {!onboarding && (profile?.role === 'student' || !profile?.role) && (
                 <div className="relative">
                   <button
                     onClick={() => setShowPersonaPicker(v => !v)}
@@ -1881,11 +1906,23 @@ export default function TutorSession({
               style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
               <span className="text-2xl leading-none">🎉</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
-                <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done. Your full essay is below.</p>
-                <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                  View transcript →
-                </a>
+                {onboarding ? (
+                  <>
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>You wrote your first paragraph!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the whole idea — your words, talked into shape.</p>
+                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      Continue →
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done. Your full essay is below.</p>
+                    <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      View transcript →
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           )}

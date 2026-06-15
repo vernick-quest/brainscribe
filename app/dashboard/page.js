@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   // Single profile fetch — all fields needed for routing and render in one round trip
   const { data: adminProfile, error: profileError } = await supabase
     .from('profiles')
-    .select('role, full_name, email, coppa_consent_required, coppa_consent_given')
+    .select('role, full_name, email, coppa_consent_required, coppa_consent_given, onboarding_complete')
     .eq('id', user.id)
     .single()
   if (profileError) console.error('[dashboard] profile fetch error:', profileError.message)
@@ -37,6 +37,12 @@ export default async function DashboardPage() {
     if (adminProfile?.coppa_consent_required && !adminProfile?.coppa_consent_given) {
       redirect('/coppa/pending')
     }
+
+    // First-time student: send them through onboarding once. (Only the real
+    // signed-in student — never when an admin is impersonating.)
+    if (!adminProfile?.onboarding_complete) {
+      redirect('/onboarding')
+    }
   }
 
   // Fetch profile for the target user (self or impersonated)
@@ -45,10 +51,14 @@ export default async function DashboardPage() {
 
   const { data: sessions } = await service
     .from('sessions')
-    .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label')
+    .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label, is_onboarding')
     .eq('student_id', targetId)
     .order('updated_at', { ascending: false })
     .limit(50)
+
+  // Keep the practice run out of the real assignment list; surface it as its own card.
+  const realSessions   = (sessions ?? []).filter(s => !s.is_onboarding)
+  const practiceSession = (sessions ?? []).find(s => s.is_onboarding) ?? null
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
@@ -67,7 +77,34 @@ export default async function DashboardPage() {
         {/* Hide new session form when impersonating — admin shouldn't create sessions for other users */}
         {!imp && <NewSessionForm />}
 
-        <SessionsList sessions={sessions ?? []} />
+        {/* Practice (onboarding) card: link to the warm-up if they did it, or offer it if they skipped */}
+        {!imp && (
+          practiceSession ? (
+            <a href={practiceSession.status === 'complete' ? `/transcript/${practiceSession.id}` : `/assignment/${practiceSession.id}`}
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
+              style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+              <span className="text-xl leading-none">✎</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Your practice paragraph</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>The warm-up you wrote with Owen</p>
+              </div>
+              <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--accent)' }}>View →</span>
+            </a>
+          ) : (
+            <a href="/onboarding"
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
+              style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+              <span className="text-xl leading-none">✎</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>New here? Try a quick practice</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Write one short paragraph with Owen — about 10 minutes</p>
+              </div>
+              <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--accent)' }}>Start →</span>
+            </a>
+          )
+        )}
+
+        <SessionsList sessions={realSessions} />
 
       </main>
     </div>

@@ -97,7 +97,7 @@ export default async function AssignmentPage({ params }) {
   const [{ data: allSessions }, { data: scaffoldData }] = await Promise.all([
     service
       .from('sessions')
-      .select('id, assignment_text, persona, created_at, updated_at, status, subject, subject_custom_label')
+      .select('id, assignment_text, persona, created_at, updated_at, status, subject, subject_custom_label, is_onboarding')
       .eq('student_id', session.student_id)
       .order('created_at', { ascending: false })
       .limit(50),
@@ -119,6 +119,12 @@ export default async function AssignmentPage({ params }) {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
+  // Keep practice (onboarding) runs out of the real assignment sidebar — except the
+  // current one, so a practice session in progress still lists itself.
+  const sidebarSessions = (allSessions ?? [])
+    .filter(s => !s.is_onboarding || s.id === id)
+    .map(s => ({ ...s, teacherName: teacherBySession[s.id] ?? null }))
+
   return (
     <TutorSession
       session={session}
@@ -126,10 +132,11 @@ export default async function AssignmentPage({ params }) {
       initialParagraphs={paragraphs ?? []}
       initialScaffold={scaffoldData ?? null}
       studentName={firstName}
-      allSessions={(allSessions ?? []).map(s => ({ ...s, teacherName: teacherBySession[s.id] ?? null }))}
+      allSessions={sidebarSessions}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       user={user}
       profile={profile}
+      onboarding={session.is_onboarding === true}
     />
   )
 }
