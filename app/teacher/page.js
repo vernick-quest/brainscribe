@@ -11,12 +11,15 @@ export default async function TeacherDashboardPage() {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('role, full_name').eq('id', user.id).single()
+    .from('profiles').select('role, full_name, onboarding_complete').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
   const targetId = imp?.userId ?? user.id
 
   if (!imp && adminProfile?.role !== 'teacher' && adminProfile?.role !== 'admin') redirect('/dashboard')
+
+  // First-time teacher: run them through onboarding once (they can opt out of the practice).
+  if (!imp && adminProfile?.role === 'teacher' && !adminProfile?.onboarding_complete) redirect('/onboarding')
 
   const service = imp ? createServiceClient() : supabase
 

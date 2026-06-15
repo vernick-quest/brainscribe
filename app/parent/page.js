@@ -11,12 +11,15 @@ export default async function ParentDashboardPage() {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('role, full_name, email').eq('id', user.id).single()
+    .from('profiles').select('role, full_name, email, onboarding_complete').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
   const targetId = imp?.userId ?? user.id
 
   if (!imp && adminProfile?.role !== 'parent' && adminProfile?.role !== 'admin') redirect('/dashboard')
+
+  // First-time parent: run them through onboarding once (they can opt out of the practice).
+  if (!imp && adminProfile?.role === 'parent' && !adminProfile?.onboarding_complete) redirect('/onboarding')
 
   const service = imp ? createServiceClient() : supabase
 

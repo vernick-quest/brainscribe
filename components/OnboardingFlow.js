@@ -26,9 +26,14 @@ const MOMENTS = [
   },
 ]
 
-export default function OnboardingFlow({ studentName = 'there', prompts = [] }) {
+export default function OnboardingFlow({ studentName = 'there', prompts = [], role = 'student' }) {
   const router = useRouter()
   const { speak, stop } = useCoachVoice('owen')
+
+  // Parents/teachers are mainly here to watch — they see the explanation, then can
+  // opt out of the practice paragraph. Students are driven through it.
+  const isWatcher = role === 'parent' || role === 'teacher'
+  const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/dashboard'
 
   const [stage, setStage]       = useState('intro')   // 'intro' | 'orient' | 'prompts'
   const [moment, setMoment]     = useState(0)
@@ -36,8 +41,12 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [] }) 
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
 
-  const introLine = `Hey ${studentName} — welcome to BrainScribe. I'm Owen, and I'm going to be your writing coach. Before we get to your real assignments, let's try this together. It won't take long, and you'll end up with something you actually wrote. Sound good?`
-  const promptsLine = "We're going to write one short paragraph together — just to get the feel of it. Pick whatever sounds interesting. There's no wrong answer here."
+  const introLine = isWatcher
+    ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along. But you can write with a coach yourself too, and either way it helps to see how this works. Let me give you the quick tour.`
+    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, and I'm going to be your writing coach. Before we get to your real assignments, let's try this together. It won't take long, and you'll end up with something you actually wrote. Sound good?`
+  const promptsLine = isWatcher
+    ? "That's the tour. If you'd like, you can try writing one short paragraph yourself to feel how it works — or head straight to your dashboard."
+    : "We're going to write one short paragraph together — just to get the feel of it. Pick whatever sounds interesting. There's no wrong answer here."
 
   // Speak the line for whatever screen is currently showing.
   const currentLine =
@@ -50,7 +59,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [] }) 
   async function handleSkip() {
     stop()
     try { await fetch('/api/onboarding/complete', { method: 'POST' }) } catch {}
-    router.push('/dashboard')
+    router.push(home)
   }
 
   async function startPractice() {
@@ -166,6 +175,15 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [] }) 
                   className="w-full text-white font-bold rounded-full py-3 mt-5 transition disabled:opacity-60"
                   style={{ backgroundColor: 'var(--accent)' }}>
                   {creating ? 'Setting up your practice…' : 'Start with this one →'}
+                </button>
+              )}
+
+              {/* Parents/teachers get an explicit opt-out of the practice. */}
+              {isWatcher && (
+                <button onClick={handleSkip} disabled={creating}
+                  className="w-full rounded-full py-3 mt-3 text-sm font-semibold transition disabled:opacity-60"
+                  style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}>
+                  Skip the practice — go to my dashboard →
                 </button>
               )}
             </Card>

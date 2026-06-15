@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation'
 import OnboardingFlow from '@/components/OnboardingFlow'
 import { selectOnboardingPrompts } from '@/lib/onboardingPrompts'
 
-// First-time student onboarding. Sits AFTER the role/age (COPPA) gate at /welcome
-// and before the dashboard. Only students who haven't completed onboarding land here.
+// First-time onboarding. Sits AFTER the age/role (COPPA) gate at /welcome and
+// before the dashboard. Everyone 13+ (or a consented student) sees it once;
+// parents/teachers get the explanation and can opt out of the practice paragraph.
 export default async function OnboardingPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -16,16 +17,14 @@ export default async function OnboardingPage() {
     .eq('id', user.id)
     .single()
 
-  // Non-students never see onboarding — route them home.
-  if (profile?.role === 'admin')   redirect('/admin')
-  if (profile?.role === 'parent')  redirect('/parent')
-  if (profile?.role === 'teacher') redirect('/teacher')
+  // Admins never onboard.
+  if (profile?.role === 'admin') redirect('/admin')
 
   // Under-13 students must finish parental consent first.
   if (profile?.coppa_consent_required && !profile?.coppa_consent_given) redirect('/coppa/pending')
 
-  // Note: we deliberately DON'T redirect already-onboarded students away. The
-  // dashboard handles the one-time auto-redirect; reaching /onboarding directly
+  // Note: we deliberately DON'T redirect already-onboarded users away. The role
+  // dashboards handle the one-time auto-redirect; reaching /onboarding directly
   // (the "try practice" card, or a future "restart onboarding") is intentional.
 
   // Pick four practice prompts on the server (avoids a hydration mismatch from
@@ -33,5 +32,5 @@ export default async function OnboardingPage() {
   const prompts = selectOnboardingPrompts()
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
-  return <OnboardingFlow studentName={firstName} prompts={prompts} />
+  return <OnboardingFlow studentName={firstName} prompts={prompts} role={profile?.role ?? 'student'} />
 }
