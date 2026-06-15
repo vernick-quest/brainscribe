@@ -29,15 +29,18 @@ export default async function AssignmentPage({ params }) {
   ])
 
   const role = imp ? 'student' : adminProfile?.role
+  // The writer experience is granted by OWNERSHIP, not role — a parent or teacher
+  // who owns this session writes in it exactly like a student. A teacher only gets
+  // the read-only view when watching SOMEONE ELSE'S session (i.e. not the owner).
+  const isOwner   = imp ? true : session?.student_id === user.id
   const isAdmin   = !imp && role === 'admin'
-  const isStudent = imp ? true : role === 'student' && session?.student_id === user.id
-  const isTeacher = !imp && role === 'teacher'
+  const isTeacher = !imp && role === 'teacher' && !isOwner
 
-  // If RLS blocked the session fetch or user has no valid role for this page
+  // If RLS blocked the session fetch or user has no valid claim to this page
   if (!session) {
     redirect(role === 'teacher' ? '/teacher' : role === 'parent' ? '/parent' : '/dashboard')
   }
-  if (!isAdmin && !isStudent && !isTeacher) {
+  if (!isOwner && !isAdmin && !isTeacher) {
     redirect('/dashboard')
   }
 

@@ -7,7 +7,12 @@ export async function PATCH(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { role, age_bracket } = await request.json()
+  const { role: requestedRole, age_bracket } = await request.json()
+
+  // Under-13 accounts can ONLY be students — never parent/teacher — regardless of
+  // what the client sends. Age-first onboarding enforces this in the UI; this is
+  // the server-side backstop that keeps a minor from ever holding a watcher role.
+  const role = age_bracket === 'under13' ? 'student' : requestedRole
 
   // Admins are never self-assigned — only manually set in the DB
   if (!ALLOWED_ROLES.includes(role)) {

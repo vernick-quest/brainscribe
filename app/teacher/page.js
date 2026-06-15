@@ -58,6 +58,16 @@ export default async function TeacherDashboardPage() {
     .order('created_at', { ascending: false })
     .limit(30)
 
+  // The teacher's OWN writing (they can use the coaches too) — separate from the
+  // assignments they review, and excluding any practice/onboarding run.
+  const { data: ownSessionData } = await service
+    .from('sessions')
+    .select('id, title, assignment_text, status, persona, updated_at, is_onboarding')
+    .eq('student_id', targetId)
+    .order('updated_at', { ascending: false })
+    .limit(20)
+  const ownSessions = (ownSessionData ?? []).filter(s => !s.is_onboarding)
+
   return (
     <>
       {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
@@ -67,6 +77,7 @@ export default async function TeacherDashboardPage() {
         students={students}
         sessions={sessions}
         notifications={notifications ?? []}
+        ownSessions={ownSessions}
       />
     </>
   )

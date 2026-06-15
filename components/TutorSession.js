@@ -1516,8 +1516,9 @@ export default function TutorSession({
                 {currentMeta.name}
               </span>
 
-              {/* 3-dot coach menu — students only; fixed to Owen during practice */}
-              {!onboarding && (profile?.role === 'student' || !profile?.role) && (
+              {/* 3-dot coach menu — the writer (whoever owns this session) can switch
+                  coaches; hidden during the fixed-Owen practice session */}
+              {!onboarding && (
                 <div className="relative">
                   <button
                     onClick={() => setShowPersonaPicker(v => !v)}

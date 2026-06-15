@@ -67,46 +67,54 @@ function WelcomeContent() {
     })
   }, [router])
 
-  // step: 'role' | 'age' | 'parent-email' | 'dead-end'
-  const [step, setStep] = useState('role')
+  // Age first, then profile. step: 'age' | 'role' | 'parent-email'
+  const [step, setStep] = useState('age')
+  const [ageBracket, setAgeBracket] = useState(null)
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [parentEmail, setParentEmail] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
 
-  // Called when user picks an age bracket on the age step
-  async function handleAgeSelect(bracket) {
-    setLoading(true)
+  // Step 1 — age. 13+ unlocks the full role picker; under-13 can only ever be a
+  // student and goes straight into the parental-consent flow.
+  async function handleAge(bracket) {
     setError('')
-
+    if (bracket === '13plus') {
+      setAgeBracket('13plus')
+      setStep('role')
+      return
+    }
+    // Under 13 → forced student, held for parental consent.
+    setLoading(true)
     const res = await fetch('/api/profile/confirm-role', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role, age_bracket: bracket }),
+      body: JSON.stringify({ role: 'student', age_bracket: 'under13' }),
     })
+    setLoading(false)
+    if (!res.ok) { setError('Something went wrong. Please try again.'); return }
+    setStep('parent-email')
+  }
 
+  // Step 2 (13+ only) — apply the chosen role and route to its home.
+  async function handleRoleSelect() {
+    if (!role) return
+    setLoading(true)
+    setError('')
+    const res = await fetch('/api/profile/confirm-role', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, age_bracket: '13plus' }),
+    })
     if (!res.ok) {
       setError('Something went wrong. Please try again.')
       setLoading(false)
       return
     }
-
-    if (bracket === '13plus') {
-      // All good — route to role dashboard
-      const destinations = { student: '/dashboard', parent: '/parent', teacher: '/teacher' }
-      router.push(destinations[role] ?? '/dashboard')
-      // keep loading spinner until navigation
-    } else {
-      // Under 13
-      setLoading(false)
-      if (role === 'student') {
-        setStep('parent-email')
-      } else {
-        // Parents/teachers must be 13+ to have an account
-        setStep('dead-end')
-      }
-    }
+    const destinations = { student: '/dashboard', parent: '/parent', teacher: '/teacher' }
+    router.push(destinations[role] ?? '/dashboard')
+    // keep the spinner up until navigation
   }
 
   // Called from parent-email step
@@ -137,10 +145,10 @@ function WelcomeContent() {
       <Card>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
-            Welcome to BrainScribe
+            How will you use BrainScribe?
           </h1>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Just one quick question before we get started.
+            You can change this later if you need to.
           </p>
         </div>
 
@@ -179,8 +187,8 @@ function WelcomeContent() {
         </div>
 
         <button
-          onClick={() => { setError(''); setStep('age') }}
-          disabled={!role}
+          onClick={handleRoleSelect}
+          disabled={!role || loading}
           style={{
             width: '100%',
             padding: '1rem',
@@ -188,28 +196,41 @@ function WelcomeContent() {
             fontWeight: 700,
             fontSize: '1rem',
             color: '#fff',
-            backgroundColor: role ? 'var(--brand-orange)' : 'var(--border-strong)',
+            backgroundColor: role && !loading ? 'var(--brand-orange)' : 'var(--border-strong)',
             border: 'none',
-            cursor: role ? 'pointer' : 'not-allowed',
+            cursor: role && !loading ? 'pointer' : 'not-allowed',
             transition: 'background-color 0.15s',
           }}
         >
-          Continue →
+          {loading ? 'Setting up your account…' : 'Continue →'}
+        </button>
+
+        {error && (
+          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--status-error)', marginTop: '0.75rem' }}>
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={() => { setError(''); setRole(null); setStep('age') }}
+          style={{ display: 'block', margin: '0.75rem auto 0', background: 'none', border: 'none', fontSize: '0.85rem', color: 'var(--text-subtle)', cursor: 'pointer' }}
+        >
+          ← Back
         </button>
       </Card>
     )
   }
 
-  // ── Step: Age bracket ─────────────────────────────────────────────────────
+  // ── Step: Age bracket (FIRST) ─────────────────────────────────────────────
   if (step === 'age') {
     return (
       <Card>
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
-            One more quick thing
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
+            Welcome to BrainScribe
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            This helps us keep BrainScribe safe for everyone.
+            First, a quick question — this keeps BrainScribe safe for everyone.
           </p>
         </div>
 
@@ -220,7 +241,7 @@ function WelcomeContent() {
           ].map(({ bracket, label, emoji, desc }) => (
             <button
               key={bracket}
-              onClick={() => handleAgeSelect(bracket)}
+              onClick={() => handleAge(bracket)}
               disabled={loading}
               style={{
                 display: 'flex',
@@ -263,21 +284,6 @@ function WelcomeContent() {
             {error}
           </p>
         )}
-
-        <button
-          onClick={() => setStep('role')}
-          style={{
-            display: 'block',
-            margin: '0.75rem auto 0',
-            background: 'none',
-            border: 'none',
-            fontSize: '0.85rem',
-            color: 'var(--text-subtle)',
-            cursor: 'pointer',
-          }}
-        >
-          ← Back
-        </button>
       </Card>
     )
   }
@@ -370,54 +376,6 @@ function WelcomeContent() {
             Your account will be ready once approved.
             If not approved within 7 days, it will be automatically deleted.
           </p>
-        </div>
-      </Card>
-    )
-  }
-
-  // ── Step: Dead end (under-13 non-student) ─────────────────────────────────
-  if (step === 'dead-end') {
-    return (
-      <Card>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔒</div>
-          <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.75rem' }}>
-            You must be 13 or older
-          </h1>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
-            Parent and teacher accounts on BrainScribe require you to be 13 or older.
-            If you're a student, go back and select "Student" — we have a parent-approval
-            flow that will get you set up safely.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button
-              onClick={() => { setStep('role'); setRole(null); }}
-              style={{
-                width: '100%',
-                padding: '0.9rem',
-                borderRadius: 12,
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                color: '#fff',
-                backgroundColor: 'var(--brand-orange)',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              ← Back to role selection
-            </button>
-            <a href="/api/auth/signout"
-              style={{
-                display: 'block',
-                textAlign: 'center',
-                fontSize: '0.85rem',
-                color: 'var(--text-subtle)',
-                padding: '0.5rem',
-                textDecoration: 'none',
-              }}>
-              Sign out
-            </a>
-          </div>
         </div>
       </Card>
     )

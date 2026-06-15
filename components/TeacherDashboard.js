@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Navbar from '@/components/Navbar'
+import YourWritingCard from '@/components/YourWritingCard'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
@@ -245,7 +246,7 @@ function EmptyState() {
 }
 
 // ── Main ──────────────────────────────────────────────────────
-export default function TeacherDashboard({ user, profile, students, sessions, notifications = [] }) {
+export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [] }) {
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id ?? null)
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
@@ -277,6 +278,9 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
                 : `Reviewing work from ${students.length} students.`}
           </p>
         </div>
+
+        {/* Your own writing — teachers can use the coaches too */}
+        <YourWritingCard ownSessions={ownSessions} />
 
         {/* No students */}
         {students.length === 0 && <EmptyState />}

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import WritingProfileCard from '@/components/WritingProfileCard'
+import YourWritingCard from '@/components/YourWritingCard'
 import Navbar from '@/components/Navbar'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -124,7 +125,7 @@ function EmptyState() {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions }) {
+export default function ParentDashboard({ user, profile, children, sessions, ownSessions = [] }) {
   const [selectedChildId, setSelectedChildId] = useState(children[0]?.id ?? null)
   const [activeTab, setActiveTab] = useState('assignments')
 
@@ -169,6 +170,9 @@ export default function ParentDashboard({ user, profile, children, sessions }) {
                 : `Following ${children.length} students.`}
           </p>
         </div>
+
+        {/* Your own writing — parents can use the coaches too */}
+        <YourWritingCard ownSessions={ownSessions} />
 
         {/* No children */}
         {children.length === 0 && <EmptyState />}

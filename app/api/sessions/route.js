@@ -76,6 +76,15 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Coach age gate — role-independent. No one creates a coach session without a
+  // 13+ assertion (or completed parental consent). Backs up the UI entry points.
+  const { data: gate } = await supabase
+    .from('profiles').select('role, age_bracket, coppa_consent_given').eq('id', user.id).single()
+  const ageOk = gate?.age_bracket === '13plus' || gate?.coppa_consent_given === true || gate?.role === 'admin'
+  if (!ageOk) {
+    return Response.json({ error: 'Please confirm your age before writing with a coach.', code: 'age_verification_required' }, { status: 403 })
+  }
+
   const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
           isOnboarding = false, onboardingPromptKey = null } = await request.json()
   if (!assignmentText) return Response.json({ error: 'Missing assignment' }, { status: 400 })

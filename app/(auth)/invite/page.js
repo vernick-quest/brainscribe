@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { createNotification } from '@/lib/notifications'
+import InviteAgeGate from '@/components/InviteAgeGate'
 
 export default async function InvitePage({ searchParams }) {
   const params = await searchParams
@@ -36,7 +37,20 @@ export default async function InvitePage({ searchParams }) {
   }
 
   // If the invite matches this user's email and isn't claimed yet, claim it
-  if (!invite.claimed_by && invite.email === user.email) {
+  if (!invite.claimed_by && invite.email === (user.email ?? '').toLowerCase()) {
+    // Parent/teacher accounts require 13+. Gate on age before granting the role:
+    // if we don't know their age yet, ask; an under-13 can't accept the invite.
+    const { data: claimerProfile } = await supabase
+      .from('profiles').select('age_bracket').eq('id', user.id).single()
+
+    if (claimerProfile?.age_bracket !== '13plus') {
+      if (claimerProfile?.age_bracket === 'under13') {
+        return <InviteError message="Parent and teacher invites are for ages 13 and older, so this invite can't be used on your account." />
+      }
+      // Age not asserted yet — collect it, then the invite claims on re-run.
+      return <InviteAgeGate token={token} role={invite.role} />
+    }
+
     await supabase.from('invites').update({
       claimed_by: user.id,
       claimed_at: new Date().toISOString(),
