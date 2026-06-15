@@ -7,7 +7,7 @@ import { useCoachVoice } from '@/lib/useCoachVoice'
 
 const OWEN = getPersona('owen')
 
-export default function OnboardingComplete({ studentName = 'there', practiceSessionId = null }) {
+export default function OnboardingComplete({ studentName = 'there', practiceSessionId = null, practiceParagraph = null }) {
   const router = useRouter()
   const { speak, stop } = useCoachVoice('owen')
 
@@ -47,6 +47,19 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
             {reflection}
           </p>
 
+          {/* The paragraph they just wrote — shown right here so the celebration
+              points at something real. */}
+          {practiceParagraph && (
+            <div className="rounded-2xl px-5 py-4" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-subtle)' }}>
+                What you wrote
+              </p>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-body)' }}>
+                {practiceParagraph}
+              </p>
+            </div>
+          )}
+
           <button onClick={toDashboard}
             className="w-full text-white font-bold rounded-full py-3 transition"
             style={{ backgroundColor: 'var(--accent)' }}>
@@ -57,7 +70,7 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
             <a href={`/transcript/${practiceSessionId}`}
               className="block text-center text-sm font-semibold hover:underline"
               style={{ color: 'var(--accent)' }}>
-              See your practice paragraph →
+              See the full transcript →
             </a>
           )}
         </div>

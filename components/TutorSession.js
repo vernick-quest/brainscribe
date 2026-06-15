@@ -688,12 +688,17 @@ export default function TutorSession({
       }
 
       else if (type === 'DONE' && sc) {
-        const componentId = payload
+        // DONE may carry the confirmed text inline — [DONE:id:exact words] — so a
+        // component can be locked in even when the coach didn't emit a separate
+        // NUGGET first (the common case for prose built over a few exchanges).
+        // Fall back to any text a prior NUGGET captured.
+        const colonIdx = payload.indexOf(':')
+        const componentId = colonIdx === -1 ? payload : payload.slice(0, colonIdx)
+        const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
         const paraIdx = sc.current_paragraph_index ?? 0
         sc = updateComponentItem(sc, paraIdx, componentId, item => {
-          const text = item.nuggetText ?? item.text ?? ''
+          const text = inlineText || item.nuggetText || item.text || ''
           // Never confirm a component with no content — it'd render a blank "✓" line.
-          // It needs a NUGGET (the actual words) before it can be locked in.
           if (!text) return item
           return { ...item, status: 'confirmed', text }
         })
@@ -936,7 +941,20 @@ export default function TutorSession({
   async function markSessionComplete() {
     if (sessionComplete) return
     setSessionComplete(true)
-    try { await fetch(`/api/sessions/${session.id}/complete`, { method: 'PATCH' }) } catch (e) { console.error(e) }
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/complete`, { method: 'PATCH' })
+      // The server assembles any unbuilt paragraph into prose on complete and hands
+      // it back — adopt it so the finished paragraph shows above its components.
+      const data = await res.json().catch(() => null)
+      if (data?.paragraphs?.length) {
+        setParagraphs(data.paragraphs.map(p => ({
+          scribed_text: p.scribed_text,
+          is_thin: p.is_thin ?? false,
+          paragraph_index: p.paragraph_index ?? p.position,
+          position: p.position,
+        })))
+      }
+    } catch (e) { console.error(e) }
   }
 
   // Leaving the practice run early — mark onboarding done (so the dashboard won't

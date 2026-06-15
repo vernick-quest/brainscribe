@@ -1,8 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { logAnthropicUsage } from '@/lib/usage'
-
-const anthropic = new Anthropic()
+import { assembleParagraphText } from '@/lib/assembleParagraph'
 
 export async function POST(request) {
   const supabase = await createClient()
@@ -12,32 +9,9 @@ export async function POST(request) {
   const { sessionId, paragraphIndex, paragraphType, components } = await request.json()
   // components: [{ id, label, text }, ...]
 
-  const componentText = components
-    .filter(c => c.text?.trim())
-    .map(c => `${c.label}: ${c.text}`)
-    .join('\n\n')
-
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
-    system: `You are a faithful scribe. Your only job is to flow the provided paragraph components into a single, cohesive paragraph.
-
-STRICT RULES:
-- Use ONLY the ideas and words provided in the components.
-- Do NOT add arguments, transitions, evidence, or ideas that do not appear in the components.
-- Do NOT remove any of the student's ideas.
-- Fix obvious spelling errors and smooth transitions between components — that is all.
-- Preserve the student's natural voice and vocabulary.
-- Output ONLY the assembled paragraph — no commentary, no labels, no preamble.`,
-    messages: [{
-      role: 'user',
-      content: `Assemble these ${paragraphType} paragraph components into a single flowing paragraph:\n\n${componentText}`,
-    }],
+  const { assembled, componentText } = await assembleParagraphText({
+    components, paragraphType, sessionId, userId: user.id,
   })
-
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId, userId: user.id })
-
-  const assembled = response.content[0].text.trim()
 
   // Save the assembled paragraph to the paragraphs table
   const { data: para, error } = await supabase
