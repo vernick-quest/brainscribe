@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getImpersonation } from '@/lib/impersonation'
 import { redirect } from 'next/navigation'
 import OnboardingComplete from '@/components/OnboardingComplete'
 
@@ -13,22 +14,31 @@ export default async function OnboardingCompletePage({ searchParams }) {
   const params = await searchParams
   const requestedId = params?.session ?? null
 
-  const { data: profile } = await supabase
-    .from('profiles').select('full_name').eq('id', user.id).single()
+  // Honor an admin "remote in": act as the impersonated student (their name, their
+  // practice session) — not the admin's.
+  const { data: adminProfile } = await supabase
+    .from('profiles').select('role, full_name').eq('id', user.id).single()
+  const imp = await getImpersonation(adminProfile)
+  const effectiveUserId = imp?.userId ?? user.id
+  const db = imp ? createServiceClient() : supabase
+
+  const profile = imp
+    ? (await db.from('profiles').select('full_name').eq('id', effectiveUserId).single()).data
+    : adminProfile
 
   // Resolve the exact practice session. Prefer the id passed from the completion
-  // banner (verified to belong to this user); only guess "most recent practice"
-  // as a fallback if no id came through.
+  // banner (verified to belong to the effective user); only guess "most recent
+  // practice" as a fallback if no id came through.
   let practiceId = null
   if (requestedId) {
-    const { data: s } = await supabase
-      .from('sessions').select('id').eq('id', requestedId).eq('student_id', user.id).maybeSingle()
+    const { data: s } = await db
+      .from('sessions').select('id').eq('id', requestedId).eq('student_id', effectiveUserId).maybeSingle()
     practiceId = s?.id ?? null
   }
   if (!practiceId) {
-    const { data: recent } = await supabase
+    const { data: recent } = await db
       .from('sessions').select('id')
-      .eq('student_id', user.id).eq('is_onboarding', true)
+      .eq('student_id', effectiveUserId).eq('is_onboarding', true)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     practiceId = recent?.id ?? null
   }
@@ -39,8 +49,8 @@ export default async function OnboardingCompletePage({ searchParams }) {
   let practiceParagraph = null
   if (practiceId) {
     const [{ data: paras }, { data: scaffold }] = await Promise.all([
-      supabase.from('paragraphs').select('scribed_text, position').eq('session_id', practiceId).order('position'),
-      supabase.from('paragraph_scaffolds').select('components').eq('session_id', practiceId).maybeSingle(),
+      db.from('paragraphs').select('scribed_text, position').eq('session_id', practiceId).order('position'),
+      db.from('paragraph_scaffolds').select('components').eq('session_id', practiceId).maybeSingle(),
     ])
     const assembled = paras?.map(p => p.scribed_text).filter(Boolean).join('\n\n')
     const fromComponents = (scaffold?.components ?? [])
@@ -51,12 +61,14 @@ export default async function OnboardingCompletePage({ searchParams }) {
     practiceParagraph = assembled || fromComponents || null
   }
 
-  // Mark onboarding done so the dashboard stops routing them back here.
-  const service = createServiceClient()
-  await service
-    .from('profiles')
-    .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
-    .eq('id', user.id)
+  // Mark onboarding done for the REAL signed-in student only — never flip a flag on
+  // someone else's account during an admin remote-in.
+  if (!imp) {
+    await createServiceClient()
+      .from('profiles')
+      .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
+      .eq('id', user.id)
+  }
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
