@@ -11,6 +11,8 @@ export async function POST(request) {
   if (!user) return new Response('Unauthorized', { status: 401 })
 
   if (!await checkRateLimit(`speak:${user.id}`, 60, 60)) return new Response('Too many requests', { status: 429 })
+  // Daily per-account backstop against runaway TTS spend (fails open).
+  if (!await checkRateLimit(`speak:day:${user.id}`, 800, 86400)) return new Response('Daily voice limit reached', { status: 429 })
 
   const { text, persona = 'owen', sessionId = null } = await request.json()
   if (!text) return new Response('Missing text', { status: 400 })

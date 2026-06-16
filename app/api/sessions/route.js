@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 
 const anthropic = new Anthropic()
 
@@ -75,6 +76,11 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Daily per-account cap on session creation (fails open) — denial-of-wallet backstop.
+  if (!await checkRateLimit(`sessions:day:${user.id}`, 30, 86400)) {
+    return rateLimited("You've started a lot of sessions today — please try again tomorrow.")
+  }
 
   // Coach age gate — role-independent. No one creates a coach session without a
   // 13+ assertion (or completed parental consent). Backs up the UI entry points.

@@ -13,6 +13,10 @@ export async function POST(request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   if (!await checkRateLimit(`tutor:${user.id}`, 40, 60)) return rateLimited()
+  // Daily per-account backstop against runaway/abuse cost (fails open).
+  if (!await checkRateLimit(`tutor:day:${user.id}`, 600, 86400)) {
+    return rateLimited("You've reached today's coaching limit — it resets tomorrow.")
+  }
 
   const { sessionId, messages, assignment, persona = 'owen', scaffold = null } = await request.json()
 
