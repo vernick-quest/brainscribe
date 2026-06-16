@@ -38,11 +38,18 @@ export default async function InvitePage({ searchParams }) {
 
   // If the invite matches this user's email and isn't claimed yet, claim it
   if (!invite.claimed_by && invite.email === (user.email ?? '').toLowerCase()) {
+    const { data: claimerProfile } = await supabase
+      .from('profiles').select('age_bracket, role, role_confirmed').eq('id', user.id).single()
+
+    // Don't silently convert an already-established account into a different role.
+    // (An active student accepting a parent invite would otherwise lose their
+    // student home; a single account can't be both with the current role model.)
+    if (claimerProfile?.role_confirmed && claimerProfile.role !== invite.role) {
+      return <InviteError message={`This account is already set up as a ${claimerProfile.role}. To join as a ${invite.role}, sign in with a different account.`} />
+    }
+
     // Parent/teacher accounts require 13+. Gate on age before granting the role:
     // if we don't know their age yet, ask; an under-13 can't accept the invite.
-    const { data: claimerProfile } = await supabase
-      .from('profiles').select('age_bracket').eq('id', user.id).single()
-
     if (claimerProfile?.age_bracket !== '13plus') {
       if (claimerProfile?.age_bracket === 'under13') {
         return <InviteError message="Parent and teacher invites are for ages 13 and older, so this invite can't be used on your account." />

@@ -1300,7 +1300,9 @@ export default function TutorSession({
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `} style={{ backgroundColor: 'var(--bg-page-alt)', borderRight: '1px solid var(--border-default)' }}>
         <div className="px-3 py-3 flex items-center gap-2">
-          <a href="/dashboard"
+          {/* Non-students start a new piece from /write (the student dashboard
+              redirects them to their watch home); students use /dashboard. */}
+          <a href={(profile?.role === 'student' || !profile?.role) ? '/dashboard' : '/write'}
             className="flex-1 flex items-center gap-2 text-left text-xs rounded-lg px-3 py-2 transition"
             style={{ color: 'var(--text-muted)' }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}

@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   // Single profile fetch — all fields needed for routing and render in one round trip
   const { data: adminProfile, error: profileError } = await supabase
     .from('profiles')
-    .select('role, full_name, email, coppa_consent_required, coppa_consent_given, onboarding_complete')
+    .select('role, full_name, email, coppa_consent_required, coppa_consent_given, onboarding_complete, age_bracket')
     .eq('id', user.id)
     .single()
   if (profileError) console.error('[dashboard] profile fetch error:', profileError.message)
@@ -36,6 +36,12 @@ export default async function DashboardPage() {
     // COPPA guard: under-13 students must complete parental consent
     if (adminProfile?.coppa_consent_required && !adminProfile?.coppa_consent_given) {
       redirect('/coppa/pending')
+    }
+
+    // Legacy account with no recorded age (predates age-first) — send them through
+    // the age step before anything else, so the coach age gate can't dead-end them.
+    if (!adminProfile?.age_bracket) {
+      redirect('/welcome')
     }
 
     // First-time student: send them through onboarding once. (Only the real
