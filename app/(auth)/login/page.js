@@ -38,10 +38,10 @@ function LoginContent() {
 
         <div className="space-y-1">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
-            Welcome back
+            Welcome to BrainScribe
           </h1>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Your voice-first writing coach.
+            Talk it out. Write it down. The words are always yours.
           </p>
         </div>
 
@@ -71,6 +71,10 @@ function LoginContent() {
           </svg>
           Continue with Google
         </button>
+
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-subtle)' }}>
+          We only use your name and email to set up your account — never for ads, never sold.
+        </p>
 
       </div>
 
@@ -154,6 +158,15 @@ function LoginContent() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Footer — legal links */}
+      <div className="mt-10 flex items-center gap-4 text-xs" style={{ color: 'var(--text-subtle)' }}>
+        <a href="/privacy" className="hover:underline" style={{ color: 'var(--text-muted)' }}>Privacy</a>
+        <span>·</span>
+        <a href="/terms" className="hover:underline" style={{ color: 'var(--text-muted)' }}>Terms</a>
+        <span>·</span>
+        <span>© 2026 BrainScribe</span>
       </div>
     </div>
   )
