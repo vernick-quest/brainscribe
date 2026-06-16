@@ -144,7 +144,15 @@ function liveDisplay(raw) {
 
 // ── Greeting ───────────────────────────────────────────────────────────────────
 
-function buildGreeting(persona, name, scaffold) {
+function buildGreeting(persona, name, scaffold, onboarding = false) {
+  // Practice (onboarding) session: the student already met Owen in the tour and
+  // just picked a prompt seconds ago. Don't re-introduce, don't call it an
+  // "assignment", and never ask whether they've written anything — there's
+  // nothing yet. Just warmly invite their first thought on the prompt.
+  if (onboarding) {
+    return `Okay ${name}, let's just dive in — no pressure at all. What's the first thing that comes to mind for this one? Just say whatever pops up.`
+  }
+
   const hasScaffold = scaffold?.components?.length > 0
   const allDone = hasScaffold && scaffold.components.every(p => p.status === 'complete')
   const anyDone = hasScaffold && scaffold.components.some(p => p.status === 'complete')
@@ -423,6 +431,8 @@ export default function TutorSession({
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
   const audioUnlockedRef  = useRef(false)
+  const pendingGreetingRef = useRef(null)   // greeting that got autoplay-blocked, to re-speak on first gesture
+  const everPlayedRef     = useRef(false)   // has any clip actually started playing yet?
 
   const barPanelRef       = useRef(null)
   const router           = useRouter()
@@ -437,20 +447,33 @@ export default function TutorSession({
   // types but stays silent. Unlock a single reusable <audio> on the first tap/key,
   // then reuse that element for every clip so playback is allowed thereafter.
   useEffect(() => {
-    function unlock() {
-      const el = getAudioEl()
-      // 1-frame silent WAV — playing it within the gesture unlocks the element.
-      el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
-      el.play().then(() => { el.pause(); el.currentTime = 0; audioUnlockedRef.current = true }).catch(() => {})
+    function cleanup() {
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('keydown', unlock)
+    }
+    function unlock() {
+      audioUnlockedRef.current = true
+      const el = getAudioEl()
+      // If a clip is already playing, the element is unlocked — DON'T touch it.
+      // (The old code overwrote el.src on every first gesture, cutting the coach
+      // off mid-sentence when the student scrolled.)
+      if (!el.paused) { cleanup(); return }
+      // 1-frame silent WAV — playing it within the gesture blesses the element so
+      // later async plays are allowed (iOS).
+      el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+      el.play().then(() => { el.pause(); el.currentTime = 0 }).catch(() => {})
+      // Re-speak the greeting if it was autoplay-blocked before this first gesture
+      // (its blob URL was already freed, so we re-fetch rather than resume).
+      if (pendingGreetingRef.current && !everPlayedRef.current) {
+        const g = pendingGreetingRef.current
+        pendingGreetingRef.current = null
+        replayAudioOnly(g.text, g.persona)
+      }
+      cleanup()
     }
     window.addEventListener('pointerdown', unlock)
     window.addEventListener('keydown', unlock)
-    return () => {
-      window.removeEventListener('pointerdown', unlock)
-      window.removeEventListener('keydown', unlock)
-    }
+    return cleanup
   }, [])
 
   useEffect(() => {
@@ -476,7 +499,7 @@ export default function TutorSession({
     if (initialMessages.length > 0) { setPhase('listening'); return }
     greetedSessions.add(session.id)
     const activePersona = session.persona ?? 'owen'
-    const greeting = buildGreeting(activePersona, studentName, initialScaffold)
+    const greeting = buildGreeting(activePersona, studentName, initialScaffold, onboarding)
     deliverTutorMessage(greeting, [], activePersona)
   }, [])
 
@@ -510,6 +533,7 @@ export default function TutorSession({
       el.onended = done
       el.onerror = () => { try { URL.revokeObjectURL(url) } catch {} ; done() }
       el.onloadedmetadata = () => { if (playSeqRef.current === seq) onMeta?.((el.duration || 3) * 1000) }
+      el.onplaying = () => { everPlayedRef.current = true; pendingGreetingRef.current = null }
       el.src = url
       el.play().catch(() => { done() })   // resolve even if blocked, so the flow continues
     })
@@ -592,6 +616,8 @@ export default function TutorSession({
     // orphaned next to the committed copy. Audio plays over the shown text.
     captionRef.current?.clear()
     setMessages([...history, { role: 'assistant', content: text, persona: activePersona }])
+    // Remember the greeting so the first gesture can re-speak it if autoplay blocked it.
+    pendingGreetingRef.current = { text, persona: activePersona }
     await replayAudioOnly(text, activePersona)
     setPhase('listening')
   }
@@ -1760,16 +1786,24 @@ export default function TutorSession({
 
         {/* ── Mobile tab bar ── */}
         <div className="md:hidden flex shrink-0" style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}>
-          {[['chat', 'Coach'], ['essay', 'Draft']].map(([tab, label]) => (
+          {[['chat', 'Coach'], ['essay', 'Draft']].map(([tab, label]) => {
+            // Nudge toward the Draft tab when there's writing in it you're not looking at.
+            const showDot = tab === 'essay' && activeTab !== 'essay' && (
+              (scaffold?.components ?? []).some(p => (p.items ?? []).some(i => i.status === 'confirmed')) ||
+              paragraphs.length > 0
+            )
+            return (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className="flex-1 py-2.5 text-xs font-semibold transition"
+              className="flex-1 py-2.5 text-xs font-semibold transition inline-flex items-center justify-center gap-1.5"
               style={{
                 color: activeTab === tab ? 'var(--accent)' : 'var(--text-muted)',
                 borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
               }}>
               {label}
+              {showDot && <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--accent)' }} />}
             </button>
-          ))}
+            )
+          })}
         </div>
 
         {/* ── Coach + Draft (side by side on desktop, tabbed on mobile) ── */}

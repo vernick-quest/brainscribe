@@ -43,9 +43,12 @@ export default function Navbar({ user, profile }) {
       if (document.visibilityState !== 'visible') return
       const { data: { session } } = await supabase.auth.getSession()
       const currentId = session?.user?.id ?? null
-      if (currentId === renderedUserId) return
-      if (currentId) window.location.reload()
-      else window.location.href = '/login'
+      // Only react to a genuine switch to a DIFFERENT account. A transient null —
+      // e.g. the client cookie lagging for a beat right after sign-in on mobile
+      // (returning from Google OAuth) — must NOT bounce to /login, or it reads as
+      // a failed sign-in. Real sign-outs are caught by the server/proxy on the
+      // next navigation.
+      if (currentId && currentId !== renderedUserId) window.location.reload()
     }
 
     window.addEventListener('focus', check)
