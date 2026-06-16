@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import Icon from '@/components/Icon'
 import { PersonaAvatar } from '@/lib/personas'
 
 // Line-art icons matching the login landing page (Feather/Lucide style). The
@@ -355,7 +356,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
 function SearchBar({ value, onChange, placeholder }) {
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-subtle)' }}>🔍</span>
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 inline-flex" style={{ color: 'var(--text-subtle)' }}><Icon name="search" size={14} /></span>
       <input
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -442,9 +443,9 @@ function UsageTab() {
               </div>
             </div>
             {elDanger && (
-              <p className="text-xs font-semibold rounded-lg px-3 py-2"
+              <p className="text-xs font-semibold rounded-lg px-3 py-2 inline-flex items-center gap-1.5"
                 style={{ backgroundColor: '#FEF2F2', color: '#dc2626' }}>
-                ⚠ Over 80% of your monthly character limit used — consider upgrading your plan.
+                <Icon name="alert" size={14} style={{ color: 'var(--status-error)' }} /> Over 80% of your monthly character limit used — consider upgrading your plan.
               </p>
             )}
           </>

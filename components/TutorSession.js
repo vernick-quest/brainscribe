@@ -8,6 +8,7 @@ import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
+import Icon from '@/components/Icon'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -29,12 +30,12 @@ function renderMarkdown(text) {
 // ── Persona display metadata ───────────────────────────────────────────────────
 
 const PERSONA_META = {
-  deon: { name: 'Deon',  emoji: '🎯' },
-  zoe:    { name: 'Zoe',     emoji: '✨' },
-  alistair: { name: 'Alistair', emoji: '🎩' },
-  matilda:   { name: 'Tilly',  emoji: '🌿' },
-  owen:    { name: 'Owen',    emoji: '☀️' },
-  jade: { name: 'Jade',    emoji: '⚡' },
+  deon: { name: 'Deon' },
+  zoe:    { name: 'Zoe' },
+  alistair: { name: 'Alistair' },
+  matilda:   { name: 'Tilly' },
+  owen:    { name: 'Owen' },
+  jade: { name: 'Jade' },
 }
 
 // ── Scaffold helpers ───────────────────────────────────────────────────────────
@@ -289,8 +290,8 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
       <div className="border-t-2 flex flex-col gap-2 px-5 py-3"
         style={{ borderColor: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-            🎙 Dictation mode — say your paragraph
+          <span className="text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5" style={{ color: 'var(--accent)' }}>
+            <Icon name="mic" size={12} /> Dictation mode — say your paragraph
           </span>
           <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Editing pauses the mic</span>
         </div>
@@ -1484,7 +1485,7 @@ export default function TutorSession({
         {onboarding && (
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
             style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
-            <span className="font-bold uppercase tracking-widest">✎ Practice session</span>
+            <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice session</span>
             <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just to get the feel of it — nothing here is graded.</span>
             <button onClick={exitPractice}
               className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>
@@ -1910,7 +1911,7 @@ export default function TutorSession({
           {sectionJustCompleted && !sessionComplete && (
             <div className="mx-4 mt-4 shrink-0 rounded-2xl px-5 py-3 flex items-center gap-3"
               style={{ backgroundColor: 'var(--accent)', color: '#fff', animation: 'fadeSlideIn 0.25s ease' }}>
-              <span className="text-2xl leading-none shrink-0">🎉</span>
+              <Icon name="sparkles" size={20} className="shrink-0" style={{ color: '#fff' }} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold">Paragraph {sectionJustCompleted.number} of {sectionJustCompleted.total} done!</p>
                 <p className="text-xs opacity-90 mt-0.5 truncate">{sectionJustCompleted.title}</p>
@@ -1925,7 +1926,7 @@ export default function TutorSession({
           {sessionComplete && (
             <div className="mx-4 mt-4 rounded-2xl px-5 py-4 flex items-start gap-3 shrink-0"
               style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
-              <span className="text-2xl leading-none">🎉</span>
+              <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
               <div className="flex-1 min-w-0">
                 {onboarding ? (
                   <>
@@ -2241,10 +2242,10 @@ export default function TutorSession({
                                     ) : (
                                       <button
                                         onClick={() => { setLockDraft(item.nuggetText || lastUserMessage || ''); setLockingComponent({ paraIdx, componentId: item.id }) }}
-                                        className="mt-1.5 text-[10px] font-semibold rounded-lg px-2.5 py-1 transition"
+                                        className="mt-1.5 text-[10px] font-semibold rounded-lg px-2.5 py-1 transition inline-flex items-center gap-1.5"
                                         style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
                                       >
-                                        ✎ Lock in this part
+                                        <Icon name="pencil" size={13} /> Lock in this part
                                       </button>
                                     )
                                   )}
@@ -2270,10 +2271,10 @@ export default function TutorSession({
                               <button
                                 onClick={() => assembleCurrentParagraph(paraIdx, para)}
                                 disabled={phase !== 'listening'}
-                                className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
+                                className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40 inline-flex items-center justify-center gap-1.5"
                                 style={{ backgroundColor: 'var(--primary)', color: 'white' }}
                               >
-                                ✦ Assemble paragraph
+                                <Icon name="sparkles" size={13} /> Assemble paragraph
                               </button>
                             )
                           )}
@@ -2305,10 +2306,10 @@ export default function TutorSession({
                 <button
                   onClick={assembleFullEssay}
                   disabled={isAssemblingEssay || phase !== 'listening'}
-                  className="text-sm font-semibold text-white rounded-xl px-5 py-2.5 transition disabled:opacity-50"
+                  className="text-sm font-semibold text-white rounded-xl px-5 py-2.5 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
-                  {isAssemblingEssay ? 'Assembling…' : '✦ Assemble full essay →'}
+                  {isAssemblingEssay ? 'Assembling…' : <><Icon name="sparkles" size={13} /> Assemble full essay →</>}
                 </button>
               </div>
             )}

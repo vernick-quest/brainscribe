@@ -3,23 +3,24 @@
 import { useState, Suspense, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Icon from '@/components/Icon'
 
 const ROLES = [
   {
     id: 'student',
-    emoji: '✏️',
+    icon: 'pencil',
     label: 'Student',
     description: "I'm here to work on my writing assignments.",
   },
   {
     id: 'parent',
-    emoji: '👪',
+    icon: 'users',
     label: 'Parent',
     description: "I want to follow my child's writing progress.",
   },
   {
     id: 'teacher',
-    emoji: '📋',
+    icon: 'clipboard',
     label: 'Teacher',
     description: "I've been invited to review a student's work.",
   },
@@ -174,7 +175,7 @@ function WelcomeContent() {
                 transition: 'all 0.15s',
               }}
             >
-              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{r.emoji}</span>
+              <Icon name={r.icon} size={22} style={{ color: 'var(--brand-orange)', flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--brand-navy)', margin: 0 }}>{r.label}</p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>{r.description}</p>
@@ -236,9 +237,9 @@ function WelcomeContent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: '1.25rem' }}>
           {[
-            { bracket: '13plus', label: "I'm 13 or older", emoji: '🎓', desc: 'You can start using BrainScribe right away.' },
-            { bracket: 'under13', label: "I'm under 13", emoji: '📝', desc: "We'll need a quick OK from your parent or guardian." },
-          ].map(({ bracket, label, emoji, desc }) => (
+            { bracket: '13plus', label: "I'm 13 or older", icon: 'cap', desc: 'You can start using BrainScribe right away.' },
+            { bracket: 'under13', label: "I'm under 13", icon: 'doc', desc: "We'll need a quick OK from your parent or guardian." },
+          ].map(({ bracket, label, icon, desc }) => (
             <button
               key={bracket}
               onClick={() => handleAge(bracket)}
@@ -257,7 +258,7 @@ function WelcomeContent() {
                 transition: 'all 0.15s',
               }}
             >
-              <span style={{ fontSize: '1.75rem', flexShrink: 0 }}>{emoji}</span>
+              <Icon name={icon} size={28} style={{ color: 'var(--brand-orange)', flexShrink: 0 }} />
               <div>
                 <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--brand-navy)', margin: 0 }}>{label}</p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>{desc}</p>
@@ -301,10 +302,9 @@ function WelcomeContent() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '1.75rem',
             margin: '0 auto 1rem',
           }}>
-            📬
+            <Icon name="mail" size={28} style={{ color: 'var(--accent)' }} />
           </div>
           <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
             Let's get your parent's OK

@@ -1,5 +1,7 @@
 'use client'
 
+import Icon from '@/components/Icon'
+
 // ─────────────────────────────────────────────────────────────
 // WritingProfileCard
 // Renders the writing_profile JSONB from a completed session.
@@ -43,7 +45,7 @@ export default function WritingProfileCard({ profile, sessionComplete, studentNa
     return (
       <div className="rounded-xl p-8 flex flex-col items-center text-center space-y-3"
         style={{ border: '1.5px dashed var(--border-strong)' }}>
-        <span className="text-3xl">📝</span>
+        <Icon name="doc" size={32} style={{ color: 'var(--text-subtle)' }} />
         <p className="font-semibold" style={{ color: 'var(--text-strong)' }}>
           {studentName ? `${studentName}'s Writing Profile` : 'Writing Profile'}
         </p>
@@ -59,7 +61,7 @@ export default function WritingProfileCard({ profile, sessionComplete, studentNa
     return (
       <div className="rounded-xl p-8 flex flex-col items-center text-center space-y-3"
         style={{ border: '1.5px dashed var(--border-accent)' }}>
-        <span className="text-3xl animate-pulse">🔍</span>
+        <Icon name="search" size={32} className="animate-pulse" style={{ color: 'var(--accent)' }} />
         <p className="font-semibold" style={{ color: 'var(--text-strong)' }}>
           Generating writing profile…
         </p>
@@ -88,15 +90,15 @@ export default function WritingProfileCard({ profile, sessionComplete, studentNa
       {(profile.voice || profile.vocabulary) && (
         <div className="flex flex-wrap gap-2">
           {profile.voice && (
-            <span className="text-xs font-semibold rounded-full px-3 py-1.5"
+            <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
               style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
-              ✍️ {profile.voice}
+              <Icon name="pencil" size={12} /> {profile.voice}
             </span>
           )}
           {profile.vocabulary && (
-            <span className="text-xs font-semibold rounded-full px-3 py-1.5"
+            <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
               style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
-              📚 Vocab: {profile.vocabulary}
+              <Icon name="book" size={12} /> Vocab: {profile.vocabulary}
             </span>
           )}
         </div>

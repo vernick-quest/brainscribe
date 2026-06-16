@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import ConsentForm from './ConsentForm'
+import Icon from '@/components/Icon'
 
 export const metadata = { title: "Approve your child's account — BrainScribe" }
 
@@ -163,8 +164,8 @@ function ConsentError({ message, linkLabel, linkHref, isSuccess }) {
         border: '1px solid var(--border-default)',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>
-          {isSuccess ? '✓' : '⚠'}
+        <div style={{ fontSize: '2.5rem', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+          {isSuccess ? '✓' : <Icon name="alert" size={36} style={{ color: 'var(--status-error)' }} />}
         </div>
         <p style={{
           fontSize: '0.95rem',

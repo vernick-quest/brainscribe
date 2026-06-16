@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import PendingActions from './PendingActions'
+import Icon from '@/components/Icon'
 
 export const metadata = { title: 'Waiting for approval — BrainScribe' }
 
@@ -84,10 +85,9 @@ export default async function CoppaPendingPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '2rem',
           margin: '0 auto 1.5rem',
         }}>
-          📬
+          <Icon name="mail" size={32} style={{ color: 'var(--accent)' }} />
         </div>
 
         <h1 style={{
@@ -126,11 +126,15 @@ export default async function CoppaPendingPage() {
                   color: daysLeft <= 2 ? 'var(--status-error)' : 'var(--text-body)',
                   fontWeight: 600,
                   margin: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  justifyContent: 'center',
                 }}>
                   {daysLeft === 0
-                    ? '⚠ Expires today — ask your parent to check their email!'
+                    ? <><Icon name="alert" size={14} style={{ color: 'var(--status-error)' }} /> Expires today — ask your parent to check their email!</>
                     : daysLeft === 1
-                    ? '⚠ 1 day left until this request expires'
+                    ? <><Icon name="alert" size={14} style={{ color: 'var(--status-error)' }} /> 1 day left until this request expires</>
                     : `${daysLeft} days left to approve (by ${expiryDate})`}
                 </p>
                 {daysLeft <= 7 && (

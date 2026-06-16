@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Icon from '@/components/Icon'
 
 export default function InviteParentForm() {
   const [email, setEmail] = useState('')
@@ -52,7 +53,7 @@ export default function InviteParentForm() {
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-strong)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
       >
-        <span className="text-xl">👪</span>
+        <Icon name="users" size={20} style={{ color: 'var(--accent)' }} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Invite a parent</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -70,7 +71,7 @@ export default function InviteParentForm() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">👪</span>
+          <Icon name="users" size={18} style={{ color: 'var(--accent)' }} />
           <p className="font-semibold text-sm" style={{ color: 'var(--text-strong)' }}>Invite a parent</p>
         </div>
         <button

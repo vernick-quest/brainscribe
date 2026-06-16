@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
+import Icon from '@/components/Icon'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -199,7 +200,7 @@ function ErrorPage({ message, linkLabel, linkHref }) {
         border: '1px solid var(--border-default)',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>⚠</div>
+        <div style={{ marginBottom: '1rem' }}><Icon name="alert" size={36} style={{ color: 'var(--status-error)' }} /></div>
         <p style={{
           fontSize: '0.95rem',
           lineHeight: 1.7,

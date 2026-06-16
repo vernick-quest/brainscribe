@@ -6,6 +6,7 @@ import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import Navbar from '@/components/Navbar'
+import Icon from '@/components/Icon'
 import { getImpersonation } from '@/lib/impersonation'
 
 export default async function DashboardPage() {
@@ -76,7 +77,7 @@ export default async function DashboardPage() {
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>Hey, {firstName}! 👋</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>Hey, {firstName}!</h1>
           <p className="mt-1" style={{ color: 'var(--text-muted)', font: 'var(--type-lead)' }}>What are we writing today? Add your assignment, pick the coach who fits it best, and we'll take it from there.</p>
         </div>
 
@@ -89,7 +90,7 @@ export default async function DashboardPage() {
             <a href={practiceSession.status === 'complete' ? `/transcript/${practiceSession.id}` : `/assignment/${practiceSession.id}`}
               className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
               style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
-              <span className="text-xl leading-none">✎</span>
+              <Icon name="pencil" size={18} style={{ color: 'var(--accent)' }} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Your practice paragraph</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>The warm-up you wrote with Owen</p>
@@ -100,7 +101,7 @@ export default async function DashboardPage() {
             <a href="/onboarding"
               className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
               style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
-              <span className="text-xl leading-none">✎</span>
+              <Icon name="pencil" size={18} style={{ color: 'var(--accent)' }} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>New here? Try a quick practice</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Write one short paragraph with Owen — about 10 minutes</p>

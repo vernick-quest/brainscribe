@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PERSONAS, PersonaAvatar, getPersona } from '@/lib/personas'
 import { useCoachVoice } from '@/lib/useCoachVoice'
+import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
 
@@ -161,7 +162,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                       }}
                       onMouseEnter={e => { if (!isSel) e.currentTarget.style.borderColor = 'var(--border-strong)' }}
                       onMouseLeave={e => { if (!isSel) e.currentTarget.style.borderColor = 'var(--border-default)' }}>
-                      <span className="text-2xl leading-none block mb-2">{p.emoji}</span>
+                      <Icon name={p.icon} size={24} className="mb-2" style={{ color: 'var(--accent)' }} />
                       <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{p.text}</p>
                     </button>
                   )

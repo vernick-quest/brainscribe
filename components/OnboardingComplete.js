@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { useCoachVoice } from '@/lib/useCoachVoice'
+import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
 
@@ -37,7 +38,7 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
           style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
 
           <div className="flex items-center gap-2">
-            <span className="text-2xl leading-none">🎉</span>
+            <Icon name="sparkles" size={22} style={{ color: 'var(--status-success)' }} />
             <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
               You wrote your first paragraph
             </p>

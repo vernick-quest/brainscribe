@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Icon from '@/components/Icon'
 
 // Shown when someone opens a parent/teacher invite but hasn't asserted their age
 // yet. Parent/teacher accounts require 13+; an under-13 can't accept the invite
@@ -37,7 +38,7 @@ export default function InviteAgeGate({ token, role }) {
 
         {tooYoung ? (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2.25rem', marginBottom: '0.75rem' }}>🔒</div>
+            <div style={{ marginBottom: '0.75rem' }}><Icon name="lock" size={32} style={{ color: 'var(--text-muted)' }} /></div>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.75rem' }}>
               {roleLabel === 'teacher' ? 'Teacher' : 'Parent'} accounts must be 13 or older
             </h1>
@@ -61,12 +62,12 @@ export default function InviteAgeGate({ token, role }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {[
-                { bracket: '13plus', label: "I'm 13 or older", emoji: '🎓' },
-                { bracket: 'under13', label: "I'm under 13", emoji: '📝' },
-              ].map(({ bracket, label, emoji }) => (
+                { bracket: '13plus', label: "I'm 13 or older", icon: 'cap' },
+                { bracket: 'under13', label: "I'm under 13", icon: 'doc' },
+              ].map(({ bracket, label, icon }) => (
                 <button key={bracket} onClick={() => pick(bracket)} disabled={loading}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '1.25rem', borderRadius: 14, border: '2px solid var(--border-strong)', backgroundColor: 'var(--surface-card)', cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: loading ? 0.6 : 1 }}>
-                  <span style={{ fontSize: '1.75rem', flexShrink: 0 }}>{emoji}</span>
+                  <Icon name={icon} size={28} style={{ color: 'var(--brand-orange)', flexShrink: 0 }} />
                   <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--brand-navy)', margin: 0 }}>{label}</p>
                 </button>
               ))}

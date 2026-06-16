@@ -6,6 +6,7 @@ import YourWritingCard from '@/components/YourWritingCard'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
+import Icon from '@/components/Icon'
 
 
 function formatDate(str) {
@@ -211,8 +212,8 @@ function NotificationBell({ notifications }) {
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
-                  <span className="text-base shrink-0 mt-0.5">
-                    {n.type === 'assignment_complete' ? '✓' : '📋'}
+                  <span className="text-base shrink-0 mt-0.5 inline-flex">
+                    {n.type === 'assignment_complete' ? '✓' : <Icon name="clipboard" size={16} style={{ color: 'var(--text-muted)' }} />}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>{n.message}</p>
@@ -233,7 +234,7 @@ function EmptyState() {
   return (
     <div className="rounded-2xl p-10 flex flex-col items-center text-center space-y-3"
       style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
-      <span className="text-4xl">📋</span>
+      <Icon name="clipboard" size={36} style={{ color: 'var(--text-subtle)' }} />
       <div className="space-y-1">
         <p className="font-semibold text-lg" style={{ color: 'var(--text-strong)' }}>No assignments yet</p>
         <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
@@ -268,7 +269,7 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
         {/* Greeting */}
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
-            Hey, {firstName}! 👋
+            Hey, {firstName}!
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             {students.length === 0

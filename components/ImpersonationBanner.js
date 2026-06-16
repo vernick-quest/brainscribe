@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import Icon from '@/components/Icon'
 
 export default function ImpersonationBanner({ name, role }) {
   const router = useRouter()
@@ -20,7 +21,7 @@ export default function ImpersonationBanner({ name, role }) {
     <div className="sticky top-0 z-50 flex items-center justify-between gap-4 px-5 py-2.5"
       style={{ backgroundColor: '#92400E', color: 'white' }}>
       <div className="flex items-center gap-2 text-sm">
-        <span>👁</span>
+        <Icon name="eye" size={14} />
         <span>
           Viewing as <strong>{name ?? 'Unknown'}</strong>
           {role && <span className="ml-1 opacity-75">({roleLabel})</span>}
