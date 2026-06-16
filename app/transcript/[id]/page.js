@@ -1,27 +1,36 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { getImpersonation } from '@/lib/impersonation'
 import { redirect } from 'next/navigation'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import CopyButton from '@/components/CopyButton'
 import Navbar from '@/components/Navbar'
+import Icon from '@/components/Icon'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 
-export default async function TranscriptPage({ params }) {
+export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
+  const sp = await searchParams
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, full_name')
-    .eq('id', user.id)
-    .single()
+  // Honor admin "remote in": read the impersonated student's data (RLS would block
+  // the admin) and route/label by their role.
+  const { data: adminProfile } = await supabase
+    .from('profiles').select('role, full_name').eq('id', user.id).single()
+  const imp = await getImpersonation(adminProfile)
+  const effectiveUserId = imp?.userId ?? user.id
+  const db = imp ? createServiceClient() : supabase
 
-  // RLS enforces access — student owns, or watcher via relationship/assignment_teachers
-  const { data: session } = await supabase
+  const profile = imp
+    ? (await db.from('profiles').select('role, full_name').eq('id', effectiveUserId).single()).data
+    : adminProfile
+
+  const { data: session } = await db
     .from('sessions')
     .select('*, profiles(full_name)')
     .eq('id', id)
@@ -32,23 +41,21 @@ export default async function TranscriptPage({ params }) {
     redirect(dest)
   }
 
-  const { data: paragraphs } = await supabase
-    .from('paragraphs')
-    .select('*')
-    .eq('session_id', id)
-    .order('position')
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }] = await Promise.all([
+    db.from('paragraphs').select('*').eq('session_id', id).order('position'),
+    db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
+    db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
+  ])
 
-  const { data: scaffold } = await supabase
-    .from('paragraph_scaffolds')
-    .select('components')
-    .eq('session_id', id)
-    .single()
-
-  const { data: messages } = await supabase
-    .from('messages')
-    .select('role, content, created_at')
-    .eq('session_id', id)
-    .order('created_at')
+  // FTUE finale: landing on the practice transcript is the end of the tutorial.
+  // Mark onboarding done for the real student (never during an admin remote-in).
+  const onboardingFinish = sp?.onboarding === '1' && session.is_onboarding === true
+  if (onboardingFinish && !imp) {
+    await createServiceClient()
+      .from('profiles')
+      .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
+      .eq('id', effectiveUserId)
+  }
 
   // Final content lives in paragraphs for prose, but in the scaffold's confirmed
   // components for non-prose forms (e.g. a haiku's lines). Fall back to the scaffold.
@@ -72,6 +79,24 @@ export default async function TranscriptPage({ params }) {
       <Navbar user={user} profile={profile} />
 
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+
+        {/* FTUE finale — the practice transcript is the end of the tutorial */}
+        {onboardingFinish && (
+          <section className="rounded-2xl p-5 flex items-start gap-3"
+            style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
+            <Icon name="sparkles" size={22} style={{ color: 'var(--status-success)' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>That's your first paragraph!</p>
+              <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                Here's the whole thing in your own words — plus the conversation that built it. When you're ready, head to your dashboard and start something real.
+              </p>
+              <a href="/dashboard" className="inline-flex items-center gap-1 mt-3 text-sm font-bold rounded-full px-4 py-2 text-white"
+                style={{ backgroundColor: 'var(--accent)' }}>
+                Go to my dashboard →
+              </a>
+            </div>
+          </section>
+        )}
 
         {/* Back + title */}
         <div className="flex items-start justify-between gap-4">

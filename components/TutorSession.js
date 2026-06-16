@@ -1964,10 +1964,10 @@ export default function TutorSession({
               <div className="flex-1 min-w-0">
                 {onboarding ? (
                   <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>You wrote your first paragraph!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the whole idea — your words, talked into shape.</p>
-                    <a href={`/onboarding/complete?session=${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      Continue →
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your essay is complete!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Let's take a look at the whole thing — that's the end of the tour.</p>
+                    <a href={`/transcript/${session.id}?onboarding=1`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      See your finished essay →
                     </a>
                   </>
                 ) : (
