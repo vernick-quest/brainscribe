@@ -6,7 +6,6 @@ import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import Navbar from '@/components/Navbar'
-import Icon from '@/components/Icon'
 import { getImpersonation } from '@/lib/impersonation'
 
 export default async function DashboardPage() {
@@ -63,10 +62,6 @@ export default async function DashboardPage() {
     .order('updated_at', { ascending: false })
     .limit(50)
 
-  // Keep the practice run out of the real assignment list; surface it as its own card.
-  const realSessions   = (sessions ?? []).filter(s => !s.is_onboarding)
-  const practiceSession = (sessions ?? []).find(s => s.is_onboarding) ?? null
-
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -84,34 +79,9 @@ export default async function DashboardPage() {
         {/* Hide new session form when impersonating — admin shouldn't create sessions for other users */}
         {!imp && <NewSessionForm />}
 
-        {/* Practice (onboarding) card: link to the warm-up if they did it, or offer it if they skipped */}
-        {!imp && (
-          practiceSession ? (
-            <a href={practiceSession.status === 'complete' ? `/transcript/${practiceSession.id}` : `/assignment/${practiceSession.id}`}
-              className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
-              style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
-              <Icon name="pencil" size={18} style={{ color: 'var(--accent)' }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Your practice paragraph</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>The warm-up you wrote with Owen</p>
-              </div>
-              <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--accent)' }}>View →</span>
-            </a>
-          ) : (
-            <a href="/onboarding"
-              className="flex items-center gap-3 rounded-2xl px-4 py-3 transition"
-              style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
-              <Icon name="pencil" size={18} style={{ color: 'var(--accent)' }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>New here? Try a quick practice</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Write one short paragraph with Owen — about 10 minutes</p>
-              </div>
-              <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--accent)' }}>Start →</span>
-            </a>
-          )
-        )}
-
-        <SessionsList sessions={realSessions} />
+        {/* The practice run lives in the assignments list like any other piece —
+            their first completed assignment. */}
+        <SessionsList sessions={sessions ?? []} />
 
       </main>
     </div>

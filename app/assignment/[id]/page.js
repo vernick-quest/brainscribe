@@ -13,7 +13,7 @@ export default async function AssignmentPage({ params }) {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('full_name, role').eq('id', user.id).single()
+    .from('profiles').select('full_name, role, onboarding_complete').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
 
@@ -24,7 +24,7 @@ export default async function AssignmentPage({ params }) {
   const [{ data: session }, { data: profile }] = await Promise.all([
     service.from('sessions').select('*').eq('id', id).single(),
     imp
-      ? service.from('profiles').select('full_name, role').eq('id', effectiveUserId).single()
+      ? service.from('profiles').select('full_name, role, onboarding_complete').eq('id', effectiveUserId).single()
       : Promise.resolve({ data: adminProfile }),
   ])
 
@@ -122,11 +122,14 @@ export default async function AssignmentPage({ params }) {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
-  // Keep practice (onboarding) runs out of the real assignment sidebar — except the
-  // current one, so a practice session in progress still lists itself.
+  // The practice run is a normal assignment now — list it in the sidebar like any other.
   const sidebarSessions = (allSessions ?? [])
-    .filter(s => !s.is_onboarding || s.id === id)
     .map(s => ({ ...s, teacherName: teacherBySession[s.id] ?? null }))
+
+  // Onboarding "practice mode" (banner, no sidebar, exit control) applies only while
+  // the student is still doing the tour. Once they've finished onboarding, a practice
+  // session opens like any other completed assignment.
+  const onboardingMode = session.is_onboarding === true && !profile?.onboarding_complete
 
   return (
     <TutorSession
@@ -139,7 +142,7 @@ export default async function AssignmentPage({ params }) {
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       user={user}
       profile={profile}
-      onboarding={session.is_onboarding === true}
+      onboarding={onboardingMode}
     />
   )
 }
