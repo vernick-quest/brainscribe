@@ -1966,7 +1966,7 @@ export default function TutorSession({
                   <>
                     <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>You wrote your first paragraph!</p>
                     <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the whole idea — your words, talked into shape.</p>
-                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                    <a href={`/onboarding/complete?session=${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
                       Continue →
                     </a>
                   </>
