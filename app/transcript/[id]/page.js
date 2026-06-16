@@ -88,11 +88,11 @@ export default async function TranscriptPage({ params, searchParams }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>That's your first paragraph!</p>
               <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--text-muted)' }}>
-                Here's the whole thing in your own words — plus the conversation that built it. When you're ready, head to your dashboard and start something real.
+                Here's the whole thing in your own words — plus the conversation that built it.
               </p>
-              <a href="/dashboard" className="inline-flex items-center gap-1 mt-3 text-sm font-bold rounded-full px-4 py-2 text-white"
+              <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-3 text-sm font-bold rounded-full px-4 py-2 text-white"
                 style={{ backgroundColor: 'var(--accent)' }}>
-                Go to my dashboard →
+                Done — wrap up →
               </a>
             </div>
           </section>
