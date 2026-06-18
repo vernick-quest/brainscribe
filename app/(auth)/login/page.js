@@ -160,16 +160,6 @@ function LoginContent() {
         </div>
       </div>
 
-      {/* Footer — legal links */}
-      <div className="mt-10 flex items-center gap-4 text-xs" style={{ color: 'var(--text-subtle)' }}>
-        <a href="/blog" className="hover:underline" style={{ color: 'var(--text-muted)' }}>Blog</a>
-        <span>·</span>
-        <a href="/privacy" className="hover:underline" style={{ color: 'var(--text-muted)' }}>Privacy</a>
-        <span>·</span>
-        <a href="/terms" className="hover:underline" style={{ color: 'var(--text-muted)' }}>Terms</a>
-        <span>·</span>
-        <span>© 2026 BrainScribe</span>
-      </div>
     </div>
   )
 }
