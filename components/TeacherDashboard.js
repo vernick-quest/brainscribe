@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Navbar from '@/components/Navbar'
 import YourWritingCard from '@/components/YourWritingCard'
-import { getPersona, PersonaAvatar } from '@/lib/personas'
+import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import Icon from '@/components/Icon'
@@ -25,42 +25,6 @@ function initials(name) {
   return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-// ── Student chip ──────────────────────────────────────────────
-function StudentChip({ student, count, selected, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-2.5 rounded-2xl px-4 py-2.5 transition font-medium text-sm"
-      style={{
-        backgroundColor: selected ? 'var(--primary)' : 'var(--surface-card)',
-        color: selected ? 'white' : 'var(--text-strong)',
-        border: `1.5px solid ${selected ? 'var(--primary)' : 'var(--border-default)'}`,
-        boxShadow: selected ? 'var(--shadow-sm)' : 'none',
-      }}
-    >
-      <span
-        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-        style={{
-          backgroundColor: selected ? 'rgba(255,255,255,0.18)' : 'var(--primary-soft)',
-          color: selected ? 'white' : 'var(--primary)',
-        }}
-      >
-        {initials(student.full_name)}
-      </span>
-      {student.full_name?.split(' ')[0] ?? student.email}
-      <span
-        className="text-xs rounded-full px-1.5 py-0.5 font-semibold ml-0.5"
-        style={{
-          backgroundColor: selected ? 'rgba(255,255,255,0.2)' : 'var(--surface-muted)',
-          color: selected ? 'white' : 'var(--text-muted)',
-        }}
-      >
-        {count}
-      </span>
-    </button>
-  )
-}
-
 // ── Assignment row ────────────────────────────────────────────
 function AssignmentRow({ session }) {
   const isDone = session.status === 'complete'
@@ -72,11 +36,7 @@ function AssignmentRow({ session }) {
     <a
       href={`/assignment/${session.id}`}
       className="flex items-center gap-4 rounded-2xl px-5 py-4 transition group"
-      style={{
-        backgroundColor: 'var(--surface-card)',
-        border: '1px solid var(--border-default)',
-        boxShadow: 'var(--shadow-xs)',
-      }}
+      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.borderColor = 'var(--border-strong)' }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-xs)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
     >
@@ -129,7 +89,6 @@ function NotificationBell({ notifications }) {
 
   const unread = items.filter(n => !n.read).length
 
-  // Close on outside click
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
@@ -139,7 +98,6 @@ function NotificationBell({ notifications }) {
   async function openPanel() {
     setOpen(o => !o)
     if (!open && unread > 0) {
-      // Optimistically mark all as read
       setItems(prev => prev.map(n => ({ ...n, read: true })))
       await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
     }
@@ -150,11 +108,7 @@ function NotificationBell({ notifications }) {
       <button
         onClick={openPanel}
         className="relative flex items-center justify-center w-9 h-9 rounded-xl transition"
-        style={{
-          backgroundColor: open ? 'var(--surface-muted)' : 'transparent',
-          color: 'var(--text-muted)',
-          border: '1px solid transparent',
-        }}
+        style={{ backgroundColor: open ? 'var(--surface-muted)' : 'transparent', color: 'var(--text-muted)', border: '1px solid transparent' }}
         onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
         onMouseLeave={e => { if (!open) e.currentTarget.style.backgroundColor = 'transparent' }}
         title="Notifications"
@@ -176,15 +130,9 @@ function NotificationBell({ notifications }) {
       {open && (
         <div
           className="absolute right-0 top-11 z-50 rounded-2xl overflow-hidden"
-          style={{
-            width: 320,
-            backgroundColor: 'var(--surface-card)',
-            border: '1px solid var(--border-default)',
-            boxShadow: 'var(--shadow-lg)',
-          }}
+          style={{ width: 320, backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-lg)' }}
         >
-          <div className="px-4 py-3 flex items-center justify-between"
-            style={{ borderBottom: '1px solid var(--border-default)' }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-default)' }}>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>Notifications</p>
             {items.length > 0 && (
               <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>{items.length} total</span>
@@ -202,13 +150,7 @@ function NotificationBell({ notifications }) {
                   key={n.id}
                   href={n.session_id ? `/assignment/${n.session_id}` : '#'}
                   className="flex gap-3 px-4 py-3 transition"
-                  style={{
-                    borderBottom: '1px solid var(--border-default)',
-                    backgroundColor: 'transparent',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    textDecoration: 'none',
-                  }}
+                  style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'transparent', display: 'flex', alignItems: 'flex-start', textDecoration: 'none' }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
@@ -246,18 +188,68 @@ function EmptyState() {
   )
 }
 
+// ── Collapsible per-student block ─────────────────────────────
+function StudentBlock({ student, sessions, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const studentSessions = sessions
+    .filter(s => s.student_id === student.id)
+    .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
+  const inProgress = studentSessions.filter(s => s.status !== 'complete').length
+
+  return (
+    <section className="rounded-2xl overflow-hidden"
+      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+
+      {/* Header — click to expand */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full px-5 py-4 flex items-center gap-4 text-left transition"
+        style={{ backgroundColor: 'var(--bg-page-alt)', borderBottom: open ? '1px solid var(--border-default)' : 'none' }}
+      >
+        <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
+          style={{ backgroundColor: 'var(--primary)' }}>
+          {initials(student.full_name)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold truncate" style={{ color: 'var(--text-strong)' }}>{student.full_name ?? 'Student'}</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {studentSessions.length} assignment{studentSessions.length !== 1 ? 's' : ''}
+            {inProgress > 0 && ` · ${inProgress} in progress`}
+          </p>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round" className="shrink-0"
+          style={{ color: 'var(--text-subtle)', transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none' }}>
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+
+      {/* Body — assignments + profile link */}
+      {open && (
+        <div className="p-5 space-y-3">
+          {studentSessions.length === 0 ? (
+            <p className="text-sm italic text-center py-6" style={{ color: 'var(--text-subtle)' }}>
+              No assignments yet.
+            </p>
+          ) : (
+            studentSessions.map(session => <AssignmentRow key={session.id} session={session} />)
+          )}
+          <a href={`/profile/${student.id}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 transition"
+            style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+            View writing profile →
+          </a>
+        </div>
+      )}
+    </section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────
 export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [] }) {
-  const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id ?? null)
-
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
-
-  const studentSessions = sessions.filter(s => s.student_id === selectedStudentId)
-    .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
-
-  const sessionCountByStudent = Object.fromEntries(
-    students.map(st => [st.id, sessions.filter(s => s.student_id === st.id).length])
-  )
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -266,18 +258,23 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
 
-        {/* Greeting */}
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
-            Hey, {firstName}!
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            {students.length === 0
-              ? 'No students linked yet.'
-              : students.length === 1
-                ? `Reviewing ${students[0].full_name?.split(' ')[0] ?? 'a student'}'s work.`
-                : `Reviewing work from ${students.length} students.`}
-          </p>
+        {/* Greeting + notifications */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
+              Hey, {firstName}!
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {students.length === 0
+                ? 'No students linked yet.'
+                : students.length === 1
+                  ? `Reviewing ${students[0].full_name?.split(' ')[0] ?? 'a student'}'s work.`
+                  : `Reviewing work from ${students.length} students.`}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <NotificationBell notifications={notifications} />
+          </div>
         </div>
 
         {/* Your own writing — teachers can use the coaches too */}
@@ -286,66 +283,16 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
         {/* No students */}
         {students.length === 0 && <EmptyState />}
 
-        {/* Students + assignments */}
-        {students.length > 0 && (
-          <div className="space-y-5">
+        {/* One collapsible block per student (auto-open if there's only one) */}
+        {students.map(student => (
+          <StudentBlock
+            key={student.id}
+            student={student}
+            sessions={sessions}
+            defaultOpen={students.length === 1}
+          />
+        ))}
 
-            {/* Student selector */}
-            {students.length > 1 && (
-              <div className="flex flex-wrap gap-2">
-                {students.map(st => (
-                  <StudentChip
-                    key={st.id}
-                    student={st}
-                    count={sessionCountByStudent[st.id] ?? 0}
-                    selected={selectedStudentId === st.id}
-                    onClick={() => setSelectedStudentId(st.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Student card */}
-            {selectedStudentId && (() => {
-              const student = students.find(s => s.id === selectedStudentId)
-              return (
-                <div className="rounded-2xl overflow-hidden"
-                  style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
-
-                  {/* Student header */}
-                  <div className="px-5 py-4 flex items-center gap-4"
-                    style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--bg-page-alt)' }}>
-                    <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
-                      style={{ backgroundColor: 'var(--primary)' }}>
-                      {initials(student?.full_name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold" style={{ color: 'var(--text-strong)' }}>
-                        {student?.full_name ?? 'Student'}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {studentSessions.length} assignment{studentSessions.length !== 1 ? 's' : ''} shared with you
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Assignments */}
-                  <div className="p-5 space-y-3">
-                    {studentSessions.length === 0 ? (
-                      <p className="text-sm italic text-center py-6" style={{ color: 'var(--text-subtle)' }}>
-                        No assignments yet.
-                      </p>
-                    ) : (
-                      studentSessions.map(session => (
-                        <AssignmentRow key={session.id} session={session} />
-                      ))
-                    )}
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        )}
       </main>
     </div>
   )

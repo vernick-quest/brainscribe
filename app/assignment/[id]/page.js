@@ -96,35 +96,14 @@ export default async function AssignmentPage({ params }) {
     .select('teacher_id, profiles(full_name)')
     .eq('session_id', id)
 
-  // Sidebar: student's own sessions
-  const [{ data: allSessions }, { data: scaffoldData }] = await Promise.all([
-    service
-      .from('sessions')
-      .select('id, assignment_text, persona, created_at, updated_at, status, subject, subject_custom_label, is_onboarding')
-      .eq('student_id', session.student_id)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    service
-      .from('paragraph_scaffolds')
-      .select('*')
-      .eq('session_id', id)
-      .single(),
-  ])
-
-  // Build teacher name map for sidebar — only the current session has resolved names
-  // (joining profiles for other sessions is blocked by RLS on the user client)
-  const teacherBySession = {}
-  for (const row of (assignmentTeachers ?? [])) {
-    if (!teacherBySession[id]) {
-      teacherBySession[id] = row.profiles?.full_name ?? null
-    }
-  }
+  // Scaffold for the active paragraph.
+  const { data: scaffoldData } = await service
+    .from('paragraph_scaffolds')
+    .select('*')
+    .eq('session_id', id)
+    .single()
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
-
-  // The practice run is a normal assignment now — list it in the sidebar like any other.
-  const sidebarSessions = (allSessions ?? [])
-    .map(s => ({ ...s, teacherName: teacherBySession[s.id] ?? null }))
 
   // Onboarding "practice mode" (banner, no sidebar, exit control) applies only while
   // the student is still doing the tour. Once they've finished onboarding, a practice
@@ -138,7 +117,6 @@ export default async function AssignmentPage({ params }) {
       initialParagraphs={paragraphs ?? []}
       initialScaffold={scaffoldData ?? null}
       studentName={firstName}
-      allSessions={sidebarSessions}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       user={user}
       profile={profile}

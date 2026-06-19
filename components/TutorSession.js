@@ -376,7 +376,6 @@ export default function TutorSession({
   initialParagraphs = [],
   initialScaffold = null,
   studentName = 'there',
-  allSessions = [],
   initialTeachers = [],
   user = null,
   profile = null,
@@ -401,11 +400,6 @@ export default function TutorSession({
   const [replayingIndex, setReplayingIndex] = useState(null)
   const [sessionComplete, setSessionComplete] = useState(session.status === 'complete')
   const [sectionJustCompleted, setSectionJustCompleted] = useState(null)
-  const [sidebarSessions, setSidebarSessions] = useState(allSessions)
-  const [sidebarMenuId, setSidebarMenuId] = useState(null)
-  const [sidebarRenamingId, setSidebarRenamingId] = useState(null)
-  const [sidebarRenameValue, setSidebarRenameValue] = useState('')
-  const [sidebarConfirmDeleteId, setSidebarConfirmDeleteId] = useState(null)
   const [expandedParas, setExpandedParas]   = useState({})
   const [assembledEssay, setAssembledEssay] = useState(null)
   const [isAssemblingEssay, setIsAssemblingEssay] = useState(false)
@@ -420,10 +414,8 @@ export default function TutorSession({
   const [savingSubject, setSavingSubject]           = useState(false)
   const [teachers, setTeachers]                     = useState(initialTeachers)
   const [activePanel, setActivePanel]               = useState(null) // null | 'subject' | 'teacher'
-  const [sidebarOpen, setSidebarOpen]               = useState(false)
   const [activeTab, setActiveTab]                   = useState('chat') // 'chat' | 'essay'
 
-  const sidebarRenameRef  = useRef(null)
   const chatBottomRef     = useRef(null)
   const titleInputRef     = useRef(null)
   const hasGreeted        = useRef(false)
@@ -488,10 +480,6 @@ export default function TutorSession({
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus()
   }, [editingTitle])
-
-  useEffect(() => {
-    if (sidebarRenamingId) sidebarRenameRef.current?.focus()
-  }, [sidebarRenamingId])
 
   useEffect(() => {
     if (hasGreeted.current || greetedSessions.has(session.id)) return
@@ -884,17 +872,6 @@ export default function TutorSession({
     }
   }
 
-  function formatSidebarDate(dateStr) {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const yesterdayStart = new Date(todayStart - 86400000)
-    if (date >= todayStart) return 'Today'
-    if (date >= yesterdayStart) return 'Yesterday'
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
-
   async function saveSubject(value, customLabel) {
     setSavingSubject(true)
     await fetch(`/api/sessions/${session.id}`, {
@@ -906,30 +883,6 @@ export default function TutorSession({
     setSubjectCustomLabel(customLabel ?? '')
     setSavingSubject(false)
     setActivePanel(null)
-  }
-
-  async function sidebarDelete(id) {
-    setSidebarConfirmDeleteId(null)
-    await fetch(`/api/sessions/${id}`, { method: 'DELETE' })
-    const remaining = sidebarSessions.filter(s => s.id !== id)
-    setSidebarSessions(remaining)
-    if (id === session.id) {
-      const next = remaining[0]
-      router.push(next ? `/assignment/${next.id}` : '/dashboard')
-    }
-  }
-
-  async function sidebarRename(id) {
-    const title = sidebarRenameValue.trim()
-    setSidebarRenamingId(null)
-    if (!title) return
-    if (id === session.id) { setSessionTitle(title); setEditingTitle(false) }
-    setSidebarSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s))
-    fetch(`/api/sessions/${id}/title`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
-    }).catch(() => {})
   }
 
   async function saveTitle(newTitle) {
@@ -1312,201 +1265,8 @@ export default function TutorSession({
 
       <div className="flex flex-1 overflow-hidden min-h-0">
 
-      {/* ── Sidebar — intentionally hidden everywhere now. The assignments list
-          lives on the dashboard; the coach workspace stays uncluttered (coach +
-          draft only) and you return via the "My assignments" back-link in the bar.
-          (The block below is dead in the UI; left in place for a follow-up cleanup
-          pass so this large component changes minimally in one go.) ── */}
-      {/* Mobile backdrop */}
-      {!onboarding && sidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
-          onClick={() => setSidebarOpen(false)} />
-      )}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 flex flex-col
-        md:static md:z-auto md:translate-x-0
-        w-72 md:w-60 shrink-0
-        transition-transform duration-200
-        hidden
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `} style={{ backgroundColor: 'var(--bg-page-alt)', borderRight: '1px solid var(--border-default)' }}>
-        <div className="px-3 py-3 flex items-center gap-2">
-          {/* Non-students start a new piece from /write (the student dashboard
-              redirects them to their watch home); students use /dashboard. */}
-          <a href={(profile?.role === 'student' || !profile?.role) ? '/dashboard' : '/write'}
-            className="flex-1 flex items-center gap-2 text-left text-xs rounded-lg px-3 py-2 transition"
-            style={{ color: 'var(--text-muted)' }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            New assignment
-          </a>
-          {/* Close button — mobile only (44px tap target) */}
-          <button className="md:hidden w-11 h-11 -mr-2 flex items-center justify-center rounded-lg"
-            style={{ color: 'var(--text-subtle)' }}
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Close menu">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <p className="text-[10px] font-bold uppercase tracking-widest px-4 pb-1 shrink-0" style={{ color: 'var(--text-subtle)' }}>
-          Assignments
-        </p>
-
-        <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 flex flex-col">
-          <div className="flex-1 space-y-1">
-            {sidebarSessions.map(s => {
-              const meta = PERSONA_META[s.persona ?? 'owen']
-              const isActive = s.id === session.id
-              const rawTitle = isActive ? (sessionTitle ?? s.title) : s.title
-              const displayTitle = rawTitle || s.assignment_text.slice(0, 120)
-              const isRenaming = sidebarRenamingId === s.id
-
-              // For the active session use live state; for others use server data
-              const cardSubject = isActive ? currentSubject : (s.subject ?? 'unspecified')
-              const cardCustomLabel = isActive ? subjectCustomLabel : (s.subject_custom_label ?? '')
-              const cardTeacher = isActive
-                ? (teachers[0]?.name ?? null)
-                : (s.teacherName ?? null)
-
-              const subjectLabel = cardSubject === 'unspecified' ? null
-                : cardSubject === 'other' ? (cardCustomLabel || 'Other')
-                : (getSubject(cardSubject)?.label ?? null)
-
-              const mutedColor = isActive ? 'rgba(255,255,255,0.65)' : 'var(--text-subtle)'
-              const bodyColor  = isActive ? 'rgba(255,255,255,0.9)'  : 'var(--text-body)'
-
-              return (
-                <div key={s.id} className="relative group/item rounded-lg"
-                  style={{ backgroundColor: isActive ? 'var(--accent)' : 'transparent' }}>
-
-                  <button
-                    onClick={() => !isRenaming && sidebarMenuId !== s.id && router.push(`/assignment/${s.id}`)}
-                    className="w-full text-left px-3 pt-2.5 pb-2 pr-8 transition rounded-lg"
-                    style={{ color: isActive ? 'white' : 'var(--text-body)' }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.parentElement.style.backgroundColor = 'var(--surface-muted)' }}
-                    onMouseLeave={e => { if (!isActive) e.currentTarget.parentElement.style.backgroundColor = 'transparent' }}
-                  >
-                    {/* Line 1-2: title (2-line clamp) */}
-                    {isRenaming ? (
-                      <input
-                        ref={sidebarRenameRef}
-                        value={sidebarRenameValue}
-                        onChange={e => setSidebarRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') sidebarRename(s.id)
-                          if (e.key === 'Escape') setSidebarRenamingId(null)
-                        }}
-                        onBlur={() => sidebarRename(s.id)}
-                        onClick={e => e.stopPropagation()}
-                        className="w-full text-xs font-semibold rounded px-1 py-0 focus:outline-none border-b bg-transparent mb-1"
-                        style={{ borderColor: 'var(--border-strong)', color: 'var(--text-strong)' }}
-                        placeholder="New name…"
-                      />
-                    ) : (
-                      <p className="text-xs font-semibold leading-snug mb-1"
-                        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: bodyColor }}>
-                        {displayTitle}
-                      </p>
-                    )}
-
-                    {/* Line 3: subject */}
-                    {subjectLabel && (
-                      <p className="text-[10px] leading-tight mb-0.5 truncate" style={{ color: mutedColor }}>
-                        {subjectLabel}
-                      </p>
-                    )}
-
-                    {/* Line 4: teacher */}
-                    {cardTeacher && (
-                      <p className="text-[10px] leading-tight mb-0.5 truncate" style={{ color: mutedColor }}>
-                        {cardTeacher}
-                      </p>
-                    )}
-
-                    {/* Line 5: date (left) + coach icon+name (right) */}
-                    <div className="flex items-center justify-between mt-1 gap-2">
-                      <span className="text-[10px] shrink-0" style={{ color: mutedColor }} suppressHydrationWarning>
-                        {formatSidebarDate(s.updated_at ?? s.created_at)}
-                      </span>
-                      <PersonaAvatar personaId={s.persona} size={14} />
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={e => { e.stopPropagation(); setSidebarMenuId(prev => prev === s.id ? null : s.id) }}
-                    className="absolute top-2.5 right-2 w-5 h-5 flex items-center justify-center rounded transition opacity-0 group-hover/item:opacity-100"
-                    style={{ color: isActive ? 'rgba(255,255,255,0.7)' : 'var(--text-subtle)', opacity: sidebarMenuId === s.id ? 1 : undefined }}
-                    title="More options"
-                  >
-                    <svg viewBox="0 0 4 16" width="3" height="14" fill="currentColor">
-                      <circle cx="2" cy="2"  r="1.5" />
-                      <circle cx="2" cy="8"  r="1.5" />
-                      <circle cx="2" cy="14" r="1.5" />
-                    </svg>
-                  </button>
-
-                  {sidebarMenuId === s.id && (
-                    <div className="absolute right-1 top-8 z-50 rounded-xl py-1 w-36 overflow-hidden" style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-md)' }} onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={e => { e.stopPropagation(); setSidebarMenuId(null); setSidebarRenameValue(rawTitle ?? ''); setSidebarRenamingId(s.id) }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-orange-50 transition flex items-center gap-2"
-                        style={{ color: 'var(--text-body)' }}
-                      >
-                        <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5">
-                          <path d="M11.5 2.5l2 2-9 9H2.5v-2l9-9z" strokeLinejoin="round" />
-                        </svg>
-                        Rename
-                      </button>
-                      <div className="mx-3 border-t" style={{ borderColor: 'var(--border-default)' }} />
-                      <button
-                        onClick={e => { e.stopPropagation(); setSidebarMenuId(null); setSidebarConfirmDeleteId(s.id) }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 transition flex items-center gap-2 text-red-500"
-                      >
-                        <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5">
-                          <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" strokeLinejoin="round" strokeLinecap="round" />
-                        </svg>
-                        Delete
-                      </button>
-                    </div>
-                  )}
-
-                  {sidebarConfirmDeleteId === s.id && (
-                    <div
-                      className="absolute right-1 top-8 z-50 rounded-xl shadow-xl border overflow-hidden"
-                      style={{ backgroundColor: 'var(--primary)', borderColor: 'var(--accent)', width: '172px' }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <div className="px-3 pt-3 pb-2">
-                        <p className="text-[11px] font-bold text-white mb-0.5">Delete assignment?</p>
-                        <p className="text-[10px] leading-snug" style={{ color: 'rgba(255,255,255,0.55)' }}>This can't be undone.</p>
-                      </div>
-                      <div className="flex border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-                        <button onClick={e => { e.stopPropagation(); setSidebarConfirmDeleteId(null) }}
-                          className="flex-1 py-2 text-[11px] font-semibold transition hover:bg-white/10" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          Cancel
-                        </button>
-                        <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.12)' }} />
-                        <button onClick={e => { e.stopPropagation(); sidebarDelete(s.id) }}
-                          className="flex-1 py-2 text-[11px] font-bold transition hover:bg-red-500/20 text-red-400">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-        </div>
-      </aside>
+      {/* Sidebar removed — the assignments list lives on the dashboard; you
+          return there via the "My assignments" back-link in the bar above. */}
 
       {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0">
