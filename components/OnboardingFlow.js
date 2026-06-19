@@ -1,12 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PERSONAS, PersonaAvatar, getPersona } from '@/lib/personas'
 import { useCoachVoice } from '@/lib/useCoachVoice'
 import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
+
+// The whole FTUE is 7 steps: 1 intro · 2-4 orientation · 5 pick a prompt ·
+// 6 write your paragraph (in the coach) · 7 see it + reflect (transcript).
+// Steps 1-5 live here; 6 is the practice banner; 7 is the transcript finale.
+const FTUE_TOTAL_STEPS = 7
+const FTUE_STEP_KEY = 'bs_ftue_step'
 
 // The three orientation moments. Each is one short spoken line + a simple visual.
 const MOMENTS = [
@@ -41,6 +47,26 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
+  const restored = useRef(false)
+
+  // Step number for the "Step X of 7" badge (students only).
+  const stepNumber = stage === 'intro' ? 1 : stage === 'orient' ? 2 + moment : stage === 'prompts' ? 5 : 1
+
+  // Restore tour progress once on mount, so leaving mid-tour resumes where you
+  // were rather than from the very first screen.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FTUE_STEP_KEY) || 'null')
+      if (saved?.stage) { setStage(saved.stage); if (typeof saved.moment === 'number') setMoment(saved.moment) }
+    } catch {}
+  }, [])
+
+  // Persist tour progress on each step — but skip the initial mount run so we
+  // don't clobber the value the restore effect is about to apply.
+  useEffect(() => {
+    if (!restored.current) { restored.current = true; return }
+    try { localStorage.setItem(FTUE_STEP_KEY, JSON.stringify({ stage, moment })) } catch {}
+  }, [stage, moment])
 
   const introLine = isWatcher
     ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along. But you can write with a coach yourself too, and either way it helps to see how this works. Let me give you the quick tour.`
@@ -59,6 +85,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   async function handleSkip() {
     stop()
+    try { localStorage.removeItem(FTUE_STEP_KEY) } catch {}
     try { await fetch('/api/onboarding/complete', { method: 'POST' }) } catch {}
     router.push(home)
   }
@@ -85,6 +112,8 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
         setCreating(false)
         return
       }
+      // Past the tour now — the practice session itself is the resume point.
+      try { localStorage.removeItem(FTUE_STEP_KEY) } catch {}
       router.push(`/assignment/${session.id}`)
     } catch {
       setError('Network error — please check your connection and try again.')
@@ -94,8 +123,15 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ backgroundColor: 'var(--bg-page)' }}>
-      {/* Subtle skip link — present but never promoted */}
-      <div className="flex justify-end px-5 py-4">
+      {/* Step badge (students only — watchers can opt out, so a 7-step counter
+          they won't finish would mislead) + subtle skip link */}
+      <div className="flex justify-between items-center px-5 py-4">
+        {!isWatcher ? (
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+            style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}>
+            Step {stepNumber} of {FTUE_TOTAL_STEPS}
+          </span>
+        ) : <span />}
         <button onClick={handleSkip}
           className="text-xs font-medium transition hover:underline"
           style={{ color: 'var(--text-subtle)' }}>

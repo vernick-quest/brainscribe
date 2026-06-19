@@ -1516,6 +1516,8 @@ export default function TutorSession({
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
             style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
             <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice session</span>
+            {/* FTUE step 6 of 7 — writing your paragraph */}
+            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 6 of 7</span>
             <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just to get the feel of it — nothing here is graded.</span>
             <button onClick={exitPractice}
               className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>

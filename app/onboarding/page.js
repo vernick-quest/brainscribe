@@ -13,7 +13,7 @@ export default async function OnboardingPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, coppa_consent_required, coppa_consent_given')
+    .select('role, full_name, coppa_consent_required, coppa_consent_given, onboarding_complete')
     .eq('id', user.id)
     .single()
 
@@ -22,6 +22,24 @@ export default async function OnboardingPage() {
 
   // Under-13 students must finish parental consent first.
   if (profile?.coppa_consent_required && !profile?.coppa_consent_given) redirect('/coppa/pending')
+
+  // RESUME: if a still-onboarding user already started a practice paragraph and
+  // left, drop them back INTO it instead of replaying the whole tour. (Practice
+  // mode hides the back-link and uses "Exit practice", so there's no redirect
+  // loop.) status defaults non-'complete' on insert, so filter in JS to be
+  // null-safe. Only for users who haven't finished onboarding — an onboarded
+  // user reaching /onboarding via "try practice" still sees the tour.
+  if (!profile?.onboarding_complete) {
+    const { data: practice } = await supabase
+      .from('sessions')
+      .select('id, status')
+      .eq('student_id', user.id)
+      .eq('is_onboarding', true)
+      .order('created_at', { ascending: false })
+      .limit(5)
+    const resumable = (practice ?? []).find(s => s.status !== 'complete')
+    if (resumable) redirect(`/assignment/${resumable.id}`)
+  }
 
   // Note: we deliberately DON'T redirect already-onboarded users away. The role
   // dashboards handle the one-time auto-redirect; reaching /onboarding directly

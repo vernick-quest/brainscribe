@@ -86,6 +86,8 @@ export default async function TranscriptPage({ params, searchParams }) {
             style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
             <Icon name="sparkles" size={22} style={{ color: 'var(--status-success)' }} />
             <div className="flex-1 min-w-0">
+              {/* FTUE step 7 of 7 — see your paragraph + reflect */}
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--status-success)' }}>Step 7 of 7</p>
               <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>That's your first paragraph!</p>
               <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--text-muted)' }}>
                 Here's the whole thing in your own words — plus the conversation that built it.
