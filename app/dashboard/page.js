@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
-import NewSessionForm from '@/components/NewSessionForm'
 import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
@@ -62,6 +61,10 @@ export default async function DashboardPage() {
     .order('updated_at', { ascending: false })
     .limit(50)
 
+  // Zero assignments ever → skip the empty list and drop them straight on the
+  // new-assignment page. (Not while impersonating — admin views the real state.)
+  if (!imp && (sessions?.length ?? 0) === 0) redirect('/assignment/new')
+
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -71,16 +74,27 @@ export default async function DashboardPage() {
       <Navbar user={user} profile={adminProfile} />
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>Hey, {firstName}!</h1>
-          <p className="mt-1" style={{ color: 'var(--text-muted)', font: 'var(--type-lead)' }}>What are we writing today? Add your assignment, pick the coach who fits it best, and we'll take it from there.</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>Hey, {firstName}!</h1>
+            <p className="mt-1" style={{ color: 'var(--text-muted)', font: 'var(--type-lead)' }}>Pick up where you left off — or start something new.</p>
+          </div>
+
+          {/* New assignment now lives on its own page (decoupled from the list).
+              Hidden when impersonating — admin shouldn't create sessions for others. */}
+          {!imp && (
+            <a href="/assignment/new"
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition hover:opacity-90"
+              style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-dark)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              New assignment
+            </a>
+          )}
         </div>
 
-        {/* Hide new session form when impersonating — admin shouldn't create sessions for other users */}
-        {!imp && <NewSessionForm />}
-
-        {/* The practice run lives in the assignments list like any other piece —
-            their first completed assignment. */}
+        {/* The practice run lives in the assignments list like any other piece. */}
         <SessionsList sessions={sessions ?? []} />
 
       </main>

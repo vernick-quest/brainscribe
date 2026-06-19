@@ -1312,7 +1312,11 @@ export default function TutorSession({
 
       <div className="flex flex-1 overflow-hidden min-h-0">
 
-      {/* ── Sidebar (hidden during a practice/onboarding run) ── */}
+      {/* ── Sidebar — intentionally hidden everywhere now. The assignments list
+          lives on the dashboard; the coach workspace stays uncluttered (coach +
+          draft only) and you return via the "My assignments" back-link in the bar.
+          (The block below is dead in the UI; left in place for a follow-up cleanup
+          pass so this large component changes minimally in one go.) ── */}
       {/* Mobile backdrop */}
       {!onboarding && sidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
@@ -1323,7 +1327,7 @@ export default function TutorSession({
         md:static md:z-auto md:translate-x-0
         w-72 md:w-60 shrink-0
         transition-transform duration-200
-        ${onboarding ? 'hidden' : ''}
+        hidden
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `} style={{ backgroundColor: 'var(--bg-page-alt)', borderRight: '1px solid var(--border-default)' }}>
         <div className="px-3 py-3 flex items-center gap-2">
@@ -1526,16 +1530,20 @@ export default function TutorSession({
           {/* Main row */}
           <div className="flex items-center gap-0 px-3 py-2.5" style={{ minHeight: 52 }}>
 
-            {/* Hamburger — mobile only (44px tap target per design system); hidden in practice (no sidebar) */}
+            {/* Back to the assignments list — replaces the old in-workspace sidebar.
+                Role-aware: students land on /dashboard, parents/teachers on their home. */}
             {!onboarding && (
-              <button className="md:hidden -ml-2 mr-1 w-11 h-11 flex items-center justify-center rounded-lg shrink-0"
-                style={{ color: 'var(--text-subtle)' }}
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M3 12h18M3 6h18M3 18h18"/>
+              <a href={profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'}
+                className="-ml-1 mr-1 flex items-center gap-1.5 h-9 px-2 rounded-lg shrink-0 text-xs font-medium transition"
+                style={{ color: 'var(--text-muted)' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                title="My assignments">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
-              </button>
+                <span className="hidden sm:inline">My assignments</span>
+              </a>
             )}
 
             {/* LEFT: Coach + 3-dot */}
