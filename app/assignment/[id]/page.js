@@ -103,12 +103,21 @@ export default async function AssignmentPage({ params }) {
     .eq('session_id', id)
     .single()
 
-  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
+  // Name + onboarding flag come from the SESSION OWNER, never from whoever the admin
+  // is currently remoted into — a stale remote-in must never relabel someone else's
+  // session (this is how a friend's practice once got greeted with another kid's name).
+  const { data: ownerProfile } = await service
+    .from('profiles')
+    .select('full_name, onboarding_complete')
+    .eq('id', session.student_id)
+    .single()
 
-  // Onboarding "practice mode" (banner, no sidebar, exit control) applies only while
-  // the student is still doing the tour. Once they've finished onboarding, a practice
-  // session opens like any other completed assignment.
-  const onboardingMode = session.is_onboarding === true && !profile?.onboarding_complete
+  const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
+
+  // Onboarding "practice mode" (banner, exit control) applies only while the OWNER is
+  // still doing the tour. Once they've finished onboarding, a practice session opens
+  // like any other completed assignment.
+  const onboardingMode = session.is_onboarding === true && !ownerProfile?.onboarding_complete
 
   return (
     <TutorSession

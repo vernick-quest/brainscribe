@@ -228,10 +228,28 @@ function TabBar({ tabs, active, onChange }) {
 
 // ── Session row ────────────────────────────────────────────────
 function SessionRow({ session, studentName, compact = false }) {
+  const [loading, setLoading] = useState(false)
   const label = session.title || session.assignment_text?.slice(0, 60) + (session.assignment_text?.length > 60 ? '…' : '')
+
+  // Opening a session ALWAYS remotes in as its owner first — so the admin is acting
+  // as that user (correct name/role, ready to help) and a stale remote-in can never
+  // carry over onto someone else's session. Role/name are resolved server-side.
+  async function open() {
+    if (loading) return
+    setLoading(true)
+    try {
+      await fetch('/api/admin/impersonate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.student_id }),
+      })
+    } catch {}
+    window.location.href = `/assignment/${session.id}`
+  }
+
   return (
-    <a href={`/assignment/${session.id}`}
-      className="flex items-center gap-3 rounded-xl px-4 py-3 transition group"
+    <button onClick={open} disabled={loading}
+      className="w-full text-left flex items-center gap-3 rounded-xl px-4 py-3 transition group disabled:opacity-60"
       style={{
         border: '1px solid var(--border-default)',
         backgroundColor: 'var(--surface-card)',
@@ -256,7 +274,7 @@ function SessionRow({ session, studentName, compact = false }) {
 
       <span className="text-xs opacity-0 group-hover:opacity-100 transition shrink-0"
         style={{ color: 'var(--accent)' }}>→</span>
-    </a>
+    </button>
   )
 }
 
