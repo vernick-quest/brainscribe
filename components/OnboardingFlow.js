@@ -122,13 +122,12 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   }
 
   return (
-    <div className="min-h-dvh flex flex-col" style={{ backgroundColor: 'var(--bg-page)' }}>
+    <div className="min-h-dvh flex flex-col" style={{ backgroundColor: 'var(--bg-page-alt)' }}>
       {/* Step badge (students only — watchers can opt out, so a 7-step counter
           they won't finish would mislead) + subtle skip link */}
       <div className="flex justify-between items-center px-5 py-4">
         {!isWatcher ? (
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
-            style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}>
+          <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)', backgroundColor: 'var(--surface-muted)', padding: '4px 12px', borderRadius: 'var(--radius-pill)' }}>
             Step {stepNumber} of {FTUE_TOTAL_STEPS}
           </span>
         ) : <span />}
@@ -236,8 +235,8 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
 function Card({ children }) {
   return (
-    <div className="rounded-3xl p-6 sm:p-8 space-y-5"
-      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+    <div className="space-y-5"
+      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-md)', borderRadius: 'var(--radius-xl)', padding: 'clamp(28px, 5vw, 40px) clamp(24px, 4vw, 36px)' }}>
       {children}
     </div>
   )
@@ -245,7 +244,7 @@ function Card({ children }) {
 
 function SpeechText({ children }) {
   return (
-    <p className="leading-relaxed" style={{ color: 'var(--text-strong)', fontSize: 'var(--text-lg)' }}>
+    <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)' }}>
       {children}
     </p>
   )
@@ -254,8 +253,8 @@ function SpeechText({ children }) {
 function PrimaryButton({ onClick, children }) {
   return (
     <button onClick={onClick}
-      className="w-full text-white font-bold rounded-full py-3 transition"
-      style={{ backgroundColor: 'var(--accent)' }}>
+      className="w-full transition"
+      style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '12px 0' }}>
       {children}
     </button>
   )
@@ -267,8 +266,9 @@ function Dots({ count, active }) {
       {Array.from({ length: count }).map((_, i) => (
         <span key={i} className="rounded-full transition-all"
           style={{
-            width: i === active ? 18 : 6, height: 6,
+            width: i === active ? 22 : 8, height: 8,
             backgroundColor: i === active ? 'var(--accent)' : 'var(--border-strong)',
+            transition: 'all var(--dur-base) var(--ease-soft)',
           }} />
       ))}
     </div>
