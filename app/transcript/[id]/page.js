@@ -227,24 +227,20 @@ export default async function TranscriptPage({ params, searchParams }) {
           {!messages?.length ? (
             <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No conversation recorded yet.</p>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {messages.map((m, i) => {
                 const isCoach = m.role === 'assistant'
                 return (
-                  <div key={i} className="flex gap-3">
-                    {isCoach ? (
-                      <PersonaAvatar personaId={session.persona} size={28} className="mt-0.5 shrink-0" />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-xs font-bold"
-                        style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}>
-                        {(session.profiles?.full_name?.[0] ?? 'S').toUpperCase()}
-                      </div>
+                  <div key={i} className={`flex ${isCoach ? 'justify-start' : 'justify-end'}`}>
+                    {isCoach && (
+                      <PersonaAvatar personaId={session.persona} size={28} className="mr-1 mt-0.5 shrink-0" />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold" style={{ color: isCoach ? coachPersona.color : 'var(--text-muted)' }}>
-                        {isCoach ? coachPersona.name : (session.profiles?.full_name?.split(' ')[0] ?? 'Student')}
-                      </span>
-                      <p className="text-sm leading-relaxed mt-0.5" style={{ color: 'var(--text-body)' }}>{m.content}</p>
+                    <div className="rounded-2xl px-4 py-3 max-w-lg text-sm leading-relaxed"
+                      style={isCoach
+                        ? { backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)', borderBottomLeftRadius: 4 }
+                        : { backgroundColor: 'var(--primary)', color: 'var(--text-on-dark)', borderBottomRightRadius: 4 }
+                      }>
+                      {m.content}
                     </div>
                   </div>
                 )
