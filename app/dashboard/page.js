@@ -65,7 +65,22 @@ export default async function DashboardPage() {
   // new-assignment page. (Not while impersonating — admin views the real state.)
   if (!imp && (sessions?.length ?? 0) === 0) redirect('/assignment/new')
 
-  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
+  // Per-assignment teachers + the watchers who can see this student's work.
+  const sessionIds = (sessions ?? []).map(s => s.id)
+  const [{ data: teacherRows }, { data: watcherRows }] = await Promise.all([
+    sessionIds.length
+      ? service.from('assignment_teachers').select('session_id, teacher_id, profiles(full_name)').in('session_id', sessionIds)
+      : Promise.resolve({ data: [] }),
+    service.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name, role)').eq('student_id', targetId),
+  ])
+
+  const teachersBySession = {}
+  for (const r of (teacherRows ?? [])) {
+    (teachersBySession[r.session_id] ??= []).push({ id: r.teacher_id, name: r.profiles?.full_name ?? 'Teacher' })
+  }
+  const watchers = (watcherRows ?? []).map(w => ({
+    name: w.profiles?.full_name ?? 'Someone', role: w.profiles?.role ?? 'watcher',
+  }))
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -73,20 +88,16 @@ export default async function DashboardPage() {
 
       <Navbar user={user} profile={adminProfile} />
 
-      <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>Hey, {firstName}!</h1>
-            <p className="mt-1" style={{ color: 'var(--text-muted)', font: 'var(--type-lead)' }}>Pick up where you left off — or start something new.</p>
-          </div>
+      <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
+        <div className="flex items-end justify-between gap-4" style={{ marginBottom: 'var(--space-2)' }}>
+          <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>
 
-          {/* New assignment now lives on its own page (decoupled from the list).
-              Hidden when impersonating — admin shouldn't create sessions for others. */}
+          {/* New assignment lives on its own page; hidden while impersonating. */}
           {!imp && (
             <a href="/assignment/new"
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition hover:opacity-90"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-dark)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              className="shrink-0 inline-flex items-center gap-1.5 transition hover:opacity-90"
+              style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '10px 18px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M12 5v14M5 12h14"/>
               </svg>
               New assignment
@@ -94,9 +105,21 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* The practice run lives in the assignments list like any other piece. */}
-        <SessionsList sessions={sessions ?? []} />
+        {/* Watcher line — who can see this student's work */}
+        {watchers.length > 0 && (
+          <div className="inline-flex items-center gap-2" style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', marginBottom: 'var(--space-5)' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            {watchers.map(w => w.name).join(' and ')} can see your work
+          </div>
+        )}
 
+        <SessionsList
+          sessions={sessions ?? []}
+          teachersBySession={teachersBySession}
+          canManage={!imp}
+        />
       </main>
     </div>
   )
