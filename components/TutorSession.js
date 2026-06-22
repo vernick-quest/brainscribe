@@ -1582,6 +1582,11 @@ export default function TutorSession({
         {/* ── Tutor chat panel ── */}
         <div className={`flex-1 flex-col min-h-0 ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}
           style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
+          {/* Conversation sub-header */}
+          <div className="shrink-0 flex items-center gap-2 px-6 py-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
+            <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--text-muted)' }}>Working it out</span>
+            <span style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)' }}>· talk it through with {currentMeta.name}</span>
+          </div>
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             {messages.map((m, i) => (
               m.role === 'system' ? (
@@ -1591,46 +1596,43 @@ export default function TutorSession({
                   </span>
                 </div>
               ) : (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {m.role === 'assistant' && (
-                    <PersonaAvatar personaId={m.persona ?? persona} size={28} className="mr-1 mt-0.5 shrink-0" />
-                  )}
-                  <div className="flex flex-col items-start gap-1">
-                    {m.role === 'assistant' && m.persona && m.persona !== persona && (
-                      <span className="text-[10px] font-semibold ml-1" style={{ color: getPersona(m.persona).color }}>
-                        {getPersona(m.persona).name}
-                      </span>
-                    )}
-                    <div className="rounded-2xl px-4 py-3 max-w-lg text-sm leading-relaxed"
-                      style={m.role === 'user'
-                        ? { backgroundColor: 'var(--primary)', color: 'var(--text-on-dark)', borderBottomRightRadius: '4px' }
-                        : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)', borderBottomLeftRadius: '4px' }
-                      }>
-                      {renderMarkdown(m.content)}
-                    </div>
-                    {m.role === 'assistant' && (
-                      <button
-                        onClick={() => replayMessage(m.content, i)}
-                        title={replayingIndex === i ? 'Stop' : 'Replay'}
-                        className="ml-1 flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 transition-all"
-                        style={{
-                          color: replayingIndex === i ? 'var(--accent)' : 'var(--text-subtle)',
-                          backgroundColor: replayingIndex === i ? 'var(--surface-spark)' : 'transparent',
-                        }}
-                      >
-                        {replayingIndex === i ? (
-                          <><span className="animate-pulse">■</span><span>stop</span></>
-                        ) : (
-                          <>
-                            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                            </svg>
-                            <span>replay</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                <div key={i} className="flex flex-col w-full" style={{ alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', gap: 5 }}>
+                  {/* Name label above each bubble — the coach name is per-message
+                      (stamped persona), so switching coaches mid-session keeps
+                      earlier messages labelled with whoever actually said them. */}
+                  <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--text-subtle)', padding: '0 8px' }}>
+                    {m.role === 'user' ? studentName : getPersona(m.persona ?? persona).name}
+                  </span>
+                  <div className="px-4 py-3 max-w-lg"
+                    style={m.role === 'user'
+                      ? { backgroundColor: 'var(--navy-600)', color: 'var(--text-on-dark)', borderRadius: 'var(--radius-lg)', borderBottomRightRadius: 4, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }
+                      : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)', borderRadius: 'var(--radius-lg)', borderBottomLeftRadius: 4, font: 'var(--type-body)' }
+                    }>
+                    {m.role === 'user' ? m.content : renderMarkdown(m.content)}
                   </div>
+                  {m.role === 'assistant' && (
+                    <button
+                      onClick={() => replayMessage(m.content, i)}
+                      title={replayingIndex === i ? 'Stop' : 'Replay'}
+                      className="flex items-center gap-1 rounded-full px-2 py-0.5 transition-all"
+                      style={{
+                        font: 'var(--type-meta)', fontWeight: 'var(--fw-medium)',
+                        color: replayingIndex === i ? 'var(--accent)' : 'var(--text-subtle)',
+                        backgroundColor: replayingIndex === i ? 'var(--surface-spark)' : 'transparent',
+                      }}
+                    >
+                      {replayingIndex === i ? (
+                        <><span className="animate-pulse">■</span><span>stop</span></>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                          </svg>
+                          <span>replay</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               )
             ))}
