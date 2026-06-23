@@ -72,6 +72,17 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Conversation renders as bubbles (coach gray-left, student navy-right), matching the session
 - [ ] ⬜ Final draft, assignment, and (for parent/teacher) writing profile all still show
 
+## Mobile pass (iPhone 15 Pro, ~393px)
+- [ ] 🔧 Assignments rows: no overlap — avatar-only teacher chip + "+" on phone; title and ⋯ don't collide (fixed, verify)
+- [ ] 🔧 "Your assignments" header: New-assignment button stacks under the title on phone (fixed, verify)
+- [ ] ⬜ New assignment: coach grid 2-up, CTA row wraps, upload box + textarea fit
+- [ ] ⬜ Parent dashboard: child blocks, "View profile" pill, "Your writing" — no overlap
+- [ ] ⬜ Teacher dashboard: collapsible student blocks, notification-bell panel, own-writing
+- [ ] ⬜ FTUE: cards centered, dots + Step badge fit; practice/coach screens fit
+- [ ] ⬜ Coach workspace: Coach/Draft tabs (not side-by-side), bar controls fit, back = arrow only
+- [ ] ⬜ Legal pages collapse to one column; TOC wraps
+- [ ] ⬜ Transcript bubbles fit the width
+
 ---
 
 ## Known deferred (not bugs)
