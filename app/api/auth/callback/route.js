@@ -64,21 +64,25 @@ export async function GET(request) {
       .eq('id', user.id)
       .single()
 
+    console.log('[auth callback]', user.email, '| profile:', profile ? `role=${profile.role} confirmed=${profile.role_confirmed}` : 'MISSING (trigger lag)')
+
     // Admins always go straight to /admin — never through /welcome
     if (profile?.role === 'admin') {
       response.headers.set('location', `${origin}/admin`)
       return response
     }
 
-    if (profile && !profile.role_confirmed) {
-      // Mutate the redirect destination — cookies stay on the same response
+    // New or not-yet-confirmed users — INCLUDING a profile the DB trigger hasn't
+    // created yet — go to /welcome (a public path). Never fall through to the gated
+    // /dashboard, which can bounce a still-settling session straight to /login.
+    if (!profile || !profile.role_confirmed) {
       response.headers.set('location', `${origin}/welcome?next=${encodeURIComponent(next)}`)
       return response
     }
 
     // Route confirmed users to their role's home dashboard
     const roleDashboard = { parent: '/parent', teacher: '/teacher' }
-    if (profile?.role && roleDashboard[profile.role]) {
+    if (roleDashboard[profile.role]) {
       response.headers.set('location', `${origin}${roleDashboard[profile.role]}`)
       return response
     }
