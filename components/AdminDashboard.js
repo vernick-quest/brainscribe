@@ -140,6 +140,57 @@ function RemoteInButton({ userId, role, name }) {
   )
 }
 
+// ── Delete user (with inline confirm) ─────────────────────────
+// Permanently removes the account + all its data (cascade). The API refuses to
+// delete your own account.
+function DeleteUserButton({ userId, name }) {
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleDelete() {
+    setDeleting(true); setError('')
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Delete failed.'); setDeleting(false); return }
+      window.location.reload()
+    } catch { setError('Network error.'); setDeleting(false) }
+  }
+
+  if (confirming) {
+    return (
+      <span className="inline-flex items-center gap-1.5 shrink-0">
+        <span className="text-[11px]" style={{ color: 'var(--status-error)' }}>
+          {error || `Delete ${name?.split(' ')[0] ?? 'this user'}? This can't be undone.`}
+        </span>
+        <button onClick={handleDelete} disabled={deleting}
+          className="text-[11px] font-bold rounded-full px-2.5 py-1 disabled:opacity-60"
+          style={{ backgroundColor: 'var(--status-error)', color: '#fff' }}>
+          {deleting ? '…' : 'Delete'}
+        </button>
+        <button onClick={() => { setConfirming(false); setError('') }} disabled={deleting}
+          className="text-[11px] font-semibold rounded-full px-2 py-1" style={{ color: 'var(--text-muted)' }}>
+          Cancel
+        </button>
+      </span>
+    )
+  }
+  return (
+    <button onClick={() => setConfirming(true)} title="Delete user"
+      className="w-7 h-7 flex items-center justify-center rounded-full shrink-0 transition"
+      style={{ color: 'var(--text-subtle)' }}
+      onMouseEnter={e => e.currentTarget.style.color = 'var(--status-error)'}
+      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-subtle)'}>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" strokeLinejoin="round" strokeLinecap="round"/>
+      </svg>
+    </button>
+  )
+}
+
 // ── Onboarding flag ───────────────────────────────────────────
 // At-a-glance: green = completed onboarding, grey = will be sent through it.
 // Click to toggle — resetting to "Not onboarded" routes them through onboarding
@@ -316,7 +367,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
           <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
           <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
-          <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
+          <DeleteUserButton userId={student.id} name={student.full_name} />
           <button onClick={() => setOpen(o => !o)}
             className="flex items-center transition-transform"
             style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
@@ -364,6 +415,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
         <>
           <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={person.id} role={person.role} name={person.full_name} />
+          <DeleteUserButton userId={person.id} name={person.full_name} />
         </>
       )}
     </div>

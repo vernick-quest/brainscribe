@@ -20,12 +20,13 @@ export default async function DashboardPage() {
     .single()
   if (profileError) console.error('[dashboard] profile fetch error:', profileError.message)
 
-  // Fast-path admin redirect (admins are never students on this page)
-  if (adminProfile?.role === 'admin') redirect('/admin')
-
-  // Check for admin impersonation
+  // Check for admin impersonation FIRST — an impersonating admin should land on the
+  // impersonated student's dashboard, not be bounced to /admin.
   const imp = await getImpersonation(adminProfile)
   const targetId = imp?.userId ?? user.id
+
+  // Admins (when NOT remoted into someone) belong on /admin, never this page.
+  if (!imp && adminProfile?.role === 'admin') redirect('/admin')
 
   // If not impersonating, enforce role redirects
   if (!imp) {
