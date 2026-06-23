@@ -367,6 +367,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
           <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
           <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
+          <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
           <DeleteUserButton userId={student.id} name={student.full_name} />
           <button onClick={() => setOpen(o => !o)}
             className="flex items-center transition-transform"
