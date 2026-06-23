@@ -166,7 +166,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
       },
       body: JSON.stringify({
         from: 'BrainScribe <notifications@brainscribe.io>',
-        reply_to: 'hello@brainscribe.io',
+        reply_to: 'brainscribe.io@gmail.com',
         to: parentEmail,
         subject: `Quick approval needed for ${firstName}'s BrainScribe account`,
         html,
