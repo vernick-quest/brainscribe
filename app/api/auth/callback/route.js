@@ -5,7 +5,10 @@ import { NextResponse } from 'next/server'
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  // Sanitize `next` to a local path only — a value like `//evil.com` or `/\evil.com`
+  // would otherwise produce an off-site redirect (open-redirect phishing).
+  const rawNext = searchParams.get('next') ?? '/dashboard'
+  const next = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/dashboard'
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`)

@@ -140,7 +140,7 @@ export default function NewSessionForm() {
             </svg>
             <span className="flex-1 truncate" style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--status-success)' }}>{uploadedFileName}</span>
             <button type="button" onClick={e => { e.stopPropagation(); setUploadedFileName(''); setAssignment('') }}
-              className="text-base shrink-0 leading-none" style={{ color: 'var(--text-subtle)' }} title="Remove">×</button>
+              className="text-base shrink-0 leading-none" style={{ color: 'var(--text-subtle)' }} title="Remove" aria-label="Remove uploaded file">×</button>
           </>
         ) : (
           <>

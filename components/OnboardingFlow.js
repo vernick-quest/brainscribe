@@ -189,6 +189,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                   return (
                     <button key={p.key} type="button"
                       onClick={() => setSelected(p)}
+                      aria-pressed={isSel}
                       className="text-left rounded-2xl p-4 transition"
                       style={{
                         border: `2px solid ${isSel ? 'var(--accent)' : 'var(--border-default)'}`,
@@ -262,9 +263,11 @@ function PrimaryButton({ onClick, children }) {
 
 function Dots({ count, active }) {
   return (
-    <div className="flex items-center justify-center gap-1.5 pt-1">
+    <div className="flex items-center justify-center gap-1.5 pt-1"
+      role="progressbar" aria-valuemin={1} aria-valuemax={count} aria-valuenow={active + 1}
+      aria-label={`Step ${active + 1} of ${count}`}>
       {Array.from({ length: count }).map((_, i) => (
-        <span key={i} className="rounded-full transition-all"
+        <span key={i} aria-hidden="true" className="rounded-full transition-all"
           style={{
             width: i === active ? 22 : 8, height: 8,
             backgroundColor: i === active ? 'var(--accent)' : 'var(--border-strong)',

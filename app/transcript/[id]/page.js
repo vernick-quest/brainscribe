@@ -137,7 +137,7 @@ export default async function TranscriptPage({ params, searchParams }) {
                 className="text-[11px] font-semibold rounded-full px-2.5 py-0.5"
                 style={isComplete
                   ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
-                  : { backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }
+                  : { backgroundColor: 'var(--accent-soft)', color: 'var(--accent-text)' }
                 }
               >
                 {isComplete ? '✓ Done' : 'In progress'}
@@ -163,7 +163,7 @@ export default async function TranscriptPage({ params, searchParams }) {
               </h2>
               {!isComplete && (
                 <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
-                  style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                  style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
                   WIP
                 </span>
               )}

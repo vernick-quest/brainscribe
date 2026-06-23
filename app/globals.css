@@ -77,6 +77,7 @@
   --accent-hover:  var(--orange-600);
   --accent-press:  var(--orange-700);
   --accent-soft:   var(--orange-100);
+  --accent-text:   var(--orange-800);  /* orange for TEXT/icons on light/soft bg — WCAG AA (the bright --accent fails as text) */
   --primary:       var(--navy-800);
   --primary-hover: var(--navy-900);
   --primary-soft:  var(--navy-100);

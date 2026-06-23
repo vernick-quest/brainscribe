@@ -94,6 +94,7 @@ function RoleEditor({ userId, currentRole, onChanged }) {
         value={role}
         onChange={handleChange}
         disabled={saving}
+        aria-label="Change role"
         className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 pr-5 appearance-none cursor-pointer border-0 outline-none"
         style={{ backgroundColor: c.bg, color: c.text }}
       >
@@ -179,8 +180,8 @@ function DeleteUserButton({ userId, name }) {
     )
   }
   return (
-    <button onClick={() => setConfirming(true)} title="Delete user"
-      className="w-7 h-7 flex items-center justify-center rounded-full shrink-0 transition"
+    <button onClick={() => setConfirming(true)} title="Delete user" aria-label={`Delete ${name?.split(' ')[0] ?? 'user'}`}
+      className="w-9 h-9 flex items-center justify-center rounded-full shrink-0 transition"
       style={{ color: 'var(--text-subtle)' }}
       onMouseEnter={e => e.currentTarget.style.color = 'var(--status-error)'}
       onMouseLeave={e => e.currentTarget.style.color = 'var(--text-subtle)'}>

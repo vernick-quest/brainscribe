@@ -74,6 +74,14 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
 
   useEffect(() => { if (renaming) renameRef.current?.focus() }, [renaming])
 
+  // Keyboard-dismiss the menu / teacher popover with Escape.
+  useEffect(() => {
+    if (!menu && !picking) return
+    const onKey = e => { if (e.key === 'Escape') { setMenu(false); setPicking(false) } }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menu, picking])
+
   const teacher = teachers?.[0] ?? null
   const done = session.status === 'complete'
   const statusColor = done ? 'var(--status-success)' : 'var(--navy-500)'
@@ -121,7 +129,7 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
               onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false) }}
               onBlur={saveRename}
               style={{ flex: 1, font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--ring)', outline: 'none' }} />
-            <button onClick={saveRename} style={{ display: 'flex', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: 7, cursor: 'pointer' }} title="Save">
+            <button onClick={saveRename} aria-label="Save name" style={{ display: 'flex', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: 7, cursor: 'pointer' }} title="Save">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </button>
           </div>
@@ -145,6 +153,8 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
       {/* Teacher chip */}
       {teacher ? (
         <button onClick={() => canManage && (setPicking(p => !p), setMenu(false))} title={teacher.name}
+          aria-label={`Teacher: ${teacher.name}${canManage ? ' — change' : ''}`}
+          aria-haspopup={canManage ? 'menu' : undefined} aria-expanded={canManage ? picking : undefined}
           style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0, cursor: canManage ? 'pointer' : 'default', background: 'var(--surface-muted)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '4px 14px 4px 5px' }}>
           <span style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
             <TeacherAvatar name={teacher.name} />
@@ -167,8 +177,8 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
 
       {/* Overflow */}
       {canManage && (
-        <button onClick={() => { setMenu(m => !m); setPicking(false) }} aria-label="More actions"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, flexShrink: 0, borderRadius: 'var(--radius-pill)', border: 'none', background: menu ? 'var(--surface-muted)' : 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+        <button onClick={() => { setMenu(m => !m); setPicking(false) }} aria-label="More actions" aria-haspopup="menu" aria-expanded={menu}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 'var(--radius-pill)', border: 'none', background: menu ? 'var(--surface-muted)' : 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
             <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
