@@ -108,9 +108,13 @@ export default function NewSessionForm() {
 
       {/* Upload box (real OCR) */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload a photo or PDF of your assignment"
         onDragOver={e => e.preventDefault()}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click() } }}
         className="transition cursor-pointer"
         style={{
           marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',

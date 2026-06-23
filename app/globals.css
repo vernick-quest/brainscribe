@@ -66,8 +66,8 @@
   /* Text */
   --text-strong:    var(--navy-800);
   --text-body:      var(--ink-900);
-  --text-muted:     var(--ink-500);
-  --text-subtle:    var(--ink-400);
+  --text-muted:     #6B6353;  /* darkened for WCAG AA — was ink-500 #8C8474 (3.6:1) */
+  --text-subtle:    #756D5C;  /* darkened for WCAG AA — was ink-400 #B2A994 (2.3:1) */
   --text-on-dark:   var(--cream-50);
   --text-on-accent: var(--white);
   --text-link:      var(--navy-600);
@@ -224,6 +224,25 @@ h1, h2, h3, h4, h5, h6 {
 /* Transcript / raw spoken text */
 .font-mono, code, pre {
   font-family: var(--font-mono);
+}
+
+/* Visible keyboard focus (a11y). box-shadow is included so the ring still shows on
+   inputs that set inline outline:none; it follows each element's border-radius.
+   :focus-visible = keyboard only, so mouse clicks don't get a ring. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+/* Respect reduced-motion preferences (mic pulse, typing dots, onboarding dots, etc.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Section completion celebration toast */
