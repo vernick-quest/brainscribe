@@ -89,6 +89,9 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
   const daysLeft = Math.ceil(
     (new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
   )
+  const firstName = (studentName || '').trim().split(/\s+/)[0] || 'your child'
+
+  const divider = `<hr style="border:none;border-top:1px solid #E7DECB;margin:24px 0" />`
 
   const html = `
     <div style="font-family:sans-serif;max-width:540px;margin:0 auto;color:#211D17">
@@ -96,44 +99,60 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
            style="height:32px;margin-bottom:28px" />
 
       <h2 style="font-size:20px;font-weight:700;margin:0 0 16px;color:#14385A">
-        ${studentName} wants to join BrainScribe
+        ${studentName} wants to use BrainScribe
       </h2>
 
       <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
-        BrainScribe is a voice-first writing coach that helps students talk through
-        their assignments and turn their words into polished paragraphs — all in
-        their own voice. It asks questions; it doesn't write for them.
+        BrainScribe is a writing coach designed for students who struggle to get
+        their ideas on paper — including students with ADHD and executive function
+        challenges. It asks coaching questions, the student talks through their
+        answers, and their words become their writing. It never writes for them.
       </p>
 
       <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
         Since ${studentName} is under 13, we need your approval before they can
-        start. <strong>No payment is required.</strong>
+        start. <strong>This is completely free — no credit card required.</strong>
       </p>
 
       <div style="background:#FFF7ED;border:1px solid #F0811E;border-radius:12px;
                   padding:16px 20px;margin:24px 0">
         <p style="margin:0;font-size:13px;color:#7C2D12;line-height:1.6">
           <strong>⚠ This link expires ${expiryDate} (${daysLeft} days from now).</strong><br>
-          If not approved by then, ${studentName}'s account will be automatically deleted.
+          If not approved by then, ${studentName}'s account request will be automatically deleted.
         </p>
       </div>
 
       <a href="${consentUrl}"
          style="display:inline-block;background:#F0811E;color:#fff;text-decoration:none;
                 font-weight:700;padding:14px 28px;border-radius:12px;font-size:15px;
-                margin-bottom:28px">
-        Review and approve →
+                margin-bottom:8px">
+        Approve ${firstName}'s account →
       </a>
 
-      <p style="margin:0 0 8px;font-size:13px;color:#6B6358;line-height:1.6">
-        BrainScribe does not sell student data, does not advertise to students,
-        and does not share session content with third parties. You can read our full
-        <a href="${SITE_URL}/privacy" style="color:#F0811E">privacy policy</a>.
+      ${divider}
+
+      <p style="margin:0 0 12px;font-size:13px;color:#4A4439;line-height:1.6">
+        <strong>What we collect:</strong> Session transcripts and the paragraphs your
+        child writes. You can view or delete these at any time from your parent
+        dashboard once you approve.
+      </p>
+      <p style="margin:0 0 12px;font-size:13px;color:#4A4439;line-height:1.6">
+        <strong>What we don't do:</strong> Sell student data, advertise to students,
+        or share session content with third parties.
+      </p>
+      <p style="margin:0;font-size:13px;color:#6B6358;line-height:1.6">
+        <a href="${SITE_URL}/privacy" style="color:#F0811E">Read our full privacy policy →</a>
       </p>
 
-      <p style="margin:16px 0 0;font-size:12px;color:#8C8474">
+      ${divider}
+
+      <p style="margin:0;font-size:12px;color:#8C8474;line-height:1.6">
         If you didn't expect this email, you can safely ignore it.
         No account will be created without your approval.
+      </p>
+      <p style="margin:16px 0 0;font-size:12px;color:#8C8474">
+        — The BrainScribe team<br>
+        <a href="${SITE_URL}" style="color:#8C8474">brainscribe.io</a>
       </p>
     </div>
   `
@@ -147,8 +166,9 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
       },
       body: JSON.stringify({
         from: 'BrainScribe <notifications@brainscribe.io>',
+        reply_to: 'hello@brainscribe.io',
         to: parentEmail,
-        subject: `${studentName} wants to join BrainScribe — your approval needed`,
+        subject: `Quick approval needed for ${firstName}'s BrainScribe account`,
         html,
       }),
     })
