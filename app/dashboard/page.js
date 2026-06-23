@@ -90,7 +90,7 @@ export default async function DashboardPage() {
       <Navbar user={user} profile={adminProfile} />
 
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
-        <div className="flex items-end justify-between gap-4" style={{ marginBottom: 'var(--space-2)' }}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-2)' }}>
           <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>
 
           {/* New assignment lives on its own page; hidden while impersonating. */}

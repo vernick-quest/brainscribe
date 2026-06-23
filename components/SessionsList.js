@@ -150,7 +150,9 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
             <TeacherAvatar name={teacher.name} />
             <GoogleBadge />
           </span>
-          <span style={{ textAlign: 'left' }}>
+          {/* Name + "Teacher" label hidden on phones — avatar-only chip there to
+              avoid crowding the row; full chip returns at >=640px. */}
+          <span className="hidden sm:block" style={{ textAlign: 'left' }}>
             <span style={{ display: 'block', font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', whiteSpace: 'nowrap' }}>{teacher.name}</span>
             <span style={{ display: 'block', font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Teacher</span>
           </span>
@@ -159,7 +161,7 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
         <button onClick={() => { setPicking(p => !p); setMenu(false) }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer', font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-muted)', background: 'var(--surface-card)', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-pill)', padding: '7px 14px' }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Add teacher
+          <span className="hidden sm:inline">Add teacher</span>
         </button>
       ) : null}
 
