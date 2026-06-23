@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
+import ImpersonationBanner from './ImpersonationBanner'
 import Navbar from './Navbar'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { SUBJECTS, getSubject } from '@/lib/subjects'
@@ -380,6 +381,7 @@ export default function TutorSession({
   user = null,
   profile = null,
   onboarding = false,
+  impersonation = null,
 }) {
   const [messages, setMessages]           = useState(
     initialMessages.map(m => m.role === 'assistant' ? { ...m, persona: session.persona } : m)
@@ -1260,6 +1262,8 @@ export default function TutorSession({
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden" style={{ backgroundColor: 'var(--bg-page)' }}>
+
+      {impersonation && <ImpersonationBanner name={impersonation.name} role={impersonation.role} />}
 
       <Navbar user={user} profile={profile} />
 

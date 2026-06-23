@@ -130,6 +130,7 @@ export default async function AssignmentPage({ params }) {
       user={user}
       profile={profile}
       onboarding={onboardingMode}
+      impersonation={imp ? { name: imp.name, role: imp.role } : null}
     />
   )
 }

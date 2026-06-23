@@ -19,7 +19,7 @@ export default function ImpersonationBanner({ name, role }) {
 
   return (
     <div className="sticky top-0 z-50 flex items-center justify-between gap-4 px-5 py-2.5"
-      style={{ backgroundColor: '#92400E', color: 'white' }}>
+      style={{ backgroundColor: '#C0271E', color: 'white' }}>
       <div className="flex items-center gap-2 text-sm">
         <Icon name="eye" size={14} />
         <span>
