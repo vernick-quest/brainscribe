@@ -61,6 +61,32 @@ export default async function CoppaCompletePage({ searchParams }) {
     )
   }
 
+  // Block self-consent: the account being approved can't approve itself.
+  if (user.id === pending.student_id) {
+    return (
+      <ErrorPage
+        message="This account can't approve itself. A parent or guardian must approve from their own Google account."
+        linkLabel="Use a different account"
+        linkHref={`/coppa/consent?token=${token}`}
+      />
+    )
+  }
+
+  // Bind consent to the invited parent: the signed-in email MUST match the address
+  // the consent request was sent to. This is what makes it verifiable parental
+  // consent — without it, anyone with the link + any Google account could approve.
+  const signerEmail = (user.email ?? '').toLowerCase().trim()
+  const invitedEmail = (pending.parent_email ?? '').toLowerCase().trim()
+  if (!signerEmail || signerEmail !== invitedEmail) {
+    return (
+      <ErrorPage
+        message={`This approval was sent to ${maskEmail(pending.parent_email)}. Please sign in with that Google account to approve — that's how we confirm a parent or guardian gave consent.`}
+        linkLabel="Sign in with the right account"
+        linkHref={`/coppa/consent?token=${token}`}
+      />
+    )
+  }
+
   // Fetch student profile for the activation email
   const { data: student } = await service
     .from('profiles')
@@ -70,11 +96,13 @@ export default async function CoppaCompletePage({ searchParams }) {
 
   // ── Process approval ─────────────────────────────────────────────────────────
 
-  // 1. Mark pending record as approved
+  // 1. Mark pending record as approved (status-guarded so a double-open can't
+  //    re-run the approval transaction).
   await service
     .from('pending_coppa_signups')
     .update({ status: 'approved' })
     .eq('id', pending.id)
+    .eq('status', 'pending')
 
   // 2. Update parent profile (ensure role='parent', role_confirmed=true)
   await service
@@ -178,6 +206,14 @@ async function sendApprovalEmail({ studentEmail, studentName }) {
   } catch (e) {
     console.error('[coppa/complete] Email send failed:', e)
   }
+}
+
+// Mask the invited email in error copy so the page doesn't disclose the full
+// address to whoever opened the link (e.g. "j••••@gmail.com").
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return 'the parent email on file'
+  const [local, domain] = email.split('@')
+  return `${local.slice(0, 1)}${'•'.repeat(Math.max(local.length - 1, 2))}@${domain}`
 }
 
 function ErrorPage({ message, linkLabel, linkHref }) {
