@@ -57,6 +57,17 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ "Your writing" block (parent's own work) with "+ New"
 - [ ] ⬜ Try opening a non-child's `/profile/<id>` by URL → should redirect (access gate)
 
+## Parent-initiated child linking (Entry Point B — new 2026-06-27)
+Parent generates an invite link for their child; child claims it and is linked.
+- [ ] ⬜ Empty parent dashboard (no children) shows "Add a child" + updated copy
+- [ ] ⬜ "Add a child" card opens → enter child email → "Generate link" → copyable `/invite?token=…`
+- [ ] ⬜ Entering the **parent's own** email is rejected ("That's your own email…")
+- [ ] ⬜ Open the link in a fresh Google account → claims it → child is linked, appears on the parent dashboard
+- [ ] ⬜ Claimed child still runs **their own** age-first onboarding (`/welcome`): under-13 → COPPA parent-email step; 13+ → normal student start. Linking is **not** parental consent — verify an under-13 child is still held at `/coppa/pending` until real consent
+- [ ] ⬜ An existing **confirmed parent/teacher** account opening a student invite is refused ("already set up as a {role}")
+- [ ] ⬜ Reusing an already-claimed link → "This invite has already been used."
+- [ ] ⬜ A **student** account hitting `POST /api/invites` with `role:'student'` is rejected ("Only parents can invite a child."); a **parent** sending a `parent`/`teacher` invite is rejected ("Only students…")
+
 ## Teacher dashboard (teacher account or remote-in)
 - [ ] ⬜ Collapsible block per student (expand/collapse); auto-open if only one student
 - [ ] ⬜ Notification bell in the header opens (newly mounted today)
