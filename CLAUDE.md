@@ -53,3 +53,4 @@ Brand = navy ink + warm orange spark on cream paper. Orange (`--accent`) is rese
 - `TESTING.md` — current manual test checklist and known-deferred items.
 - `BACKLOG.md` — deferred features (e.g. display-name validation for COPPA emails).
 - `AUDIT-2026-06-21.md` — full security / COPPA / accessibility findings, plus what's already solid.
+- `docs/specs/` *(local-only, gitignored — absent on a fresh clone)* — design & product specs exported from the claude.ai project; ask the user if not present. Holds the authoritative coach stream-token reference. Use the `coach-prompt` skill before changing coach behavior.
