@@ -45,9 +45,14 @@ function initials(name) {
 // User avatar: Google photo when available, initials circle otherwise. Google's
 // lh3.googleusercontent.com URLs 403 without referrerPolicy="no-referrer" and
 // occasionally expire, so onError falls back to the initials (matches Navbar).
-function Avatar({ src, name, size = 36 }) {
+//
+// COPPA data-minimization (migration 019): under-13 accounts must never show a
+// Google photo. The DB invariant is "under-13 ⇒ avatar_url null", but nulling on
+// age-declaration is app-side and can lag, so we hard-suppress here regardless of
+// what avatar_url holds — the admin page must not surface a child's photo.
+function Avatar({ src, name, size = 36, under13 = false }) {
   const [failed, setFailed] = useState(false)
-  if (src && !failed) {
+  if (src && !under13 && !failed) {
     return (
       <img src={src} alt="" width={size} height={size}
         className="rounded-full object-cover shrink-0"
@@ -369,7 +374,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
 
       <div className="flex items-center gap-3 px-5 py-4">
         {/* Avatar */}
-        <Avatar src={student.avatar_url} name={student.full_name} size={36} />
+        <Avatar src={student.avatar_url} name={student.full_name} size={36} under13={student.age_bracket === 'under13'} />
 
         {/* Name + email — clickable to expand */}
         <button className="flex-1 min-w-0 text-left" onClick={() => setOpen(o => !o)}>
@@ -423,7 +428,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3"
       style={{ backgroundColor: 'var(--surface-card)' }}>
-      <Avatar src={person.avatar_url} name={person.full_name} size={32} />
+      <Avatar src={person.avatar_url} name={person.full_name} size={32} under13={person.age_bracket === 'under13'} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
           {person.full_name ?? '—'}
