@@ -1281,10 +1281,10 @@ export default function TutorSession({
         {onboarding && (
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
             style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
-            <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice session</span>
-            {/* FTUE step 6 of 7 — writing your paragraph */}
-            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 6 of 7</span>
-            <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just to get the feel of it — nothing here is graded.</span>
+            <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice warm-up</span>
+            {/* FTUE step 3 of 3 — your first opening line */}
+            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 3 of 3</span>
+            <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just your opening line — to get the feel of it. Nothing here is graded.</span>
             <button onClick={exitPractice}
               className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>
               Exit practice
@@ -1747,10 +1747,10 @@ export default function TutorSession({
               <div className="flex-1 min-w-0">
                 {onboarding ? (
                   <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your essay is complete!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Let's take a look at the whole thing — that's the end of the tour.</p>
-                    <a href={`/transcript/${session.id}?onboarding=1`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      See your finished essay →
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
+                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      See your opening line →
                     </a>
                   </>
                 ) : (
