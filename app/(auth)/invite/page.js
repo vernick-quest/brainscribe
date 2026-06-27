@@ -50,7 +50,9 @@ export default async function InvitePage({ searchParams }) {
 
     // Parent/teacher accounts require 13+. Gate on age before granting the role:
     // if we don't know their age yet, ask; an under-13 can't accept the invite.
-    if (claimerProfile?.age_bracket !== '13plus') {
+    // Student invites (a parent linking their child) are exempt — students can be
+    // any age, and the child still runs their own age-first onboarding afterward.
+    if (invite.role !== 'student' && claimerProfile?.age_bracket !== '13plus') {
       if (claimerProfile?.age_bracket === 'under13') {
         return <InviteError message="Parent and teacher invites are for ages 13 and older, so this invite can't be used on your account." />
       }
@@ -71,6 +73,16 @@ export default async function InvitePage({ searchParams }) {
       await supabase.from('relationships').insert({
         watcher_id: user.id,
         student_id: invite.invited_by,
+      }).single() // ignore duplicate error if already linked
+    }
+
+    // Student invite → a parent invited this child; link the parent as watcher.
+    // (The child still runs their own age-first / COPPA onboarding separately —
+    // this relationship is read-only oversight, not parental consent.)
+    if (invite.role === 'student' && invite.invited_by) {
+      await supabase.from('relationships').insert({
+        watcher_id: invite.invited_by,
+        student_id: user.id,
       }).single() // ignore duplicate error if already linked
     }
 

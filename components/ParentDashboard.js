@@ -1,6 +1,7 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
+import AddChildForm from '@/components/AddChildForm'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -81,8 +82,9 @@ function EmptyState() {
       <div className="space-y-1">
         <p className="font-semibold text-lg" style={{ color: 'var(--text-strong)' }}>No students linked yet</p>
         <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
-          Ask your child to log into BrainScribe and invite you from their dashboard.
-          You'll get an email with a link — click it and you're connected.
+          Use <span className="font-semibold">Add a child</span> below to invite your child,
+          or ask them to invite you from their own dashboard. Either way, once they sign in
+          you'll be connected.
         </p>
       </div>
     </div>
@@ -171,6 +173,9 @@ export default function ParentDashboard({ user, profile, children, sessions, own
         {children.map(child => (
           <ChildBlock key={child.id} child={child} sessions={sessions} />
         ))}
+
+        {/* Parent-initiated linking — invite a child to connect */}
+        <AddChildForm />
 
       </main>
     </div>
