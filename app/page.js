@@ -2,6 +2,7 @@ import { Lora } from 'next/font/google'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AttributionCapture from '@/components/AttributionCapture'
+import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({
   subsets: ['latin'],
@@ -48,27 +49,7 @@ function Landing() {
     <div style={{ backgroundColor: 'var(--brand-cream)', color: 'var(--brand-navy)' }}>
       <AttributionCapture />
 
-      {/* ── Nav ── */}
-      <nav style={{
-        padding: '20px 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid var(--border-default)',
-        backgroundColor: 'var(--surface-card)',
-        flexWrap: 'wrap',
-        gap: 12,
-      }}>
-        <a href="/" aria-label="BrainScribe home">
-          <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 28, width: 'auto' }} />
-        </a>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <a href="/about" style={navLink}>About</a>
-          <a href="/blog" style={navLink}>Blog</a>
-          <a href="/login" style={navLink}>Sign in</a>
-          <a href="/login" style={ctaPill}>Try it free</a>
-        </div>
-      </nav>
+      <SiteHeader />
 
       {/* ── Hero ── */}
       <header style={{
@@ -205,7 +186,7 @@ function Landing() {
           padding: 'clamp(36px, 6vw, 56px)',
           textAlign: 'center',
         }}>
-          <p style={{ ...eyebrow, color: 'var(--accent-text)' }}>Isn&rsquo;t this just AI doing the homework?</p>
+          <p style={{ ...eyebrow, color: 'var(--accent)' }}>Isn&rsquo;t this just AI doing the homework?</p>
           <h2 style={{
             fontFamily: serif,
             fontSize: 'clamp(1.5rem, 4vw, 2rem)',
@@ -234,8 +215,8 @@ function Landing() {
       {/* ── Final CTA ── */}
       <section style={{ ...sectionWrap, paddingBottom: 96 }}>
         <div style={{
-          backgroundColor: 'var(--brand-orange)',
-          color: '#fff',
+          backgroundColor: 'var(--accent)',
+          color: 'var(--text-on-accent)',
           padding: 'clamp(40px, 6vw, 56px) 40px',
           borderRadius: 24,
           textAlign: 'center',
@@ -256,7 +237,7 @@ function Landing() {
           </p>
           <a href="/login" style={{
             display: 'inline-block',
-            backgroundColor: '#fff',
+            backgroundColor: 'var(--surface-card)',
             color: 'var(--accent-text)',
             padding: '15px 34px',
             borderRadius: 'var(--radius-pill)',
@@ -353,23 +334,6 @@ function SessionPreview() {
 }
 
 // ── Shared inline style objects ──
-const navLink = {
-  fontSize: '0.9rem',
-  fontWeight: 500,
-  color: 'var(--text-muted)',
-  textDecoration: 'none',
-}
-
-const ctaPill = {
-  backgroundColor: 'var(--accent)',
-  color: 'var(--text-on-accent)',
-  padding: '9px 18px',
-  borderRadius: 'var(--radius-pill)',
-  fontSize: '0.85rem',
-  fontWeight: 600,
-  textDecoration: 'none',
-}
-
 const ctaPrimary = {
   display: 'inline-block',
   backgroundColor: 'var(--accent)',
