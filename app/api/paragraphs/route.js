@@ -1,4 +1,6 @@
+import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { persistRequirementsActual } from '@/lib/requirements'
 
 export async function POST(request) {
   const supabase = await createClient()
@@ -14,6 +16,11 @@ export async function POST(request) {
     .single()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Keep sessions.requirements.actual fresh after each paragraph save — deferred
+  // so it never adds latency to the student's save (no-op if no requirements set).
+  after(() => persistRequirementsActual(supabase, sessionId))
+
   return Response.json(data)
 }
 
@@ -33,5 +40,8 @@ export async function PATCH(request) {
     .single()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  after(() => persistRequirementsActual(supabase, sessionId))
+
   return Response.json(data)
 }

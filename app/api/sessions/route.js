@@ -31,11 +31,16 @@ async function generateSessionMeta(assignmentText, userId) {
     system: 'You are a precise JSON generator. Output ONLY valid JSON — no explanation, no markdown, no code fences.',
     messages: [{
       role: 'user',
-      content: `Read this writing assignment and produce a single JSON object with three keys: "title", "summary", and "outline".
+      content: `Read this writing assignment and produce a single JSON object with four keys: "title", "summary", "outline", and "requirements".
 
 "title": a short default title in the format "[Writing type] on/about [topic]" — e.g. "Essay on your favorite season", "Persuasive essay on school uniforms". Under 7 words, no quotes, no trailing punctuation.
 
 "summary": a JSON array of the key requirements. Each item has "label" (short category like "Format", "Topic", "Must include", "Length", "Goal") and "detail" (concise value). 3–6 items max, only what is explicitly stated.
+
+"requirements": a JSON array of the NUMERIC targets the assignment explicitly states, for the progress tracker. Only include numbers that are actually given; otherwise use []. Item shapes:
+- words: { "type": "words", "min": <int, optional>, "max": <int, optional>, "label": "<e.g. 300–400 words>" } — "300–400 words" → min 300, max 400; "at least 500 words" / "500 words minimum" / "500 words" → min 500; "no more than 200 words" / "up to 200 words" → max 200.
+- paragraphs: { "type": "paragraphs", "target": <int>, "label": "<e.g. 5 paragraphs>" } — "five paragraphs" → target 5; "intro, 3 body paragraphs, conclusion" → target 5.
+Only words and paragraphs are supported — ignore line/syllable/sentence counts.
 
 "outline": a JSON array of the sections the student must write. STRUCTURE RULES — follow strictly:
 - "one paragraph"/"a paragraph" → exactly 1 section
@@ -51,7 +56,8 @@ Output shape:
 {
   "title": "Essay on your favorite season",
   "summary": [{ "label": "Format", "detail": "5-paragraph essay" }, { "label": "Length", "detail": "300–400 words" }],
-  "outline": [{ "title": "Introduction", "placeholder": "...", "checklist": [{ "label": "Hook", "checked": false }], "preview": null, "paragraph": null, "done": false }]
+  "outline": [{ "title": "Introduction", "placeholder": "...", "checklist": [{ "label": "Hook", "checked": false }], "preview": null, "paragraph": null, "done": false }],
+  "requirements": [{ "type": "words", "min": 300, "max": 400, "label": "300–400 words" }, { "type": "paragraphs", "target": 5, "label": "5 paragraphs" }]
 }
 
 Assignment:
@@ -68,8 +74,30 @@ ${assignmentText}`,
     : null
   const summary = Array.isArray(parsed.summary) ? parsed.summary : null
   const outline = Array.isArray(parsed.outline) && parsed.outline.length > 0 ? parsed.outline : FALLBACK_OUTLINE
+  // Keep only well-formed word/paragraph targets and coerce numeric fields — the
+  // model sometimes emits numbers as strings ("300"), which would otherwise make
+  // chipState() (typeof === 'number') treat them as missing (shows "?", never met).
+  const toInt = v => {
+    const n = typeof v === 'number' ? v : parseInt(v, 10)
+    return Number.isFinite(n) ? n : undefined
+  }
+  const requirements = (Array.isArray(parsed.requirements) ? parsed.requirements : [])
+    .map(r => {
+      if (!r) return null
+      if (r.type === 'paragraphs') {
+        const target = toInt(r.target)
+        return target != null ? { type: 'paragraphs', target, label: r.label } : null
+      }
+      if (r.type === 'words') {
+        const min = toInt(r.min), max = toInt(r.max)
+        if (min == null && max == null) return null
+        return { type: 'words', ...(min != null ? { min } : {}), ...(max != null ? { max } : {}), label: r.label }
+      }
+      return null
+    })
+    .filter(Boolean)
 
-  return { title, summary, outline }
+  return { title, summary, outline, requirements }
 }
 
 export async function POST(request) {
@@ -123,7 +151,7 @@ export async function POST(request) {
     }
 
     // One AI call for all metadata, in parallel with creating the session row
-    const [{ title, summary, outline }, { data, error }] = await Promise.all([
+    const [{ title, summary, outline, requirements }, { data, error }] = await Promise.all([
       generateSessionMeta(assignmentText, user.id),
       supabase
         .from('sessions')
@@ -145,7 +173,16 @@ export async function POST(request) {
 
     await supabase.from('sessions').update({ outline, title, assignment_summary: summary }).eq('id', data.id)
 
-    return Response.json({ ...data, outline, title, assignment_summary: summary })
+    // Structured numeric requirements live in their own guarded write so a parse
+    // miss — or migration 017 not yet applied (column absent) — can never break
+    // core session creation. actual starts at zero and is recomputed as the
+    // student writes (lib/requirements.js → persistRequirementsActual).
+    const requirementsValue = { targets: requirements ?? [], actual: { words: 0, paragraphs: 0 } }
+    const { error: reqErr } = await supabase.from('sessions')
+      .update({ requirements: requirementsValue }).eq('id', data.id)
+    if (reqErr) console.error('[sessions POST] requirements write skipped:', reqErr.message)
+
+    return Response.json({ ...data, outline, title, assignment_summary: summary, requirements: requirementsValue })
   } catch (err) {
     console.error('[sessions POST] Unexpected error:', err)
     return Response.json({ error: err.message ?? 'Unknown error' }, { status: 500 })

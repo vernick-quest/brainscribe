@@ -10,6 +10,7 @@ import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
+import { computeActual, chipState } from '@/lib/requirements'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -1253,6 +1254,7 @@ export default function TutorSession({
   // ── Derived values ───────────────────────────────────────────────────────────
 
   const fullEssay    = paragraphs.map(p => p.scribed_text).filter(Boolean).join('\n\n')
+  const reqActual    = computeActual(paragraphs)
   const currentMeta  = PERSONA_META[persona]
   // Student's most recent reply — prefilled into the manual lock-in fallback.
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
@@ -1383,8 +1385,31 @@ export default function TutorSession({
             {/* Divider */}
             <div className="hidden sm:block mx-3 shrink-0 self-stretch" style={{ width: 1, backgroundColor: 'var(--border-default)' }} />
 
-            {/* RIGHT: Subject + Teacher chips */}
+            {/* RIGHT: Requirement progress + Subject + Teacher chips */}
             <div className="flex items-center gap-1.5 shrink-0 ml-2 sm:ml-0">
+
+              {/* Requirement progress chips — only when the assignment states numeric
+                  targets (words/paragraphs). Computed live from the current draft;
+                  turns green when a target is met. */}
+              {(session.requirements?.targets ?? []).map((t, i) => {
+                const c = chipState(t, reqActual)
+                if (!c) return null
+                return (
+                  <span
+                    key={`req-${i}`}
+                    className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold shrink-0"
+                    style={{
+                      backgroundColor: c.met ? 'var(--status-success-bg)' : 'var(--accent-soft)',
+                      color: c.met ? 'var(--status-success)' : 'var(--accent-text)',
+                    }}
+                    title={c.full}
+                  >
+                    <span className="hidden sm:inline">{c.full}</span>
+                    <span className="sm:hidden">{c.short}</span>
+                    {c.met && <span className="ml-1" aria-hidden="true">✓</span>}
+                  </span>
+                )
+              })}
 
               {/* Subject chip */}
               <button

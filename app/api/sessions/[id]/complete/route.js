@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createNotificationsForSession } from '@/lib/notifications'
 import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
+import { persistRequirementsActual } from '@/lib/requirements'
 import { NextResponse } from 'next/server'
 
 // Build flowing prose for any scaffold paragraph whose components are confirmed but
@@ -101,6 +102,9 @@ export async function PATCH(request, { params }) {
   // Turn any confirmed-but-unassembled paragraphs into flowing prose before we
   // read the final draft for analysis (and hand it back to the client).
   await assembleUnbuiltParagraphs(supabase, id, user.id)
+
+  // Final actual-progress snapshot for sessions.requirements (no-op if none set).
+  await persistRequirementsActual(supabase, id)
 
   const { data: paragraphs } = await supabase
     .from('paragraphs')
