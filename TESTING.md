@@ -68,6 +68,13 @@ Parent generates an invite link for their child; child claims it and is linked.
 - [ ] ⬜ Reusing an already-claimed link → "This invite has already been used."
 - [ ] ⬜ A **student** account hitting `POST /api/invites` with `role:'student'` is rejected ("Only parents can invite a child."); a **parent** sending a `parent`/`teacher` invite is rejected ("Only students…")
 
+### Relationship caps (max 3 students/parent, max 2 parents/child — new 2026-06-27)
+- [ ] ⬜ A parent already linked to 3 students → "Add a child" rejects with "…maximum of 3 students." (generation-time)
+- [ ] ⬜ A student already linked to 2 parents → "Invite a parent" rejects with "…maximum of 2 parents." (generation-time)
+- [ ] ⬜ Generate a link while under the cap, then push the sender to the cap before it's claimed → claiming the link is refused with the cap message (claim-time gate, no token burn / role flip)
+- [ ] ⬜ Re-claiming an **already-linked** pair still succeeds (idempotent; cap not falsely triggered)
+- [ ] ⬜ COPPA consent still links a parent even if it would exceed the cap (consent path is exempt — verify an under-13 with 2 voluntary parents can still be consented by a 3rd guardian)
+
 ## Teacher dashboard (teacher account or remote-in)
 - [ ] ⬜ Collapsible block per student (expand/collapse); auto-open if only one student
 - [ ] ⬜ Notification bell in the header opens (newly mounted today)

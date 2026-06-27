@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { NextResponse } from 'next/server'
 
 // POST /api/invites
@@ -28,14 +29,31 @@ export async function POST(request) {
     return NextResponse.json({ error: "That's your own email — enter the other person's." }, { status: 400 })
   }
 
-  // Authorize the sender against the invite role.
+  // Authorize the sender against the invite role, and fail early if the sender's
+  // own relationship cap is already full. (Only the sender's side can be checked
+  // here under RLS — the recipient's cap is enforced authoritatively at claim
+  // time in app/(auth)/invite.)
   if (role === 'student') {
     // Parent-initiated linking: only a parent may invite a child.
     if (profile?.role !== 'parent') {
       return NextResponse.json({ error: 'Only parents can invite a child.' }, { status: 403 })
     }
-  } else if (profile?.role !== 'student') {
-    return NextResponse.json({ error: 'Only students can send these invites.' }, { status: 403 })
+    const { count } = await supabase
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', user.id)
+    if ((count ?? 0) >= MAX_CHILDREN_PER_PARENT) {
+      return NextResponse.json({ error: `You're already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.` }, { status: 400 })
+    }
+  } else {
+    if (profile?.role !== 'student') {
+      return NextResponse.json({ error: 'Only students can send these invites.' }, { status: 403 })
+    }
+    if (role === 'parent') {
+      const { count } = await supabase
+        .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+      if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) {
+        return NextResponse.json({ error: `You already have the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.` }, { status: 400 })
+      }
+    }
   }
 
   if (role === 'teacher' && !assignmentId) {

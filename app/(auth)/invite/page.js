@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import { createNotification } from '@/lib/notifications'
 import InviteAgeGate from '@/components/InviteAgeGate'
+import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 
 export default async function InvitePage({ searchParams }) {
   const params = await searchParams
@@ -60,6 +62,44 @@ export default async function InvitePage({ searchParams }) {
       return <InviteAgeGate token={token} role={invite.role} />
     }
 
+    // Both the parent invite (student invited a parent) and the student invite
+    // (parent invited a child) create one watcher→student relationship. Resolve
+    // who is the parent (watcher) and who is the child (student) for this claim.
+    let pendingRel = null
+    if (invite.role === 'parent' && invite.invited_by) {
+      pendingRel = { watcher_id: user.id, student_id: invite.invited_by }
+    } else if (invite.role === 'student' && invite.invited_by) {
+      pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
+    }
+
+    // Enforce relationship caps BEFORE consuming the invite, so a capped link
+    // doesn't burn the token or flip the profile role. Counts need the service
+    // client: under RLS the claimer can only see relationships on their own side,
+    // and the insert policy (watcher_id = auth.uid()) would otherwise reject a
+    // child claiming a parent-sent invite.
+    const service = pendingRel ? createServiceClient() : null
+    if (pendingRel) {
+      const { data: existing } = await service
+        .from('relationships').select('id')
+        .eq('watcher_id', pendingRel.watcher_id)
+        .eq('student_id', pendingRel.student_id)
+        .limit(1)
+
+      // Skip the caps for an already-linked pair (idempotent re-claim).
+      if (!(existing?.length)) {
+        const [{ count: childCount }, { count: parentCount }] = await Promise.all([
+          service.from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', pendingRel.watcher_id),
+          service.from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', pendingRel.student_id),
+        ])
+        if ((childCount ?? 0) >= MAX_CHILDREN_PER_PARENT) {
+          return <InviteError message={`That parent account is already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.`} />
+        }
+        if ((parentCount ?? 0) >= MAX_PARENTS_PER_CHILD) {
+          return <InviteError message={`That student already has the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.`} />
+        }
+      }
+    }
+
     await supabase.from('invites').update({
       claimed_by: user.id,
       claimed_at: new Date().toISOString(),
@@ -68,22 +108,14 @@ export default async function InvitePage({ searchParams }) {
     // Update their profile role — mark confirmed since invite pre-assigns the role
     await supabase.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
 
-    // Parent invite → create relationship with the student who sent the invite
-    if (invite.role === 'parent' && invite.invited_by) {
-      await supabase.from('relationships').insert({
-        watcher_id: user.id,
-        student_id: invite.invited_by,
-      }).single() // ignore duplicate error if already linked
-    }
-
-    // Student invite → a parent invited this child; link the parent as watcher.
-    // (The child still runs their own age-first / COPPA onboarding separately —
-    // this relationship is read-only oversight, not parental consent.)
-    if (invite.role === 'student' && invite.invited_by) {
-      await supabase.from('relationships').insert({
-        watcher_id: invite.invited_by,
-        student_id: user.id,
-      }).single() // ignore duplicate error if already linked
+    // Create the watcher→student link (service client: see the cap note above).
+    // A student claiming a parent-sent invite still runs their own age-first /
+    // COPPA onboarding separately — this relationship is read-only oversight.
+    if (pendingRel) {
+      await service.from('relationships').upsert(
+        pendingRel,
+        { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
+      )
     }
 
     // Teacher invite scoped to a specific assignment → grant access + notify
