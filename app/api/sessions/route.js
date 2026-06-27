@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { onboardingGreeting } from '@/lib/onboardingPrompts'
+import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 
 const anthropic = new Anthropic()
 
@@ -137,7 +137,8 @@ export async function POST(request) {
           assignment_text: assignmentText,
           persona,
           subject: 'unspecified',
-          title: 'Practice session',
+          // Reflect the chosen topic in the title so the practice card isn't generic.
+          title: `Practice — ${getPromptByKey(onboardingPromptKey)?.label ?? 'warm-up'}`,
           is_onboarding: true,
           onboarding_prompt_key: onboardingPromptKey,
         })

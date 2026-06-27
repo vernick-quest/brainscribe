@@ -52,11 +52,12 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   const introLine = isWatcher
     ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along — but it helps to see how this works. Want to try writing one opening line yourself? Takes about a minute — or head straight to your dashboard.`
-    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach — one of six, each with a different style. You've got me to start, and you can switch to anyone else whenever you like. Here's the one rule: I never write it for you — the words are always yours. Let's warm up by finding one strong opening line together. Takes about a minute. Ready?`
+    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach — one of six, each with a different style, and you can switch anytime. I'm going to walk you through a quick sample assignment so you can see how everything works. The one rule: I never write it for you — the words are always yours. Ready?`
   const promptsLine = isWatcher
-    ? "Pick a prompt and we'll write one opening line together — or head straight to your dashboard."
-    : "Let's find your opening line — the sentence that makes someone want to keep reading. Pick whatever sounds interesting; there's no wrong answer here."
-  const planLine = "Good pick. Quick look at how this works: a paragraph comes together from a few pieces, and you'll watch each one land in your Draft. Today we'll just nail the first one — your opening line."
+    ? "Pick a writing assignment and we'll get a feel for how this works — or head straight to your dashboard."
+    : "Let's find a writing assignment that resonates with you — don't worry, we won't write the whole thing. Pick whatever sounds interesting; there's no wrong answer here."
+  // Plain text for the spoken line; the displayed version (in the plan stage) bolds "hook".
+  const planLine = "Great choice for a paragraph topic. Every good paragraph has a few components — but today we'll focus on narrowing your theme and writing a strong hook. Each piece you lock in shows up in your Draft panel."
 
   // Speak the line for whatever screen is currently showing.
   const currentLine =
@@ -133,7 +134,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {/* ── Stage: intro ── */}
           {stage === 'intro' && (
             <Card>
-              <SpeechText>{introLine}</SpeechText>
+              <Narration onReplay={() => speak(introLine)}>{introLine}</Narration>
               {/* Meet the coaches up front — the student isn't locked into Owen. */}
               <CoachRow />
               <PrimaryButton onClick={() => { stop(); setStage('prompts') }}>
@@ -154,7 +155,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {/* ── Stage: practice prompt selection ── */}
           {stage === 'prompts' && (
             <Card>
-              <SpeechText>{promptsLine}</SpeechText>
+              <Narration onReplay={() => speak(promptsLine)}>{promptsLine}</Narration>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                 {prompts.map(p => {
@@ -178,13 +179,14 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                 })}
               </div>
 
-              {selected && (
-                <button onClick={() => { stop(); setStage('plan') }}
-                  className="w-full text-white font-bold rounded-full py-3 mt-5 transition"
-                  style={{ backgroundColor: 'var(--accent)' }}>
-                  Continue →
-                </button>
-              )}
+              {/* Always visible, but muted until a prompt is chosen — mirrors the
+                  new-assignment page's "Start writing" button. */}
+              <button onClick={() => { stop(); setStage('plan') }}
+                disabled={!selected}
+                className="w-full font-bold rounded-full py-3 mt-5 transition disabled:opacity-50"
+                style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', cursor: selected ? 'pointer' : 'not-allowed' }}>
+                Continue →
+              </button>
 
               {/* Parents/teachers get an explicit opt-out of the practice. */}
               {isWatcher && (
@@ -201,7 +203,12 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {/* ── Stage: "how we'll build it" — paragraph anatomy, after the pick ── */}
           {stage === 'plan' && (
             <Card>
-              <SpeechText>{planLine}</SpeechText>
+              <Narration onReplay={() => speak(planLine)}>
+                Great choice for a paragraph topic. Every good paragraph has a few components — but
+                today we&rsquo;ll focus on narrowing your theme and writing a strong{' '}
+                <strong style={{ color: 'var(--text-strong)' }}>hook</strong>. Each piece you lock
+                in shows up in your Draft panel.
+              </Narration>
               <ParagraphAnatomy />
 
               {error && <p className="text-sm text-center" style={{ color: 'var(--status-error)' }}>{error}</p>}
@@ -209,7 +216,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
               <button onClick={startPractice} disabled={creating}
                 className="w-full text-white font-bold rounded-full py-3 transition disabled:opacity-60"
                 style={{ backgroundColor: 'var(--accent)' }}>
-                {creating ? 'Setting up your warm-up…' : 'Start writing your opening line →'}
+                {creating ? 'Setting up your warm-up…' : 'Start writing →'}
               </button>
 
               {isWatcher && (
@@ -245,6 +252,34 @@ function SpeechText({ children }) {
     <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)' }}>
       {children}
     </p>
+  )
+}
+
+// Owen's spoken line + a replay control (mirrors the in-chat "replay" affordance).
+// Autoplay is blocked until the first gesture, so the button is the reliable way to
+// hear the line.
+function Narration({ children, onReplay }) {
+  return (
+    <div>
+      <SpeechText>{children}</SpeechText>
+      <ReplayButton onClick={onReplay} />
+    </div>
+  )
+}
+
+function ReplayButton({ onClick }) {
+  return (
+    <div className="flex justify-end mt-1.5">
+      <button onClick={onClick}
+        className="inline-flex items-center gap-1 text-xs font-medium transition hover:underline"
+        style={{ color: 'var(--text-subtle)' }}
+        aria-label="Replay Owen's audio">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <polygon points="6 4 20 12 6 20 6 4" />
+        </svg>
+        Replay
+      </button>
+    </div>
   )
 }
 
