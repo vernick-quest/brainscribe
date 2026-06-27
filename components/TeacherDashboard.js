@@ -7,6 +7,7 @@ import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import Icon from '@/components/Icon'
+import StudentAvatar from '@/components/StudentAvatar'
 
 
 function formatDate(str) {
@@ -18,11 +19,6 @@ function formatDate(str) {
   if (days === 1) return 'Yesterday'
   if (days < 7) return `${days} days ago`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function initials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
 // ── Assignment row ────────────────────────────────────────────
@@ -206,10 +202,12 @@ function StudentBlock({ student, sessions, defaultOpen }) {
         className="w-full px-5 py-4 flex items-center gap-4 text-left transition"
         style={{ backgroundColor: 'var(--bg-page-alt)', borderBottom: open ? '1px solid var(--border-default)' : 'none' }}
       >
-        <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
-          style={{ backgroundColor: 'var(--primary)' }}>
-          {initials(student.full_name)}
-        </div>
+        <StudentAvatar
+          name={student.full_name}
+          avatarUrl={student.avatar_url}
+          ageBracket={student.age_bracket}
+          size={44}
+        />
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate" style={{ color: 'var(--text-strong)' }}>{student.full_name ?? 'Student'}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

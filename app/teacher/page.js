@@ -48,7 +48,7 @@ export default async function TeacherDashboardPage() {
     const studentIds = [...new Set(sessions.map(s => s.student_id))]
     if (studentIds.length > 0) {
       const { data: studentData } = await service
-        .from('profiles').select('id, full_name, email').in('id', studentIds)
+        .from('profiles').select('id, full_name, email, avatar_url, age_bracket').in('id', studentIds)
       students = studentData ?? []
     }
   }

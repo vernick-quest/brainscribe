@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import Navbar from '@/components/Navbar'
+import StudentAvatar from '@/components/StudentAvatar'
 
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 
@@ -118,7 +119,7 @@ function DialogueTab({ messages, persona, studentFirstName }) {
 
 
 // ── Main ──────────────────────────────────────────────────────
-export default function TeacherAssignmentView({ session, messages, paragraphs, studentName, user, writingProfile }) {
+export default function TeacherAssignmentView({ session, messages, paragraphs, studentName, studentAvatarUrl, studentAgeBracket, user, writingProfile }) {
   const [tab, setTab] = useState('essay')
   const persona = getPersona(session.persona)
   const essay = paragraphs?.map(p => p.scribed_text).join('\n\n') ?? ''
@@ -178,10 +179,12 @@ export default function TeacherAssignmentView({ session, messages, paragraphs, s
           {/* Student + tutor + date */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                style={{ backgroundColor: 'var(--primary)' }}>
-                {(studentName ?? '?')[0].toUpperCase()}
-              </div>
+              <StudentAvatar
+                name={studentName}
+                avatarUrl={studentAvatarUrl}
+                ageBracket={studentAgeBracket}
+                size={24}
+              />
               <span className="text-sm font-medium" style={{ color: 'var(--text-body)' }}>{studentName}</span>
             </div>
             <span style={{ color: 'var(--text-subtle)' }}>·</span>
