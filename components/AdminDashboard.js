@@ -109,7 +109,9 @@ function RoleEditor({ userId, currentRole, onChanged }) {
 }
 
 // ── Remote-in button ──────────────────────────────────────────
-function RemoteInButton({ userId, role, name }) {
+// Only userId is sent — role + name are resolved server-side (the route ignores
+// any client-supplied role/name so a stale payload can't set the wrong identity).
+function RemoteInButton({ userId }) {
   const [loading, setLoading] = useState(false)
 
   async function handleClick() {
@@ -117,8 +119,9 @@ function RemoteInButton({ userId, role, name }) {
     const res = await fetch('/api/admin/impersonate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, role, name }),
+      body: JSON.stringify({ userId }),
     })
+    if (!res.ok) { setLoading(false); return }
     const { dest } = await res.json()
     window.location.href = dest
   }
@@ -289,13 +292,17 @@ function SessionRow({ session, studentName, compact = false }) {
   async function open() {
     if (loading) return
     setLoading(true)
+    // Fail closed: if the remote-in doesn't take, do NOT navigate — otherwise a
+    // stale impersonation cookie for a different user would carry onto this
+    // session (the exact thing remoting-in-first is meant to prevent).
     try {
-      await fetch('/api/admin/impersonate', {
+      const res = await fetch('/api/admin/impersonate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: session.student_id }),
       })
-    } catch {}
+      if (!res.ok) { setLoading(false); return }
+    } catch { setLoading(false); return }
     window.location.href = `/assignment/${session.id}`
   }
 
@@ -368,7 +375,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
           <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
           <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
           <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
-          <RemoteInButton userId={student.id} role={student.role} name={student.full_name} />
+          <RemoteInButton userId={student.id} />
           <DeleteUserButton userId={student.id} name={student.full_name} />
           <button onClick={() => setOpen(o => !o)}
             className="flex items-center transition-transform"
@@ -416,7 +423,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
       {showControls && (
         <>
           <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
-          <RemoteInButton userId={person.id} role={person.role} name={person.full_name} />
+          <RemoteInButton userId={person.id} />
           <DeleteUserButton userId={person.id} name={person.full_name} />
         </>
       )}
