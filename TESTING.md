@@ -52,6 +52,9 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Complete → transcript (Step 7 banner) → reflection → dashboard
 
 ## Parent dashboard (parent account or remote-in)
+- [ ] ⬜ Child block header shows the child's **Google photo** (13+) via shared `<UserAvatar>`
+- [ ] ⬜ An **under-13** child shows a blue-initial circle, **never** a photo (COPPA), even if a stored avatar_url still exists pre-019
+- [ ] ⬜ A broken/expired Google photo URL falls back to the blue-initial circle (no broken-image icon)
 - [ ] ⬜ One block per child, each listing that child's assignments
 - [ ] ⬜ "View profile" → read-only student profile (stats + writing profile)
 - [ ] ⬜ "Your writing" block (parent's own work) with "+ New"

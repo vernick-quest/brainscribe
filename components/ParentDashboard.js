@@ -2,6 +2,7 @@
 
 import YourWritingCard from '@/components/YourWritingCard'
 import AddChildForm from '@/components/AddChildForm'
+import UserAvatar from '@/components/UserAvatar'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -18,11 +19,6 @@ function formatDate(dateStr) {
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7) return `${diffDays} days ago`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function initials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
 // ── Assignment card ───────────────────────────────────────────
@@ -105,10 +101,12 @@ function ChildBlock({ child, sessions }) {
       {/* Header */}
       <div className="px-5 py-4 flex items-center gap-4"
         style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--bg-page-alt)' }}>
-        <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
-          style={{ backgroundColor: 'var(--primary)' }}>
-          {initials(child.full_name)}
-        </div>
+        <UserAvatar
+          name={child.full_name}
+          avatarUrl={child.avatar_url}
+          ageBracket={child.age_bracket}
+          size={44}
+        />
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate" style={{ color: 'var(--text-strong)' }}>{child.full_name ?? 'Student'}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

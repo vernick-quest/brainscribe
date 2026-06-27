@@ -37,7 +37,7 @@ export default async function ParentDashboardPage() {
 
   if (studentIds.length > 0) {
     const [{ data: profileData }, { data: sessionData }] = await Promise.all([
-      service.from('profiles').select('id, full_name, email').in('id', studentIds),
+      service.from('profiles').select('id, full_name, email, avatar_url, age_bracket').in('id', studentIds),
       service.from('sessions')
         .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label')
         .in('student_id', studentIds)
