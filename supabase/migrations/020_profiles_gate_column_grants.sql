@@ -1,5 +1,5 @@
--- 020_profiles_gate_column_grants.sql
--- Date: 2026-06-27
+-- 020 — Lock COPPA gate columns to service-role-only writes
+-- File: 020_profiles_gate_column_grants.sql · Date: 2026-06-27
 --
 -- Closes the COPPA gate-bypass hole. The RLS policy "profiles: own" grants a
 -- logged-in user UPDATE on EVERY column of their own row, so a client could

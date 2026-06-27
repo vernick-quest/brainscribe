@@ -1,5 +1,5 @@
--- 019_profile_birthdate.sql
--- Date: 2026-06-27
+-- 019 — Add profiles.birthdate + minimize under-13 avatars
+-- File: 019_profile_birthdate.sql · Date: 2026-06-27
 --
 -- Adds an actual birthdate to profiles. Per product decision, birthdate becomes
 -- the source of truth for the under-13 / 13+ COPPA gate — age_bracket is derived

@@ -1,5 +1,5 @@
--- 018_reconcile_drift.sql
--- Date: 2026-06-27
+-- 018 — Reconcile live-only schema drift (is_admin, invites.assignment_id, invites.expires_at)
+-- File: 018_reconcile_drift.sql · Date: 2026-06-27
 --
 -- Reconciles schema drift: objects that exist in the LIVE database (project
 -- lakozspeyxsuunogfant) but were never captured in a migration file, so a fresh
