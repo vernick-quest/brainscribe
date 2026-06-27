@@ -58,10 +58,12 @@ export default function PendingActions({ parentEmail, daysLeft }) {
         {status === 'sending' ? 'Sending…' : 'Resend email'}
       </button>
 
-      <a href="/api/auth/signout"
-        style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', textDecoration: 'none' }}>
-        Not you? Sign out
-      </a>
+      <form action="/api/auth/signout" method="POST">
+        <button type="submit"
+          style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          Not you? Sign out
+        </button>
+      </form>
     </div>
   )
 }
