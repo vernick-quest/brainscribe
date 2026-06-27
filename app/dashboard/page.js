@@ -57,7 +57,7 @@ export default async function DashboardPage() {
 
   const { data: sessions } = await service
     .from('sessions')
-    .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label, is_onboarding')
+    .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label, is_onboarding, requirements')
     .eq('student_id', targetId)
     .order('updated_at', { ascending: false })
     .limit(50)

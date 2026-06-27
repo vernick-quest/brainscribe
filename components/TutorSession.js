@@ -1385,31 +1385,8 @@ export default function TutorSession({
             {/* Divider */}
             <div className="hidden sm:block mx-3 shrink-0 self-stretch" style={{ width: 1, backgroundColor: 'var(--border-default)' }} />
 
-            {/* RIGHT: Requirement progress + Subject + Teacher chips */}
+            {/* RIGHT: Subject + Teacher chips */}
             <div className="flex items-center gap-1.5 shrink-0 ml-2 sm:ml-0">
-
-              {/* Requirement progress chips — only when the assignment states numeric
-                  targets (words/paragraphs). Computed live from the current draft;
-                  turns green when a target is met. */}
-              {(session.requirements?.targets ?? []).map((t, i) => {
-                const c = chipState(t, reqActual)
-                if (!c) return null
-                return (
-                  <span
-                    key={`req-${i}`}
-                    className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold shrink-0"
-                    style={{
-                      backgroundColor: c.met ? 'var(--status-success-bg)' : 'var(--accent-soft)',
-                      color: c.met ? 'var(--status-success)' : 'var(--accent-text)',
-                    }}
-                    title={c.full}
-                  >
-                    <span className="hidden sm:inline">{c.full}</span>
-                    <span className="sm:hidden">{c.short}</span>
-                    {c.met && <span className="ml-1" aria-hidden="true">✓</span>}
-                  </span>
-                )
-              })}
 
               {/* Subject chip */}
               <button
@@ -1726,7 +1703,14 @@ export default function TutorSession({
           <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
             <div className="flex items-center gap-3">
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Your Draft</p>
-              {scaffold && scaffold.total_paragraphs > 1 && (
+              {/* Neutral progress against the assignment's stated targets (words /
+                  paragraphs) — just the count, no judgment. Falls back to the scaffold
+                  paragraph count when the assignment states no numeric requirement. */}
+              {session.requirements?.targets?.length > 0 ? (
+                <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
+                  {session.requirements.targets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')}
+                </span>
+              ) : scaffold && scaffold.total_paragraphs > 1 && (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
                   {scaffold.components.filter(p => p.status === 'complete').length} / {scaffold.total_paragraphs} paragraphs
                 </span>

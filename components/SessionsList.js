@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
+import { chipState } from '@/lib/requirements'
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -145,6 +146,16 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, whiteSpace: 'nowrap' }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor }} />{statusLabel}
               </span>
+              {/* High-level progress against the stated targets — neutral, desktop-only
+                  to keep the mobile row uncrowded. Uses the persisted requirements.actual. */}
+              {session.requirements?.targets?.length > 0 && (
+                <>
+                  <span aria-hidden="true" className="hidden sm:inline" style={{ flexShrink: 0, color: 'var(--border-strong)' }}>·</span>
+                  <span className="hidden sm:inline-flex" style={{ alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    {session.requirements.targets.map(t => chipState(t, session.requirements.actual)?.full).filter(Boolean).join(' · ')}
+                  </span>
+                </>
+              )}
             </div>
           </button>
         )}
