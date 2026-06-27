@@ -9,6 +9,25 @@ export async function PATCH(request) {
 
   const { role: requestedRole, age_bracket } = await request.json()
 
+  // COPPA actual-knowledge is sticky: once an account has self-declared under-13
+  // (recorded as age_bracket='under13' or coppa_consent_required=true), it can
+  // NEVER re-declare 13+ to escape the consent gate. Without this, a child could
+  // re-open /welcome, pick "13 or older," and reach the coach with no parent
+  // approval. Fetch the existing profile and reject any such downgrade outright.
+  const { data: existing } = await supabase
+    .from('profiles')
+    .select('age_bracket, coppa_consent_required, coppa_consent_given')
+    .eq('id', user.id)
+    .single()
+
+  const alreadyUnder13 = existing?.age_bracket === 'under13' || existing?.coppa_consent_required === true
+  if (alreadyUnder13 && age_bracket === '13plus') {
+    return Response.json(
+      { error: 'This account is registered as under 13 and needs parental approval.', code: 'coppa_locked' },
+      { status: 403 }
+    )
+  }
+
   // Under-13 accounts can ONLY be students — never parent/teacher — regardless of
   // what the client sends. Age-first onboarding enforces this in the UI; this is
   // the server-side backstop that keeps a minor from ever holding a watcher role.
