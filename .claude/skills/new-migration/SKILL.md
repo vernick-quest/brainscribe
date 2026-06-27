@@ -13,7 +13,8 @@ Migrations in this repo are **applied by hand** — there is no runner, no `supa
 
 2. **Name it.** Get a short kebab-case slug for the change (ask the user if it isn't obvious from the request), e.g. `017_add_assignment_due_date.sql`.
 
-3. **Write `supabase/migrations/NNN_<slug>.sql`.** Begin with a header comment (what changed, why, date), then the SQL. Conventions:
+3. **Write `supabase/migrations/NNN_<slug>.sql`.** Begin with a header comment block (what changed, why, date), then the SQL. Conventions:
+   - **First line must be a concise descriptive title** in the form `-- NNN — <what changed>` (e.g. `-- 020 — Lock COPPA gate columns to service-role-only writes`). The Supabase SQL editor names the saved snippet from the query's first line, so a descriptive title makes it findable later; a bare `-- NNN_slug.sql` filename or a decorative divider leaves it effectively untitled. Put the filename/date on the *second* line (`-- File: NNN_<slug>.sql · Date: YYYY-MM-DD`).
    - Idempotent DDL where possible: `create table if not exists`, `alter table ... add column if not exists`.
    - **New tables:** `alter table <t> enable row level security;` then policies mirroring the **student-owns / watcher-reads** pattern in `001_initial_schema.sql` — the student has full access to their own rows (`auth.uid() = student_id`); parents/teachers get read-only access via a `relationships` join. 
    - Use `on delete cascade` to `profiles`/`sessions` for rows owned by a user or session.
