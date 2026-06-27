@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import { createNotification } from '@/lib/notifications'
 import InviteAgeGate from '@/components/InviteAgeGate'
@@ -63,8 +64,11 @@ export default async function InvitePage({ searchParams }) {
       claimed_at: new Date().toISOString(),
     }).eq('id', invite.id)
 
-    // Update their profile role — mark confirmed since invite pre-assigns the role
-    await supabase.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
+    // Update their profile role — mark confirmed since invite pre-assigns the role.
+    // role/role_confirmed are gate columns REVOKEd from `authenticated` by migration
+    // 020, so this write must go through the service client.
+    const service = createServiceClient()
+    await service.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
 
     // Parent invite → create relationship with the student who sent the invite
     if (invite.role === 'parent' && invite.invited_by) {

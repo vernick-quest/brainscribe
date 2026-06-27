@@ -160,10 +160,12 @@ export default async function CoppaPendingPage() {
               It looks like we don't have a pending consent request for your account.
               Please contact <strong>brainscribe.io@gmail.com</strong> for help.
             </p>
-            <a href="/api/auth/signout"
-              style={{ fontSize: '0.875rem', color: 'var(--brand-orange)', fontWeight: 600 }}>
-              Sign out
-            </a>
+            <form action="/api/auth/signout" method="POST">
+              <button type="submit"
+                style={{ fontSize: '0.875rem', color: 'var(--brand-orange)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                Sign out
+              </button>
+            </form>
           </>
         )}
 
