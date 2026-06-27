@@ -2,18 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { PersonaAvatar, getPersona } from '@/lib/personas'
+import { PERSONAS, PersonaAvatar, getPersona } from '@/lib/personas'
 import { useCoachVoice } from '@/lib/useCoachVoice'
 import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
 
-// The whole FTUE is 3 steps: 1 welcome · 2 pick a prompt · 3 write your opening
-// line (in the coach). Steps 1-2 live here; 3 is the practice banner; the reveal
-// at /onboarding/complete is the unnumbered payoff. There is deliberately no
-// orientation tour — the coach explains everything by using it (see the spec's
-// "no feature tour" principle), which keeps the warm-up to about a minute.
-const FTUE_TOTAL_STEPS = 3
+// The FTUE is 4 steps: 1 welcome (meet Owen + the other coaches) · 2 pick a
+// prompt · 3 see how a paragraph is built · 4 write your opening line (in the
+// coach). Steps 1-3 live here; 4 is the practice banner; the reveal at
+// /onboarding/complete is the unnumbered payoff. The paragraph-anatomy beat sits
+// AFTER the prompt pick on purpose — it lands better once the student has a topic
+// and is about to write than as abstract theory on the welcome screen.
+const FTUE_TOTAL_STEPS = 4
 const FTUE_STEP_KEY = 'bs_ftue_step'
 
 export default function OnboardingFlow({ studentName = 'there', prompts = [], role = 'student' }) {
@@ -25,7 +26,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   const isWatcher = role === 'parent' || role === 'teacher'
   const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/dashboard'
 
-  const [stage, setStage]       = useState('intro')   // 'intro' | 'prompts'
+  const [stage, setStage]       = useState('intro')   // 'intro' | 'prompts' | 'plan'
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
@@ -51,15 +52,17 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   const introLine = isWatcher
     ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along — but it helps to see how this works. Want to try writing one opening line yourself? Takes about a minute — or head straight to your dashboard.`
-    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach. Here's how this works: we build your writing one piece at a time, and you'll watch it come together in your Draft. I never write it for you — the words are all yours. Let's warm up with the very first piece: your opening line. Takes about a minute. Ready?`
+    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach — one of six, each with a different style. You've got me to start, and you can switch to anyone else whenever you like. Here's the one rule: I never write it for you — the words are always yours. Let's warm up by finding one strong opening line together. Takes about a minute. Ready?`
   const promptsLine = isWatcher
     ? "Pick a prompt and we'll write one opening line together — or head straight to your dashboard."
     : "Let's find your opening line — the sentence that makes someone want to keep reading. Pick whatever sounds interesting; there's no wrong answer here."
+  const planLine = "Good pick. Quick look at how this works: a paragraph comes together from a few pieces, and you'll watch each one land in your Draft. Today we'll just nail the first one — your opening line."
 
   // Speak the line for whatever screen is currently showing.
   const currentLine =
     stage === 'intro'   ? introLine :
-    stage === 'prompts' ? promptsLine : ''
+    stage === 'prompts' ? promptsLine :
+    stage === 'plan'    ? planLine : ''
 
   useEffect(() => { speak(currentLine) }, [currentLine, speak])
 
@@ -131,9 +134,8 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {stage === 'intro' && (
             <Card>
               <SpeechText>{introLine}</SpeechText>
-              {/* Teach the shape of a paragraph and where it shows up, so the warm-up
-                  has context: today is just the first piece, the rest come on real work. */}
-              {!isWatcher && <ParagraphAnatomy />}
+              {/* Meet the coaches up front — the student isn't locked into Owen. */}
+              <CoachRow />
               <PrimaryButton onClick={() => { stop(); setStage('prompts') }}>
                 Let's go →
               </PrimaryButton>
@@ -176,13 +178,11 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                 })}
               </div>
 
-              {error && <p className="text-sm text-center mt-4" style={{ color: 'var(--status-error)' }}>{error}</p>}
-
               {selected && (
-                <button onClick={startPractice} disabled={creating}
-                  className="w-full text-white font-bold rounded-full py-3 mt-5 transition disabled:opacity-60"
+                <button onClick={() => { stop(); setStage('plan') }}
+                  className="w-full text-white font-bold rounded-full py-3 mt-5 transition"
                   style={{ backgroundColor: 'var(--accent)' }}>
-                  {creating ? 'Setting up your warm-up…' : 'Start with this one →'}
+                  Continue →
                 </button>
               )}
 
@@ -195,6 +195,31 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                 </button>
               )}
               {!isWatcher && <StepIndicator n={2} total={FTUE_TOTAL_STEPS} />}
+            </Card>
+          )}
+
+          {/* ── Stage: "how we'll build it" — paragraph anatomy, after the pick ── */}
+          {stage === 'plan' && (
+            <Card>
+              <SpeechText>{planLine}</SpeechText>
+              <ParagraphAnatomy />
+
+              {error && <p className="text-sm text-center" style={{ color: 'var(--status-error)' }}>{error}</p>}
+
+              <button onClick={startPractice} disabled={creating}
+                className="w-full text-white font-bold rounded-full py-3 transition disabled:opacity-60"
+                style={{ backgroundColor: 'var(--accent)' }}>
+                {creating ? 'Setting up your warm-up…' : 'Start writing your opening line →'}
+              </button>
+
+              {isWatcher && (
+                <button onClick={handleSkip} disabled={creating}
+                  className="w-full rounded-full py-3 text-sm font-semibold transition disabled:opacity-60"
+                  style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}>
+                  Skip the practice — go to my dashboard →
+                </button>
+              )}
+              {!isWatcher && <StepIndicator n={3} total={FTUE_TOTAL_STEPS} />}
             </Card>
           )}
 
@@ -220,6 +245,21 @@ function SpeechText({ children }) {
     <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)' }}>
       {children}
     </p>
+  )
+}
+
+// The lineup of coaches, shown on the welcome screen so the student knows Owen is
+// one of several styles they can switch to — not the only option.
+function CoachRow() {
+  return (
+    <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
+      <div className="flex items-center justify-center gap-2 mb-2.5">
+        {Object.keys(PERSONAS).map(id => <PersonaAvatar key={id} personaId={id} size={34} />)}
+      </div>
+      <p className="text-xs text-center leading-snug" style={{ color: 'var(--text-subtle)' }}>
+        Six coaches, six styles. You&rsquo;ve got Owen to start — switch to anyone, anytime.
+      </p>
+    </div>
   )
 }
 

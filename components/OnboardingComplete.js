@@ -102,8 +102,9 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
 
           <div className="space-y-3 pt-1">
             <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>
-              Ready for the real thing? Paste in an actual assignment and we&rsquo;ll build the
-              whole paragraph together — the same way, one piece at a time.
+              Ready for the real thing? BrainScribe coaches you through whatever you&rsquo;re
+              assigned — essays, poetry, lab reports, you name it. Paste one in and we&rsquo;ll
+              build it together, one piece at a time.
             </p>
             <button onClick={() => go('/assignment/new')}
               className="w-full font-bold rounded-full py-3 transition"
