@@ -3,6 +3,7 @@
 import YourWritingCard from '@/components/YourWritingCard'
 import AddChildForm from '@/components/AddChildForm'
 import UserAvatar from '@/components/UserAvatar'
+import BirthdateField from '@/components/BirthdateField'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -122,6 +123,15 @@ function ChildBlock({ child, sessions }) {
         </a>
       </div>
 
+      {/* Birthday — sets the COPPA age gate; a parent edit is the trusted path */}
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
+        <BirthdateField
+          studentId={child.id}
+          birthdate={child.birthdate}
+          label={`${firstName}'s birthday`}
+        />
+      </div>
+
       {/* Assignments */}
       <div className="p-5 space-y-3">
         {childSessions.length === 0 ? (
@@ -137,7 +147,7 @@ function ChildBlock({ child, sessions }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions, ownSessions = [] }) {
+export default function ParentDashboard({ user, profile, viewerId, children, sessions, ownSessions = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -159,6 +169,16 @@ export default function ParentDashboard({ user, profile, children, sessions, own
                 ? `Following ${children[0].full_name?.split(' ')[0] ?? 'your student'}'s writing.`
                 : `Following ${children.length} students.`}
           </p>
+        </div>
+
+        {/* Your own details */}
+        <div className="rounded-2xl px-5 py-4"
+          style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
+          <BirthdateField
+            studentId={viewerId}
+            birthdate={profile?.birthdate}
+            label="Your birthday"
+          />
         </div>
 
         {/* Your own writing — parents can use the coaches too */}

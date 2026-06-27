@@ -25,7 +25,7 @@ export default async function ParentDashboardPage() {
 
   // Fetch the profile we're viewing as
   const { data: profile } = await service
-    .from('profiles').select('role, full_name').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, birthdate').eq('id', targetId).single()
 
   const { data: rels } = await service
     .from('relationships').select('student_id').eq('watcher_id', targetId)
@@ -37,7 +37,7 @@ export default async function ParentDashboardPage() {
 
   if (studentIds.length > 0) {
     const [{ data: profileData }, { data: sessionData }] = await Promise.all([
-      service.from('profiles').select('id, full_name, email, avatar_url, age_bracket').in('id', studentIds),
+      service.from('profiles').select('id, full_name, email, avatar_url, age_bracket, birthdate').in('id', studentIds),
       service.from('sessions')
         .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label')
         .in('student_id', studentIds)
@@ -64,6 +64,7 @@ export default async function ParentDashboardPage() {
       <ParentDashboard
         user={user}
         profile={profile}
+        viewerId={targetId}
         children={children}
         sessions={sessions}
         ownSessions={ownSessions}

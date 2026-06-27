@@ -55,6 +55,14 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Child block header shows the child's **Google photo** (13+) via shared `<UserAvatar>`
 - [ ] ⬜ An **under-13** child shows a blue-initial circle, **never** a photo (COPPA), even if a stored avatar_url still exists pre-019
 - [ ] ⬜ A broken/expired Google photo URL falls back to the blue-initial circle (no broken-image icon)
+
+### Birthdate edit (parent dashboard → guarded gate endpoint, new 2026-06-27)
+- [ ] ⬜ "Your birthday" card + each child block shows a birthday row; "Not set" shows "Add", a value shows "Edit"
+- [ ] ⬜ Setting a child's birthday saves, refreshes, and the new age bracket is reflected (e.g. <13 → avatar drops to initials)
+- [ ] ⬜ Setting a child **under 13** keeps them active (parent correction counts as consent — not bounced to /coppa/pending) and writes a `coppa_consent_log` row (`parent_birthdate_correction`)
+- [ ] ⬜ Future date / malformed date is rejected (client `max=today` + server validation)
+- [ ] ⬜ Remote-in: admin impersonating a parent edits the **parent's** and the **child's** birthday (not the admin's) — explicit studentId is always sent
+- [ ] ⬜ Edit persists across reload (RLS read of own + linked-child birthdate)
 - [ ] ⬜ One block per child, each listing that child's assignments
 - [ ] ⬜ "View profile" → read-only student profile (stats + writing profile)
 - [ ] ⬜ "Your writing" block (parent's own work) with "+ New"
