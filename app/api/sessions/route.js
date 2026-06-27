@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { onboardingGreeting } from '@/lib/onboardingPrompts'
 
 const anthropic = new Anthropic()
 
@@ -147,6 +148,20 @@ export async function POST(request) {
         console.error('[sessions POST] onboarding insert error:', error)
         return Response.json({ error: error.message }, { status: 500 })
       }
+
+      // Persist Owen's opening line as the first message so it survives navigation
+      // (it shows in the transcript and when the student returns mid-warm-up). The
+      // client otherwise delivers the greeting locally and never saves it.
+      const { data: greetProfile } = await supabase
+        .from('profiles').select('full_name').eq('id', user.id).single()
+      const greetName = greetProfile?.full_name?.split(' ')[0] ?? 'there'
+      const { error: greetErr } = await supabase.from('messages').insert({
+        session_id: data.id,
+        role: 'assistant',
+        content: onboardingGreeting(greetName),
+      })
+      if (greetErr) console.error('[sessions POST] greeting insert failed:', greetErr.message)
+
       return Response.json(data)
     }
 

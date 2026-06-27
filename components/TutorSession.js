@@ -11,6 +11,7 @@ import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
+import { onboardingGreeting } from '@/lib/onboardingPrompts'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
   // "assignment", and never ask whether they've written anything — there's
   // nothing yet. Just warmly invite their first thought on the prompt.
   if (onboarding) {
-    return `Okay ${name}, let's just dive in — no pressure at all. What's the first thing that comes to mind for this one? Just say whatever pops up.`
+    return onboardingGreeting(name)
   }
 
   const hasScaffold = scaffold?.components?.length > 0
@@ -487,7 +488,18 @@ export default function TutorSession({
   useEffect(() => {
     if (hasGreeted.current || greetedSessions.has(session.id)) return
     hasGreeted.current = true
-    if (initialMessages.length > 0) { setPhase('listening'); return }
+    if (initialMessages.length > 0) {
+      setPhase('listening')
+      // The onboarding greeting is persisted server-side, so it arrives in
+      // initialMessages even on first load. Speak it once in the background — the
+      // student still hears Owen open, but the input is live immediately (no waiting
+      // on audio, which previously gated the whole session behind the greeting clip).
+      if (onboarding && initialMessages.length === 1 && initialMessages[0]?.role === 'assistant') {
+        greetedSessions.add(session.id)
+        replayAudioOnly(initialMessages[0].content, session.persona ?? 'owen')
+      }
+      return
+    }
     greetedSessions.add(session.id)
     const activePersona = session.persona ?? 'owen'
     const greeting = buildGreeting(activePersona, studentName, initialScaffold, onboarding)
@@ -747,7 +759,12 @@ export default function TutorSession({
       }
     }
 
-    if (changed && !newScaffoldCreated && sc) {
+    // Persist any change — including when the scaffold was created THIS turn. The
+    // hook-only practice flow builds the scaffold and locks the opening line in a
+    // single coach turn; the create POST above only saved the initial (unconfirmed)
+    // tree, so without this PATCH the confirmed component never reaches the DB and the
+    // reveal/transcript come up blank.
+    if (changed && sc) {
       await fetch(`/api/scaffold/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2073,8 +2090,11 @@ export default function TutorSession({
 
                           {/* All parts confirmed. Custom (non-prose) forms are already
                               finished — the parts ARE the draft, so don't merge them into
-                              prose; offer to finish. Prose paragraphs get assembled. */}
-                          {isCurrentPara && allConfirmed && (
+                              prose; offer to finish. Prose paragraphs get assembled.
+                              In the onboarding warm-up the coach auto-completes and the
+                              brand "See your opening line" banner is the clear next step,
+                              so we hide this off-brand manual finish button entirely. */}
+                          {isCurrentPara && allConfirmed && !onboarding && (
                             para.type === 'custom' ? (
                               <button
                                 onClick={markSessionComplete}

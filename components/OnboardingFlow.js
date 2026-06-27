@@ -31,9 +31,6 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   const [error, setError]       = useState('')
   const restored = useRef(false)
 
-  // Step number for the "Step X of 3" badge (students only).
-  const stepNumber = stage === 'prompts' ? 2 : 1
-
   // Restore progress once on mount, so leaving mid-flow resumes where you
   // were rather than from the very first screen.
   useEffect(() => {
@@ -54,7 +51,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   const introLine = isWatcher
     ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along — but it helps to see how this works. Want to try writing one opening line yourself? Takes about a minute — or head straight to your dashboard.`
-    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach. Before your real assignments, let's do a quick warm-up: we'll come up with one strong opening line together. You can talk it out or type it — I never write it for you, the words are all yours. Takes about a minute. Ready?`
+    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach. Here's how this works: we build your writing one piece at a time, and you'll watch it come together in your Draft. I never write it for you — the words are all yours. Let's warm up with the very first piece: your opening line. Takes about a minute. Ready?`
   const promptsLine = isWatcher
     ? "Pick a prompt and we'll write one opening line together — or head straight to your dashboard."
     : "Let's find your opening line — the sentence that makes someone want to keep reading. Pick whatever sounds interesting; there's no wrong answer here."
@@ -106,14 +103,9 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ backgroundColor: 'var(--bg-page-alt)' }}>
-      {/* Step badge (students only — watchers can opt out, so a 7-step counter
-          they won't finish would mislead) + subtle skip link */}
-      <div className="flex justify-between items-center px-5 py-4">
-        {!isWatcher ? (
-          <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)', backgroundColor: 'var(--surface-muted)', padding: '4px 12px', borderRadius: 'var(--radius-pill)' }}>
-            Step {stepNumber} of {FTUE_TOTAL_STEPS}
-          </span>
-        ) : <span />}
+      {/* Just the subtle skip link up here — the step indicator now lives inside the
+          card, tucked under the primary button. */}
+      <div className="flex justify-end items-center px-5 py-4">
         <button onClick={handleSkip}
           className="text-xs font-medium transition hover:underline"
           style={{ color: 'var(--text-subtle)' }}>
@@ -139,6 +131,9 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {stage === 'intro' && (
             <Card>
               <SpeechText>{introLine}</SpeechText>
+              {/* Teach the shape of a paragraph and where it shows up, so the warm-up
+                  has context: today is just the first piece, the rest come on real work. */}
+              {!isWatcher && <ParagraphAnatomy />}
               <PrimaryButton onClick={() => { stop(); setStage('prompts') }}>
                 Let's go →
               </PrimaryButton>
@@ -150,6 +145,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                   Skip — go to my dashboard →
                 </button>
               )}
+              {!isWatcher && <StepIndicator n={1} total={FTUE_TOTAL_STEPS} />}
             </Card>
           )}
 
@@ -198,6 +194,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                   Skip the practice — go to my dashboard →
                 </button>
               )}
+              {!isWatcher && <StepIndicator n={2} total={FTUE_TOTAL_STEPS} />}
             </Card>
           )}
 
@@ -223,6 +220,48 @@ function SpeechText({ children }) {
     <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)' }}>
       {children}
     </p>
+  )
+}
+
+function StepIndicator({ n, total }) {
+  return (
+    <p className="text-center" style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)' }}>
+      Step {n} of {total}
+    </p>
+  )
+}
+
+// The four pieces of a paragraph, with the hook marked as today's warm-up. Mirrors
+// the "what comes next" list on the completion reveal so the student sees the same
+// shape on both ends, and learns the pieces show up in the Draft.
+const PARAGRAPH_PARTS = [
+  { label: 'Hook', note: "today's warm-up", active: true },
+  { label: 'Context', active: false },
+  { label: 'Body', active: false },
+  { label: 'Closing', active: false },
+]
+
+function ParagraphAnatomy() {
+  return (
+    <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
+      <p className="text-[11px] font-bold uppercase tracking-widest mb-2.5" style={{ color: 'var(--text-subtle)' }}>
+        A paragraph, one piece at a time
+      </p>
+      <div className="space-y-1.5">
+        {PARAGRAPH_PARTS.map(part => (
+          <div key={part.label} className="flex items-center gap-2.5">
+            <span className="rounded-full shrink-0" style={{ width: 8, height: 8, backgroundColor: part.active ? 'var(--accent)' : 'var(--border-strong)' }} />
+            <span className="text-sm" style={{ color: part.active ? 'var(--text-strong)' : 'var(--text-muted)', fontWeight: part.active ? 'var(--fw-semibold)' : 'normal' }}>
+              {part.label}
+            </span>
+            {part.note && <span className="text-[11px]" style={{ color: 'var(--accent-text)' }}>{part.note}</span>}
+          </div>
+        ))}
+      </div>
+      <p className="text-xs mt-3 leading-snug" style={{ color: 'var(--text-subtle)' }}>
+        Each piece shows up in your Draft as you go. Today we&rsquo;ll just nail the opening line.
+      </p>
+    </div>
   )
 }
 

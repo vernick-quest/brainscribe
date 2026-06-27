@@ -100,8 +100,13 @@ export async function PATCH(request, { params }) {
   }).catch(e => console.error('[notifications complete]', e))
 
   // Turn any confirmed-but-unassembled paragraphs into flowing prose before we
-  // read the final draft for analysis (and hand it back to the client).
-  await assembleUnbuiltParagraphs(supabase, id, user.id)
+  // read the final draft for analysis (and hand it back to the client). Skipped for
+  // the onboarding warm-up: it's a single opening line, not a paragraph — running it
+  // through assembly would reword the student's exact words. The transcript shows the
+  // verbatim line from the scaffold instead.
+  if (!session.is_onboarding) {
+    await assembleUnbuiltParagraphs(supabase, id, user.id)
+  }
 
   // Final actual-progress snapshot for sessions.requirements (no-op if none set).
   await persistRequirementsActual(supabase, id)
