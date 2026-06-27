@@ -72,12 +72,16 @@ export default async function InvitePage({ searchParams }) {
       pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
     }
 
+    // Service client for all the privileged writes below: the role/role_confirmed
+    // update (gate columns REVOKEd from `authenticated` by migration 020), the
+    // relationship upsert, and the cap counts. Counts in particular need it because
+    // under RLS the claimer only sees relationships on their own side, and the
+    // insert policy (watcher_id = auth.uid()) would otherwise reject a child
+    // claiming a parent-sent invite.
+    const service = createServiceClient()
+
     // Enforce relationship caps BEFORE consuming the invite, so a capped link
-    // doesn't burn the token or flip the profile role. Counts need the service
-    // client: under RLS the claimer can only see relationships on their own side,
-    // and the insert policy (watcher_id = auth.uid()) would otherwise reject a
-    // child claiming a parent-sent invite.
-    const service = pendingRel ? createServiceClient() : null
+    // doesn't burn the token or flip the profile role.
     if (pendingRel) {
       const { data: existing } = await service
         .from('relationships').select('id')
@@ -105,8 +109,10 @@ export default async function InvitePage({ searchParams }) {
       claimed_at: new Date().toISOString(),
     }).eq('id', invite.id)
 
-    // Update their profile role — mark confirmed since invite pre-assigns the role
-    await supabase.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
+    // Update their profile role — mark confirmed since invite pre-assigns the role.
+    // role/role_confirmed are gate columns REVOKEd from `authenticated` by migration
+    // 020, so this write goes through the service client created above.
+    await service.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
 
     // Create the watcher→student link (service client: see the cap note above).
     // A student claiming a parent-sent invite still runs their own age-first /
