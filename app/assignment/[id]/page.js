@@ -108,16 +108,18 @@ export default async function AssignmentPage({ params }) {
   // session (this is how a friend's practice once got greeted with another kid's name).
   const { data: ownerProfile } = await service
     .from('profiles')
-    .select('full_name, onboarding_complete')
+    .select('full_name')
     .eq('id', session.student_id)
     .single()
 
   const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
 
-  // Onboarding "practice mode" (banner, exit control) applies only while the OWNER is
-  // still doing the tour. Once they've finished onboarding, a practice session opens
-  // like any other completed assignment.
-  const onboardingMode = session.is_onboarding === true && !ownerProfile?.onboarding_complete
+  // A practice session is ALWAYS the hook-only onboarding experience (banner, exit
+  // control, fixed-Owen, reveal handoff). The server (/api/tutor) keys the hook-only
+  // coach prompt off `is_onboarding` alone, so the client UI must use the same signal —
+  // otherwise a re-entered practice session gets a hook-only coach inside a full
+  // normal-mode UI (wrong greeting, no banner, completion routed to the transcript).
+  const onboardingMode = session.is_onboarding === true
 
   return (
     <TutorSession
