@@ -42,6 +42,27 @@ function initials(name) {
   return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
+// User avatar: Google photo when available, initials circle otherwise. Google's
+// lh3.googleusercontent.com URLs 403 without referrerPolicy="no-referrer" and
+// occasionally expire, so onError falls back to the initials (matches Navbar).
+function Avatar({ src, name, size = 36 }) {
+  const [failed, setFailed] = useState(false)
+  if (src && !failed) {
+    return (
+      <img src={src} alt="" width={size} height={size}
+        className="rounded-full object-cover shrink-0"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)} />
+    )
+  }
+  return (
+    <div className="rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+      style={{ width: size, height: size, backgroundColor: 'var(--primary)' }}>
+      {initials(name)}
+    </div>
+  )
+}
+
 function RoleBadge({ role }) {
   const c = ROLE_COLOR[role] ?? ROLE_COLOR.student
   return (
@@ -348,10 +369,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
 
       <div className="flex items-center gap-3 px-5 py-4">
         {/* Avatar */}
-        <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-          style={{ backgroundColor: 'var(--primary)' }}>
-          {initials(student.full_name)}
-        </div>
+        <Avatar src={student.avatar_url} name={student.full_name} size={36} />
 
         {/* Name + email — clickable to expand */}
         <button className="flex-1 min-w-0 text-left" onClick={() => setOpen(o => !o)}>
@@ -405,10 +423,7 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3"
       style={{ backgroundColor: 'var(--surface-card)' }}>
-      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-        style={{ backgroundColor: 'var(--primary)' }}>
-        {initials(person.full_name)}
-      </div>
+      <Avatar src={person.avatar_url} name={person.full_name} size={32} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
           {person.full_name ?? '—'}
