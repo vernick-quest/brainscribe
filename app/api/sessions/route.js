@@ -130,6 +130,7 @@ export async function POST(request) {
     // and give it a fixed "Practice session" title. Saves a model call on every
     // first-time user and keeps the practice row clearly distinct.
     if (isOnboarding) {
+      const prompt = getPromptByKey(onboardingPromptKey)
       const { data, error } = await supabase
         .from('sessions')
         .insert({
@@ -138,7 +139,7 @@ export async function POST(request) {
           persona,
           subject: 'unspecified',
           // Reflect the chosen topic in the title so the practice card isn't generic.
-          title: `Practice — ${getPromptByKey(onboardingPromptKey)?.label ?? 'warm-up'}`,
+          title: `Practice — ${prompt?.label ?? 'warm-up'}`,
           is_onboarding: true,
           onboarding_prompt_key: onboardingPromptKey,
         })
@@ -159,7 +160,7 @@ export async function POST(request) {
       const { error: greetErr } = await supabase.from('messages').insert({
         session_id: data.id,
         role: 'assistant',
-        content: onboardingGreeting(greetName),
+        content: onboardingGreeting(greetName, prompt),
       })
       if (greetErr) console.error('[sessions POST] greeting insert failed:', greetErr.message)
 
