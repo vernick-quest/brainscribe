@@ -19,6 +19,13 @@ export async function PATCH(request) {
     return NextResponse.json({ error: 'Invalid fields' }, { status: 400 })
   }
 
+  // Guard against self-lockout: the actor is always an admin, so refusing to let
+  // them drop their own admin role is enough to guarantee at least one admin
+  // always remains (no need to count). Use impersonation to view other roles.
+  if (userId === user.id && role !== 'admin') {
+    return NextResponse.json({ error: "You can't remove your own admin role." }, { status: 400 })
+  }
+
   const service = createServiceClient()
   const { error } = await service
     .from('profiles')

@@ -1,4 +1,5 @@
 import { Lora } from 'next/font/google'
+import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({
   subsets: ['latin'],
@@ -18,32 +19,7 @@ export default function AboutPage() {
   return (
     <div style={{ backgroundColor: 'var(--brand-cream)', minHeight: '100vh', color: 'var(--brand-navy)' }}>
 
-      {/* ── Nav ── */}
-      <nav style={{
-        padding: '20px 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid var(--border-default)',
-        backgroundColor: 'var(--surface-card)',
-      }}>
-        <a href="/">
-          <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 28, width: 'auto' }} />
-        </a>
-        <a href="/login"
-          style={{
-            backgroundColor: 'var(--brand-orange)',
-            color: '#fff',
-            padding: '9px 20px',
-            borderRadius: 10,
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            textDecoration: 'none',
-            letterSpacing: '0.01em',
-          }}>
-          Try BrainScribe
-        </a>
-      </nav>
+      <SiteHeader active="about" />
 
       {/* ── Main ── */}
       <main style={{ maxWidth: 680, margin: '0 auto', padding: '80px 24px 120px' }}>
@@ -55,7 +31,7 @@ export default function AboutPage() {
           fontWeight: 700,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--brand-orange)',
+          color: 'var(--accent-text)',
           marginBottom: 32,
         }}>
           Our Story
@@ -72,7 +48,7 @@ export default function AboutPage() {
           marginBottom: 48,
         }}>
           It started at{' '}
-          <em style={{ fontStyle: 'italic', color: 'var(--brand-orange)' }}>11pm</em>,<br />
+          <em style={{ fontStyle: 'italic', color: 'var(--accent-text)' }}>11pm</em>,<br />
           with a Chromebook and a kid<br />
           who couldn't get unstuck.
         </h1>
@@ -123,7 +99,7 @@ export default function AboutPage() {
           <div style={{
             margin: '48px -32px',
             padding: '36px 40px',
-            borderLeft: '4px solid var(--brand-orange)',
+            borderLeft: '4px solid var(--accent)',
             backgroundColor: 'var(--surface-card)',
             borderRadius: '0 14px 14px 0',
           }}>
@@ -163,7 +139,7 @@ export default function AboutPage() {
             fontWeight: 700,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--brand-orange)',
+            color: 'var(--accent)',
             marginBottom: 16,
           }}>
             The moment
@@ -175,7 +151,7 @@ export default function AboutPage() {
             fontStyle: 'italic',
             fontSize: '0.92rem',
             lineHeight: 1.8,
-            color: 'var(--brand-orange)',
+            color: 'var(--accent)',
             marginBottom: 16,
           }}>
             "My son is stuck. Please interview him. Do NOT write anything he doesn't say — just ask him prompts about what happens next. He needs to talk it out, not analyze sentences."
@@ -235,7 +211,7 @@ export default function AboutPage() {
                 fontFamily: serif,
                 fontSize: '2rem',
                 fontWeight: 600,
-                color: 'var(--brand-orange)',
+                color: 'var(--accent-text)',
                 lineHeight: 1,
                 marginBottom: 8,
               }}>
@@ -255,8 +231,8 @@ export default function AboutPage() {
 
         {/* CTA block */}
         <div style={{
-          backgroundColor: 'var(--brand-orange)',
-          color: '#fff',
+          backgroundColor: 'var(--accent)',
+          color: 'var(--text-on-accent)',
           padding: '48px 40px',
           borderRadius: 20,
           marginTop: 72,
@@ -286,8 +262,8 @@ export default function AboutPage() {
           <a href="/login"
             style={{
               display: 'inline-block',
-              backgroundColor: '#fff',
-              color: 'var(--brand-orange)',
+              backgroundColor: 'var(--surface-card)',
+              color: 'var(--accent-text)',
               padding: '14px 32px',
               borderRadius: 12,
               fontWeight: 700,

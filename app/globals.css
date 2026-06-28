@@ -312,21 +312,7 @@ h1, h2, h3, h4, h5, h6 {
     var(--bg-page);
 }
 .legal-doc a { color: inherit; text-decoration: none; }
-
-.legal-nav {
-  position: sticky; top: 0; z-index: 50;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px clamp(20px, 5vw, 56px);
-  background: color-mix(in srgb, var(--cream-100) 86%, transparent);
-  backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-default);
-}
-.legal-nav img { height: 28px; display: block; }
-.legal-nav-cta {
-  font: var(--type-ui); font-weight: var(--fw-bold); color: var(--text-on-accent);
-  background: var(--accent); padding: 10px 20px; border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm); transition: transform .15s var(--ease-soft), background .15s; white-space: nowrap;
-}
-.legal-nav-cta:hover { background: var(--accent-hover); transform: translateY(-1px); }
+/* The top nav is the shared <SiteHeader sticky /> (components/SiteHeader.js). */
 
 .legal-doc .wide { max-width: 1000px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 40px); }
 
