@@ -287,6 +287,65 @@ function AgeBadge({ ageBracket, consentGiven }) {
   )
 }
 
+// ── Demo persona control ──────────────────────────────────────
+// Seeds (or removes) a demo parent + teacher + 13+ student with two finished
+// assignments, so an admin can "Remote in" and preview the parent/teacher views
+// through the real rendering code. The student is 13+ on purpose — an under-13
+// demo account would be avatar-suppressed AND auto-deleted by the 7-day COPPA
+// cron, which would defeat a "repeatable" persona.
+const DEMO_EMAILS = [
+  'demo-student@brainscribe.io',
+  'demo-parent@brainscribe.io',
+  'demo-teacher@brainscribe.io',
+]
+
+function DemoDataControl({ seeded }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function run(method) {
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/admin/seed-demo', { method })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); setBusy(false); return }
+      window.location.reload()
+    } catch { setError('Network error.'); setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+      style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+          Demo persona {seeded && <span style={{ color: 'var(--status-success)' }}>· active</span>}
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          {seeded
+            ? 'Demo parent, teacher & student (2 finished assignments) exist. Open the Parents or Teachers tab and “Remote in” to preview their views.'
+            : 'Create a demo parent, teacher & 13+ student with two finished assignments — then “Remote in” to preview the parent/teacher views with real data.'}
+        </p>
+        {error && <p className="text-xs mt-1" style={{ color: 'var(--status-error)' }}>{error}</p>}
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <button onClick={() => run('POST')} disabled={busy}
+          className="text-xs font-bold rounded-full px-4 py-2 disabled:opacity-60"
+          style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+          {busy ? '…' : seeded ? 'Refresh demo data' : 'Seed demo persona'}
+        </button>
+        {seeded && (
+          <button onClick={() => run('DELETE')} disabled={busy}
+            className="text-xs font-semibold rounded-full px-3 py-2 disabled:opacity-60"
+            style={{ color: 'var(--status-error)', border: '1px solid var(--border-default)' }}>
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Tab bar ────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }) {
   return (
@@ -649,6 +708,10 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const parents  = profiles.filter(p => p.role === 'parent')
   const teachers = profiles.filter(p => p.role === 'teacher')
 
+  // Demo persona present if all three demo accounts exist.
+  const demoSeeded = DEMO_EMAILS.every(email =>
+    profiles.some(p => p.email?.toLowerCase() === email))
+
   // Build lookup maps
   const profileById = Object.fromEntries(profiles.map(p => [p.id, p]))
   const sessionsByStudent = {}
@@ -703,6 +766,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
       <Navbar user={currentUser} profile={currentProfile} />
 
       <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+
+        {/* Demo persona seeder — preview parent/teacher views via Remote in */}
+        <DemoDataControl seeded={demoSeeded} />
 
         {/* Stats — icon chips mirror the login landing page */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
