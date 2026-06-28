@@ -1,5 +1,6 @@
 import { Lora } from 'next/font/google'
 import { getAllPosts } from '@/lib/blog'
+import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
 const serif = lora.style.fontFamily
@@ -22,23 +23,13 @@ export default function BlogIndex() {
   return (
     <div style={{ backgroundColor: 'var(--brand-cream)', minHeight: '100vh', color: 'var(--brand-navy)' }}>
 
-      {/* Nav */}
-      <nav style={{
-        padding: '20px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--brand-cream)',
-      }}>
-        <a href="/"><img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 28, width: 'auto' }} /></a>
-        <a href="/login" style={{
-          backgroundColor: 'var(--brand-orange)', color: '#fff', padding: '9px 20px', borderRadius: 10,
-          fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none',
-        }}>Sign in</a>
-      </nav>
+      <SiteHeader active="blog" />
 
       <main style={{ maxWidth: 720, margin: '0 auto', padding: '64px 24px 100px' }}>
 
         {/* Header */}
         <div style={{ marginBottom: 48 }}>
-          <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--brand-orange)', marginBottom: 16 }}>
+          <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent-text)', marginBottom: 16 }}>
             Blog
           </p>
           <h1 style={{ fontFamily: serif, fontSize: 'clamp(1.8rem, 4vw, 2.4rem)', fontWeight: 600, lineHeight: 1.25, letterSpacing: '-0.02em', color: 'var(--brand-navy)', marginBottom: 12 }}>
@@ -61,7 +52,7 @@ export default function BlogIndex() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   {post.tag && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--brand-orange)', backgroundColor: 'var(--surface-spark)', padding: '2px 8px', borderRadius: 999 }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-text)', backgroundColor: 'var(--surface-spark)', padding: '2px 8px', borderRadius: 999 }}>
                       {post.tag}
                     </span>
                   )}
@@ -73,7 +64,7 @@ export default function BlogIndex() {
                 {post.summary && (
                   <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>{post.summary}</p>
                 )}
-                <span style={{ display: 'inline-block', marginTop: 12, fontSize: '0.85rem', fontWeight: 600, color: 'var(--brand-orange)' }}>
+                <span style={{ display: 'inline-block', marginTop: 12, fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-text)' }}>
                   Read →
                 </span>
               </a>
