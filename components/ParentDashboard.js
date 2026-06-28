@@ -1,6 +1,11 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
+import AddChildForm from '@/components/AddChildForm'
+import UserAvatar from '@/components/UserAvatar'
+import BirthdateField from '@/components/BirthdateField'
+import AssignmentTeachers from '@/components/AssignmentTeachers'
+import UnlinkChildButton from '@/components/UnlinkChildButton'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -17,11 +22,6 @@ function formatDate(dateStr) {
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7) return `${diffDays} days ago`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function initials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
 // ── Assignment card ───────────────────────────────────────────
@@ -81,8 +81,9 @@ function EmptyState() {
       <div className="space-y-1">
         <p className="font-semibold text-lg" style={{ color: 'var(--text-strong)' }}>No students linked yet</p>
         <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
-          Ask your child to log into BrainScribe and invite you from their dashboard.
-          You'll get an email with a link — click it and you're connected.
+          Use <span className="font-semibold">Add a child</span> below to invite your child,
+          or ask them to invite you from their own dashboard. Either way, once they sign in
+          you'll be connected.
         </p>
       </div>
     </div>
@@ -90,7 +91,7 @@ function EmptyState() {
 }
 
 // ── Per-child block ───────────────────────────────────────────
-function ChildBlock({ child, sessions }) {
+function ChildBlock({ child, sessions, teachersBySession = {}, viewerId }) {
   const childSessions = sessions
     .filter(s => s.student_id === child.id)
     .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
@@ -103,10 +104,12 @@ function ChildBlock({ child, sessions }) {
       {/* Header */}
       <div className="px-5 py-4 flex items-center gap-4"
         style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--bg-page-alt)' }}>
-        <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
-          style={{ backgroundColor: 'var(--primary)' }}>
-          {initials(child.full_name)}
-        </div>
+        <UserAvatar
+          name={child.full_name}
+          avatarUrl={child.avatar_url}
+          ageBracket={child.age_bracket}
+          size={44}
+        />
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate" style={{ color: 'var(--text-strong)' }}>{child.full_name ?? 'Student'}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -120,6 +123,16 @@ function ChildBlock({ child, sessions }) {
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
           View profile →
         </a>
+        <UnlinkChildButton studentId={child.id} watcherId={viewerId} childName={firstName} />
+      </div>
+
+      {/* Birthday — sets the COPPA age gate; a parent edit is the trusted path */}
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
+        <BirthdateField
+          studentId={child.id}
+          birthdate={child.birthdate}
+          label={`${firstName}'s birthday`}
+        />
       </div>
 
       {/* Assignments */}
@@ -129,7 +142,12 @@ function ChildBlock({ child, sessions }) {
             No assignments yet — they'll appear here once {firstName} starts writing.
           </p>
         ) : (
-          childSessions.map(s => <AssignmentCard key={s.id} session={s} />)
+          childSessions.map(s => (
+            <div key={s.id} className="space-y-2">
+              <AssignmentCard session={s} />
+              <AssignmentTeachers sessionId={s.id} teachers={teachersBySession[s.id] ?? []} />
+            </div>
+          ))
         )}
       </div>
     </section>
@@ -137,7 +155,7 @@ function ChildBlock({ child, sessions }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions, ownSessions = [] }) {
+export default function ParentDashboard({ user, profile, viewerId, children, sessions, teachersBySession = {}, ownSessions = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -161,6 +179,16 @@ export default function ParentDashboard({ user, profile, children, sessions, own
           </p>
         </div>
 
+        {/* Your own details */}
+        <div className="rounded-2xl px-5 py-4"
+          style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
+          <BirthdateField
+            studentId={viewerId}
+            birthdate={profile?.birthdate}
+            label="Your birthday"
+          />
+        </div>
+
         {/* Your own writing — parents can use the coaches too */}
         <YourWritingCard ownSessions={ownSessions} />
 
@@ -169,8 +197,12 @@ export default function ParentDashboard({ user, profile, children, sessions, own
 
         {/* One block per child — all expanded (parents have few kids) */}
         {children.map(child => (
-          <ChildBlock key={child.id} child={child} sessions={sessions} />
+          <ChildBlock key={child.id} child={child} sessions={sessions}
+            teachersBySession={teachersBySession} viewerId={viewerId} />
         ))}
+
+        {/* Parent-initiated linking — invite a child to connect */}
+        <AddChildForm />
 
       </main>
     </div>

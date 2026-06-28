@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import SiteHeader from '@/components/SiteHeader'
 
 // Marketing-shell legal page (Privacy / Terms): sticky nav, lead header with a
 // plain-language "short version" callout, then a two-column body — sticky TOC
@@ -22,12 +23,7 @@ export default function LegalDoc({ title, updated, intro, tldr, sections }) {
 
   return (
     <div className="legal-doc">
-      <header className="legal-nav">
-        <a href="/" aria-label="BrainScribe home">
-          <img src="/brainscribe-logo.png" alt="BrainScribe" />
-        </a>
-        <a className="legal-nav-cta" href="/login">Sign in</a>
-      </header>
+      <SiteHeader sticky />
 
       <main>
         <section className="lead-head">

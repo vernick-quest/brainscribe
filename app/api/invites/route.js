@@ -1,10 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { NextResponse } from 'next/server'
 
 // POST /api/invites
-// Students call this to generate parent or teacher invite links.
-// Body: { email, role: 'parent'|'teacher', assignmentId? }
+// Generates a role-baked invite link. Who may send what:
+//   - a student invites their parent or a teacher (teacher is per-assignment)
+//   - a parent invites a child (student role) to link them (Entry Point B)
+// Body: { email, role: 'parent'|'teacher'|'student', assignmentId? }
 export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -16,31 +19,61 @@ export async function POST(request) {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'student') {
-    return NextResponse.json({ error: 'Only students can send invites.' }, { status: 403 })
-  }
-
   const { email, role, assignmentId } = await request.json()
 
   if (!email?.trim()) return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
-  if (!['parent', 'teacher'].includes(role)) {
+  if (!['parent', 'teacher', 'student'].includes(role)) {
     return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
   }
-  if (role === 'teacher' && !assignmentId) {
-    return NextResponse.json({ error: 'Assignment ID is required for teacher invites.' }, { status: 400 })
+  if (email.trim().toLowerCase() === (user.email ?? '').toLowerCase()) {
+    return NextResponse.json({ error: "That's your own email — enter the other person's." }, { status: 400 })
   }
 
-  // For teacher invites, verify the assignment belongs to this student
-  if (role === 'teacher') {
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('id', assignmentId)
-      .eq('student_id', user.id)
-      .single()
-
-    if (!session) {
-      return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+  // Authorize the sender against the invite role, and fail early if the sender's
+  // own relationship cap is already full. (Only the sender's side can be checked
+  // here under RLS — the recipient's cap is enforced authoritatively at claim
+  // time in app/(auth)/invite.)
+  if (role === 'student') {
+    // Parent-initiated linking: only a parent may invite a child.
+    if (profile?.role !== 'parent') {
+      return NextResponse.json({ error: 'Only parents can invite a child.' }, { status: 403 })
+    }
+    const { count } = await supabase
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', user.id)
+    if ((count ?? 0) >= MAX_CHILDREN_PER_PARENT) {
+      return NextResponse.json({ error: `You're already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.` }, { status: 400 })
+    }
+  } else if (role === 'parent') {
+    // Student inviting their parent.
+    if (profile?.role !== 'student') {
+      return NextResponse.json({ error: 'Only students can send these invites.' }, { status: 403 })
+    }
+    const { count } = await supabase
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+    if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) {
+      return NextResponse.json({ error: `You already have the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.` }, { status: 400 })
+    }
+  } else if (role === 'teacher') {
+    // Teacher access is per-assignment and may be granted by the student who owns
+    // the assignment OR a parent linked to that student.
+    if (!assignmentId) {
+      return NextResponse.json({ error: 'Assignment ID is required for teacher invites.' }, { status: 400 })
+    }
+    if (profile?.role === 'student') {
+      const { data: session } = await supabase
+        .from('sessions').select('id').eq('id', assignmentId).eq('student_id', user.id).single()
+      if (!session) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+    } else if (profile?.role === 'parent') {
+      // The assignment must belong to one of this parent's linked children.
+      const { data: session } = await supabase
+        .from('sessions').select('student_id').eq('id', assignmentId).single()
+      const { data: rel } = session?.student_id
+        ? await supabase.from('relationships').select('watcher_id')
+            .eq('watcher_id', user.id).eq('student_id', session.student_id).maybeSingle()
+        : { data: null }
+      if (!rel) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+    } else {
+      return NextResponse.json({ error: 'Only a student or their parent can invite a teacher.' }, { status: 403 })
     }
   }
 
