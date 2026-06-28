@@ -86,23 +86,45 @@ export default function WritingProfileCard({ profile, sessionComplete, studentNa
         </div>
       )}
 
-      {/* Meta row: voice + vocabulary */}
-      {(profile.voice || profile.vocabulary) && (
-        <div className="flex flex-wrap gap-2">
-          {profile.voice && (
-            <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
-              style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
-              <Icon name="pencil" size={12} /> {profile.voice}
-            </span>
-          )}
-          {profile.vocabulary && (
-            <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
-              style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
-              <Icon name="book" size={12} /> Vocab: {profile.vocabulary}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Meta row: voice + vocabulary. vocabulary is either a legacy string
+          (older sessions) or the structured { descriptor, highlights[], reach }
+          object — render both shapes gracefully. */}
+      {(() => {
+        const vocab = profile.vocabulary
+        const vocabLabel = typeof vocab === 'string' ? vocab : vocab?.descriptor
+        const highlights = (vocab && typeof vocab === 'object' && Array.isArray(vocab.highlights)) ? vocab.highlights : []
+        const reach = (vocab && typeof vocab === 'object') ? vocab.reach : null
+        if (!profile.voice && !vocabLabel && highlights.length === 0 && !reach) return null
+        return (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {profile.voice && (
+                <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
+                  style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                  <Icon name="pencil" size={12} /> {profile.voice}
+                </span>
+              )}
+              {vocabLabel && (
+                <span className="text-xs font-semibold rounded-full px-3 py-1.5 inline-flex items-center gap-1.5"
+                  style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+                  <Icon name="book" size={12} /> Vocab: {vocabLabel}
+                </span>
+              )}
+              {highlights.map((w, i) => (
+                <span key={i} className="text-xs font-semibold rounded-full px-2.5 py-1.5 inline-flex items-center"
+                  style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)', border: '1px solid var(--border-default)' }}>
+                  “{w}”
+                </span>
+              ))}
+            </div>
+            {reach && (
+              <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                <span className="font-semibold">Reach:</span> {reach}
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Two-col: strengths + growth areas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
