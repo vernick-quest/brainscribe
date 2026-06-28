@@ -43,34 +43,37 @@ export async function POST(request) {
     if ((count ?? 0) >= MAX_CHILDREN_PER_PARENT) {
       return NextResponse.json({ error: `You're already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.` }, { status: 400 })
     }
-  } else {
+  } else if (role === 'parent') {
+    // Student inviting their parent.
     if (profile?.role !== 'student') {
       return NextResponse.json({ error: 'Only students can send these invites.' }, { status: 403 })
     }
-    if (role === 'parent') {
-      const { count } = await supabase
-        .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
-      if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) {
-        return NextResponse.json({ error: `You already have the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.` }, { status: 400 })
-      }
+    const { count } = await supabase
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+    if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) {
+      return NextResponse.json({ error: `You already have the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.` }, { status: 400 })
     }
-  }
-
-  if (role === 'teacher' && !assignmentId) {
-    return NextResponse.json({ error: 'Assignment ID is required for teacher invites.' }, { status: 400 })
-  }
-
-  // For teacher invites, verify the assignment belongs to this student
-  if (role === 'teacher') {
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('id', assignmentId)
-      .eq('student_id', user.id)
-      .single()
-
-    if (!session) {
-      return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+  } else if (role === 'teacher') {
+    // Teacher access is per-assignment and may be granted by the student who owns
+    // the assignment OR a parent linked to that student.
+    if (!assignmentId) {
+      return NextResponse.json({ error: 'Assignment ID is required for teacher invites.' }, { status: 400 })
+    }
+    if (profile?.role === 'student') {
+      const { data: session } = await supabase
+        .from('sessions').select('id').eq('id', assignmentId).eq('student_id', user.id).single()
+      if (!session) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+    } else if (profile?.role === 'parent') {
+      // The assignment must belong to one of this parent's linked children.
+      const { data: session } = await supabase
+        .from('sessions').select('student_id').eq('id', assignmentId).single()
+      const { data: rel } = session?.student_id
+        ? await supabase.from('relationships').select('watcher_id')
+            .eq('watcher_id', user.id).eq('student_id', session.student_id).maybeSingle()
+        : { data: null }
+      if (!rel) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
+    } else {
+      return NextResponse.json({ error: 'Only a student or their parent can invite a teacher.' }, { status: 403 })
     }
   }
 

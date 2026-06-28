@@ -4,6 +4,8 @@ import YourWritingCard from '@/components/YourWritingCard'
 import AddChildForm from '@/components/AddChildForm'
 import UserAvatar from '@/components/UserAvatar'
 import BirthdateField from '@/components/BirthdateField'
+import AssignmentTeachers from '@/components/AssignmentTeachers'
+import UnlinkChildButton from '@/components/UnlinkChildButton'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -89,7 +91,7 @@ function EmptyState() {
 }
 
 // ── Per-child block ───────────────────────────────────────────
-function ChildBlock({ child, sessions }) {
+function ChildBlock({ child, sessions, teachersBySession = {}, viewerId }) {
   const childSessions = sessions
     .filter(s => s.student_id === child.id)
     .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
@@ -121,6 +123,7 @@ function ChildBlock({ child, sessions }) {
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
           View profile →
         </a>
+        <UnlinkChildButton studentId={child.id} watcherId={viewerId} childName={firstName} />
       </div>
 
       {/* Birthday — sets the COPPA age gate; a parent edit is the trusted path */}
@@ -139,7 +142,12 @@ function ChildBlock({ child, sessions }) {
             No assignments yet — they'll appear here once {firstName} starts writing.
           </p>
         ) : (
-          childSessions.map(s => <AssignmentCard key={s.id} session={s} />)
+          childSessions.map(s => (
+            <div key={s.id} className="space-y-2">
+              <AssignmentCard session={s} />
+              <AssignmentTeachers sessionId={s.id} teachers={teachersBySession[s.id] ?? []} />
+            </div>
+          ))
         )}
       </div>
     </section>
@@ -147,7 +155,7 @@ function ChildBlock({ child, sessions }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, viewerId, children, sessions, ownSessions = [] }) {
+export default function ParentDashboard({ user, profile, viewerId, children, sessions, teachersBySession = {}, ownSessions = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -189,7 +197,8 @@ export default function ParentDashboard({ user, profile, viewerId, children, ses
 
         {/* One block per child — all expanded (parents have few kids) */}
         {children.map(child => (
-          <ChildBlock key={child.id} child={child} sessions={sessions} />
+          <ChildBlock key={child.id} child={child} sessions={sessions}
+            teachersBySession={teachersBySession} viewerId={viewerId} />
         ))}
 
         {/* Parent-initiated linking — invite a child to connect */}

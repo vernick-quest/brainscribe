@@ -63,6 +63,18 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Future date / malformed date is rejected (client `max=today` + server validation)
 - [ ] ⬜ Remote-in: admin impersonating a parent edits the **parent's** and the **child's** birthday (not the admin's) — explicit studentId is always sent
 - [ ] ⬜ Edit persists across reload (RLS read of own + linked-child birthdate)
+
+### Parent teacher management (new 2026-06-27)
+- [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
+- [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears
+- [ ] ⬜ Removing a teacher chip (×) revokes access and refreshes; the teacher loses transcript access
+- [ ] ⬜ A parent cannot invite/remove teachers for a session that isn't their linked child's (API 404/403)
+- [ ] ⬜ Remote-in: admin impersonating a parent can add/remove teachers
+
+### Unlink a child (new 2026-06-27)
+- [ ] ⬜ "Unlink" in the child header → confirm → child removed from the dashboard (account + work untouched)
+- [ ] ⬜ Unlinking an **under-13** child where you are the recorded consent parent is refused (COPPA guardian guard, `coppa_guardian`)
+- [ ] ⬜ A parent can only unlink their own link (API rejects a watcherId ≠ caller for non-admins)
 - [ ] ⬜ One block per child, each listing that child's assignments
 - [ ] ⬜ "View profile" → read-only student profile (stats + writing profile)
 - [ ] ⬜ "Your writing" block (parent's own work) with "+ New"

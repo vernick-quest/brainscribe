@@ -48,6 +48,31 @@ export default async function ParentDashboardPage() {
     sessions = sessionData ?? []
   }
 
+  // Teachers added to each child's assignments, so the parent can see + manage
+  // them. Two queries (not an embed) to avoid the dual-FK ambiguity on
+  // assignment_teachers (teacher_id + added_by both reference profiles). The
+  // teacher *profile* lookup uses the service client: RLS lets a parent read the
+  // assignment_teachers rows but not a teacher's profile row, and the parent —
+  // who invited the teacher by email — is entitled to see their name here.
+  let teachersBySession = {}
+  if (sessions.length > 0) {
+    const elevated = imp ? service : createServiceClient()
+    const { data: atRows } = await elevated
+      .from('assignment_teachers')
+      .select('session_id, teacher_id')
+      .in('session_id', sessions.map(s => s.id))
+    const teacherIds = [...new Set((atRows ?? []).map(r => r.teacher_id))]
+    let teacherProfiles = {}
+    if (teacherIds.length > 0) {
+      const { data: tp } = await elevated
+        .from('profiles').select('id, full_name, email').in('id', teacherIds)
+      for (const p of tp ?? []) teacherProfiles[p.id] = p
+    }
+    for (const r of atRows ?? []) {
+      (teachersBySession[r.session_id] ??= []).push(teacherProfiles[r.teacher_id] ?? { id: r.teacher_id })
+    }
+  }
+
   // The parent's OWN writing (they can use the coaches too) — separate from their
   // children's work, and excluding any practice/onboarding run.
   const { data: ownSessionData } = await service
@@ -67,6 +92,7 @@ export default async function ParentDashboardPage() {
         viewerId={targetId}
         children={children}
         sessions={sessions}
+        teachersBySession={teachersBySession}
         ownSessions={ownSessions}
       />
     </>
