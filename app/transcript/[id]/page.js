@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation'
 import CopyButton from '@/components/CopyButton'
 import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
+import TranscriptToolbar from '@/components/TranscriptToolbar'
+import ConversationLog from '@/components/ConversationLog'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
@@ -69,6 +71,11 @@ export default async function TranscriptPage({ params, searchParams }) {
     : scaffoldLines.join('\n')
   const isStudent = profile?.role === 'student'
   const isComplete = session.status === 'complete'
+  // Truly-empty transcript (e.g. an in-progress session opened by a watcher
+  // before any writing happened): show one graceful empty state instead of two
+  // separate "nothing yet" lines across the draft + conversation cards.
+  const hasDraft = paragraphs?.length > 0 || scaffoldLines.length > 0
+  const isEmpty = !hasDraft && !messages?.length
 
   // Neutral requirement readout (word/paragraph counts) — recomputed from the
   // written paragraphs so it's accurate even if requirements.actual is stale.
@@ -83,14 +90,16 @@ export default async function TranscriptPage({ params, searchParams }) {
   const subjectLabel = getSubjectLabel(session)
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
-      <Navbar user={user} profile={profile} />
+    <div className="transcript-root min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
+      <div className="no-print">
+        <Navbar user={user} profile={profile} />
+      </div>
 
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
 
         {/* FTUE finale — the practice transcript is the end of the tutorial */}
         {onboardingFinish && (
-          <section className="rounded-2xl p-5 flex items-start gap-3"
+          <section className="no-print rounded-2xl p-5 flex items-start gap-3"
             style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
             <Icon name="sparkles" size={22} style={{ color: 'var(--status-success)' }} />
             <div className="flex-1 min-w-0">
@@ -111,7 +120,7 @@ export default async function TranscriptPage({ params, searchParams }) {
         {/* Back + title */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <a href={backHref} className="text-xs font-medium inline-flex items-center gap-1 mb-3 group"
+            <a href={backHref} className="no-print text-xs font-medium inline-flex items-center gap-1 mb-3 group"
               style={{ color: 'var(--text-muted)' }}
               onMouseEnter={undefined}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -152,6 +161,7 @@ export default async function TranscriptPage({ params, searchParams }) {
               </span>
             </div>
           </div>
+          <TranscriptToolbar />
         </div>
 
         {/* Assignment prompt */}
@@ -161,6 +171,20 @@ export default async function TranscriptPage({ params, searchParams }) {
           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>{session.assignment_text}</p>
         </section>
 
+        {isEmpty ? (
+          /* Nothing written and no conversation yet — one graceful empty state. */
+          <section className="rounded-2xl p-10 flex flex-col items-center text-center gap-2"
+            style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
+            <Icon name="doc" size={28} style={{ color: 'var(--text-subtle)' }} />
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-body)' }}>Nothing here yet</p>
+            <p className="text-xs max-w-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+              {isStudent
+                ? 'Once you start writing with your coach, your draft and the conversation will show up here.'
+                : 'This assignment hasn’t been started yet. The draft and coaching conversation will appear here once writing begins.'}
+            </p>
+          </section>
+        ) : (
+        <>
         {/* Final essay */}
         <section className="rounded-2xl p-6 space-y-4"
           style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
@@ -202,7 +226,7 @@ export default async function TranscriptPage({ params, searchParams }) {
                     </p>
                   )}
                   {!isStudent && (
-                    <details className="mt-2">
+                    <details className="no-print mt-2">
                       <summary className="text-xs cursor-pointer" style={{ color: 'var(--text-subtle)' }}>
                         Raw spoken text
                       </summary>
@@ -221,36 +245,27 @@ export default async function TranscriptPage({ params, searchParams }) {
         {/* Full conversation transcript */}
         <section className="rounded-2xl p-6 space-y-4"
           style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
-          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Conversation</h2>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Conversation</h2>
+            {messages?.length > 0 && (
+              <span className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>
+                {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+              </span>
+            )}
+          </div>
           {!messages?.length ? (
             <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No conversation recorded yet.</p>
           ) : (
-            <div className="space-y-4">
-              {messages.map((m, i) => {
-                const isCoach = m.role === 'assistant'
-                return (
-                  <div key={i} className={`flex ${isCoach ? 'justify-start' : 'justify-end'}`}>
-                    {isCoach && (
-                      <PersonaAvatar personaId={session.persona} size={28} className="mr-1 mt-0.5 shrink-0" />
-                    )}
-                    <div className="rounded-2xl px-4 py-3 max-w-lg text-sm leading-relaxed"
-                      style={isCoach
-                        ? { backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)', borderBottomLeftRadius: 4 }
-                        : { backgroundColor: 'var(--primary)', color: 'var(--text-on-dark)', borderBottomRightRadius: 4 }
-                      }>
-                      {m.content}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <ConversationLog messages={messages} persona={session.persona} />
           )}
         </section>
+        </>
+        )}
 
         {/* Next actions — students only; this is the end of a finished piece, not
             a place to keep writing. Watchers (parent/teacher) use the back link. */}
         {isStudent && isComplete && (
-          <section className="flex flex-wrap items-center gap-3">
+          <section className="no-print flex flex-wrap items-center gap-3">
             <a href="/assignment/new"
               className="inline-flex items-center gap-2 text-sm font-bold rounded-full px-5 py-2.5 text-white"
               style={{ backgroundColor: 'var(--accent)' }}>

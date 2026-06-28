@@ -373,3 +373,53 @@ h1, h2, h3, h4, h5, h6 {
   .legal-doc .toc-nav { display: flex; flex-wrap: wrap; gap: 6px; }
   .legal-doc .toc a { border-left: 0; }
 }
+
+/* ── Finished-assignment transcript: long-conversation collapse + print ──── */
+
+/* Collapsed state: clamp the conversation height and fade it out so a very long
+   back-and-forth doesn't open as an endless scroll. All messages stay in the
+   DOM — the print rules below reopen it so paper captures everything. */
+.conversation-collapsed {
+  position: relative;
+  max-height: 520px;
+  overflow: hidden;
+}
+.conversation-collapsed::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 88px;
+  background: linear-gradient(to bottom, transparent, var(--surface-card));
+  pointer-events: none;
+}
+
+@media print {
+  /* Strip app chrome and interactive affordances from the printed page. */
+  .no-print { display: none !important; }
+
+  /* Force the full conversation open on paper. */
+  .conversation-collapsed { max-height: none !important; overflow: visible !important; }
+  .conversation-collapsed::after { display: none !important; }
+
+  /* Paper-friendly: white page, flat cards, no shadows, full width.
+     The root wrapper carries an inline cream background — neutralise it so a
+     "Save as PDF" with background graphics on still prints on white. */
+  body, .transcript-root { background: #fff !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  section {
+    box-shadow: none !important;
+    border-color: #ddd !important;
+  }
+
+  /* Chat bubbles always print as light + bordered so text stays legible even
+     when the printer drops background fills (white-on-dark would vanish). */
+  .chat-bubble {
+    background: #fff !important;
+    color: #000 !important;
+    border: 1px solid #ccc !important;
+    max-width: 100% !important;
+  }
+
+  /* Don't split a bubble, paragraph, or short card across a page break. */
+  .conversation-log > div, .transcript-card, p { break-inside: avoid; }
+}
