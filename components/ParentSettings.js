@@ -72,7 +72,7 @@ function ChildRow({ child, viewerId, impersonating }) {
       <div className="flex items-center justify-between gap-3 flex-wrap pt-1"
         style={{ borderTop: '1px solid var(--border-default)' }}>
         <div className="pt-3">
-          <BirthdateField studentId={child.id} birthdate={child.birthdate} label={`${firstName}'s birthday`} />
+          <BirthdateField studentId={child.id} birthdate={child.birthdate} label={`${firstName}'s birthday`} readOnly={child.canEditBirthdate === false} />
         </div>
         <div className="pt-3">
           <UnlinkChildButton studentId={child.id} watcherId={viewerId} childName={firstName} />

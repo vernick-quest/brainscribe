@@ -131,6 +131,7 @@ invite **insert fails** — test the gating now, the happy path after the migrat
 - [ ] ⬜ (post-022) The co-parent is **not** granted consent: the child's `coppa_consent_parent_id` is unchanged; the original guardian is still the one the unlink guard protects
 - [ ] ⬜ (post-022) The 2-parents-per-child cap is enforced (generation-time guardian check + claim-time cap); recipient must be 13+ (claim age gate)
 - [ ] ⬜ API authz: a non-guardian parent (or any non-parent) calling `POST /api/invites` with `role:'parent' + childId` is rejected ("Only this child's approving parent can invite a co-parent.")
+- [ ] ⬜ A **co-parent** (linked but not the recorded guardian) sees the child's birthday **read-only** (no Edit/Add) — consistent with the gate endpoint refusing non-guardian edits (`coppa_not_guardian`, auth/coppa 739178b); the guardian still sees the editable field
 
 ## Teacher dashboard (teacher account or remote-in)
 - [ ] ⬜ Collapsible block per student (expand/collapse); auto-open if only one student

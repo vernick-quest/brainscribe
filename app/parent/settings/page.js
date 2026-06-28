@@ -53,6 +53,11 @@ export default async function ParentSettingsPage() {
         c.age_bracket === 'under13' &&
         c.coppa_consent_parent_id === targetId &&
         (parentCount[c.id] ?? 0) < MAX_PARENTS_PER_CHILD,
+      // The birthdate endpoint restricts gate writes to the recorded consenting
+      // guardian, or — if none recorded yet — any linked parent (bootstrap). So
+      // a co-parent who isn't the guardian sees the birthday read-only; offering
+      // an Edit button would only 403 (auth/coppa 739178b).
+      canEditBirthdate: !c.coppa_consent_parent_id || c.coppa_consent_parent_id === targetId,
     }))
   }
 

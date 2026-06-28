@@ -19,7 +19,7 @@ function formatDob(iso) {
   })
 }
 
-export default function BirthdateField({ studentId, birthdate, label }) {
+export default function BirthdateField({ studentId, birthdate, label, readOnly = false }) {
   const router = useRouter()
   const [current, setCurrent] = useState(birthdate ?? null)
   const [editing, setEditing] = useState(false)
@@ -29,6 +29,21 @@ export default function BirthdateField({ studentId, birthdate, label }) {
 
   const today = new Date().toISOString().slice(0, 10)
   const display = formatDob(current)
+
+  // Read-only: show the value with no edit affordance. Used in parent settings
+  // for a co-parent viewing a child whose COPPA gate they may not move — the
+  // birthdate endpoint restricts gate writes to the recorded consenting guardian
+  // (auth/coppa 739178b), so offering an Edit button here would only 403.
+  if (readOnly) {
+    return (
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-subtle)' }}>{label}</span>
+        <span className="text-sm" style={{ color: display ? 'var(--text-body)' : 'var(--text-subtle)' }}>
+          {display ?? 'Not set'}
+        </span>
+      </div>
+    )
+  }
 
   async function save() {
     if (!value) return
