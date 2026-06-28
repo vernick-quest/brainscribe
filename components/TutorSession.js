@@ -1299,8 +1299,8 @@ export default function TutorSession({
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
             style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
             <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice warm-up</span>
-            {/* FTUE step 4 of 4 — your first opening line */}
-            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 4 of 4</span>
+            {/* FTUE step 4 of 5 — your first opening line (5 is the reveal) */}
+            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 4 of 5</span>
             <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just your opening line — to get the feel of it. Nothing here is graded.</span>
             <button onClick={exitPractice}
               className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>

@@ -8,13 +8,13 @@ import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
 
-// The FTUE is 4 steps: 1 welcome (meet Owen + the other coaches) · 2 pick a
+// The FTUE is 5 steps: 1 welcome (meet Owen + the other coaches) · 2 pick a
 // prompt · 3 see how a paragraph is built · 4 write your opening line (in the
-// coach). Steps 1-3 live here; 4 is the practice banner; the reveal at
-// /onboarding/complete is the unnumbered payoff. The paragraph-anatomy beat sits
+// coach) · 5 the reveal at /onboarding/complete. Steps 1-3 live here; 4 is the
+// practice banner; 5 is the completion screen. The paragraph-anatomy beat sits
 // AFTER the prompt pick on purpose — it lands better once the student has a topic
 // and is about to write than as abstract theory on the welcome screen.
-const FTUE_TOTAL_STEPS = 4
+const FTUE_TOTAL_STEPS = 5
 const FTUE_STEP_KEY = 'bs_ftue_step'
 
 export default function OnboardingFlow({ studentName = 'there', prompts = [], role = 'student' }) {

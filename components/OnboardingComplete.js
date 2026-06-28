@@ -116,6 +116,11 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
               style={{ color: 'var(--text-muted)' }}>
               Go to my dashboard
             </button>
+            {/* Final step of the FTUE — matches the "Step X of 5" counter on the
+                onboarding cards (1 welcome · 2 pick · 3 plan · 4 write · 5 reveal). */}
+            <p className="text-center pt-1" style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)' }}>
+              Step 5 of 5 · Done
+            </p>
           </div>
         </div>
       </div>
