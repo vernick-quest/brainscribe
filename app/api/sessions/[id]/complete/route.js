@@ -56,7 +56,7 @@ export async function PATCH(request, { params }) {
   // Verify ownership
   const { data: session } = await supabase
     .from('sessions')
-    .select('id, student_id, title, assignment_text, status')
+    .select('id, student_id, title, assignment_text, status, is_onboarding')
     .eq('id', id)
     .single()
 
@@ -100,8 +100,13 @@ export async function PATCH(request, { params }) {
   }).catch(e => console.error('[notifications complete]', e))
 
   // Turn any confirmed-but-unassembled paragraphs into flowing prose before we
-  // read the final draft for analysis (and hand it back to the client).
-  await assembleUnbuiltParagraphs(supabase, id, user.id)
+  // read the final draft for analysis (and hand it back to the client). Skipped for
+  // the onboarding warm-up: it's a single opening line, not a paragraph — running it
+  // through assembly would reword the student's exact words. The transcript shows the
+  // verbatim line from the scaffold instead.
+  if (!session.is_onboarding) {
+    await assembleUnbuiltParagraphs(supabase, id, user.id)
+  }
 
   // Final actual-progress snapshot for sessions.requirements (no-op if none set).
   await persistRequirementsActual(supabase, id)
@@ -114,9 +119,13 @@ export async function PATCH(request, { params }) {
 
   const essay = paragraphs?.map(p => p.scribed_text).join('\n\n') ?? ''
 
-  // Analyze writing profile (fire-and-forget — takes a few seconds)
-  analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
-    .catch(e => console.error('[analyzeWriting complete]', e))
+  // Analyze writing profile (fire-and-forget — takes a few seconds). Skipped for the
+  // onboarding warm-up: a single opening line isn't enough signal and shouldn't seed
+  // the student's writing profile.
+  if (!session.is_onboarding) {
+    analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
+      .catch(e => console.error('[analyzeWriting complete]', e))
+  }
 
   // Return the assembled paragraphs so the client can show the finished prose
   // in the draft panel without a refetch.

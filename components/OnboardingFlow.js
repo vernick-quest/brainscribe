@@ -8,30 +8,14 @@ import Icon from '@/components/Icon'
 
 const OWEN = getPersona('owen')
 
-// The whole FTUE is 7 steps: 1 intro · 2-4 orientation · 5 pick a prompt ·
-// 6 write your paragraph (in the coach) · 7 see it + reflect (transcript).
-// Steps 1-5 live here; 6 is the practice banner; 7 is the transcript finale.
-const FTUE_TOTAL_STEPS = 7
+// The FTUE is 5 steps: 1 welcome (meet Owen + the other coaches) · 2 pick a
+// prompt · 3 see how a paragraph is built · 4 write your opening line (in the
+// coach) · 5 the reveal at /onboarding/complete. Steps 1-3 live here; 4 is the
+// practice banner; 5 is the completion screen. The paragraph-anatomy beat sits
+// AFTER the prompt pick on purpose — it lands better once the student has a topic
+// and is about to write than as abstract theory on the welcome screen.
+const FTUE_TOTAL_STEPS = 5
 const FTUE_STEP_KEY = 'bs_ftue_step'
-
-// The three orientation moments. Each is one short spoken line + a simple visual.
-const MOMENTS = [
-  {
-    key: 'coach',
-    line: "I'm your coach for today. BrainScribe has six coaches with different styles — after this you can pick whoever feels right. For now, you've got me.",
-    cta: 'Got it →',
-  },
-  {
-    key: 'how',
-    line: "Here's how it works: I ask questions, you talk or type your answers, and your words become your writing. I never write it for you — everything on the page comes from you.",
-    cta: 'Got it →',
-  },
-  {
-    key: 'draft',
-    line: "Over here is where your writing builds up as we go — you'll watch it come together piece by piece. Ready to try it?",
-    cta: "I'm ready →",
-  },
-]
 
 export default function OnboardingFlow({ studentName = 'there', prompts = [], role = 'student' }) {
   const router = useRouter()
@@ -42,44 +26,44 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   const isWatcher = role === 'parent' || role === 'teacher'
   const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/dashboard'
 
-  const [stage, setStage]       = useState('intro')   // 'intro' | 'orient' | 'prompts'
-  const [moment, setMoment]     = useState(0)
+  const [stage, setStage]       = useState('intro')   // 'intro' | 'prompts' | 'plan'
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
   const restored = useRef(false)
 
-  // Step number for the "Step X of 7" badge (students only).
-  const stepNumber = stage === 'intro' ? 1 : stage === 'orient' ? 2 + moment : stage === 'prompts' ? 5 : 1
-
-  // Restore tour progress once on mount, so leaving mid-tour resumes where you
+  // Restore progress once on mount, so leaving mid-flow resumes where you
   // were rather than from the very first screen.
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(FTUE_STEP_KEY) || 'null')
-      if (saved?.stage) { setStage(saved.stage); if (typeof saved.moment === 'number') setMoment(saved.moment) }
+      // Only restore a stage this version still renders — a stale value from the
+      // old orientation-tour flow (e.g. 'orient') would leave a blank screen.
+      if (saved?.stage === 'intro' || saved?.stage === 'prompts') setStage(saved.stage)
     } catch {}
   }, [])
 
-  // Persist tour progress on each step — but skip the initial mount run so we
-  // don't clobber the value the restore effect is about to apply.
+  // Persist progress on each step — but skip the initial mount run so we don't
+  // clobber the value the restore effect is about to apply.
   useEffect(() => {
     if (!restored.current) { restored.current = true; return }
-    try { localStorage.setItem(FTUE_STEP_KEY, JSON.stringify({ stage, moment })) } catch {}
-  }, [stage, moment])
+    try { localStorage.setItem(FTUE_STEP_KEY, JSON.stringify({ stage })) } catch {}
+  }, [stage])
 
   const introLine = isWatcher
-    ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along. But you can write with a coach yourself too, and either way it helps to see how this works. Let me give you the quick tour.`
-    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, and I'm going to be your writing coach. Before we get to your real assignments, let's try this together. It won't take long, and you'll end up with something you actually wrote. Sound good?`
+    ? `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so mostly you'll be following along — but it helps to see how this works. Want to try writing one opening line yourself? Takes about a minute — or head straight to your dashboard.`
+    : `Hey ${studentName} — welcome to BrainScribe. I'm Owen, your writing coach — one of six, each with a different style, and you can switch anytime. I'm going to walk you through a quick sample assignment so you can see how everything works. The one rule: I never write it for you — the words are always yours. Ready?`
   const promptsLine = isWatcher
-    ? "That's the tour. If you'd like, you can try writing one short paragraph yourself to feel how it works — or head straight to your dashboard."
-    : "We're going to write one short paragraph together — just to get the feel of it. Pick whatever sounds interesting. There's no wrong answer here."
+    ? "Pick a writing assignment and we'll get a feel for how this works — or head straight to your dashboard."
+    : "Let's find a writing assignment that resonates with you — don't worry, we won't write the whole thing. Pick whatever sounds interesting; there's no wrong answer here."
+  // Plain text for the spoken line; the displayed version (in the plan stage) bolds "hook".
+  const planLine = "Great choice for a paragraph topic. Every good paragraph has a few components — but today we'll focus on narrowing your theme and writing a strong hook. Each piece you lock in shows up in your Draft panel."
 
   // Speak the line for whatever screen is currently showing.
   const currentLine =
     stage === 'intro'   ? introLine :
-    stage === 'orient'  ? MOMENTS[moment].line :
-    stage === 'prompts' ? promptsLine : ''
+    stage === 'prompts' ? promptsLine :
+    stage === 'plan'    ? planLine : ''
 
   useEffect(() => { speak(currentLine) }, [currentLine, speak])
 
@@ -123,14 +107,9 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ backgroundColor: 'var(--bg-page-alt)' }}>
-      {/* Step badge (students only — watchers can opt out, so a 7-step counter
-          they won't finish would mislead) + subtle skip link */}
-      <div className="flex justify-between items-center px-5 py-4">
-        {!isWatcher ? (
-          <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)', backgroundColor: 'var(--surface-muted)', padding: '4px 12px', borderRadius: 'var(--radius-pill)' }}>
-            Step {stepNumber} of {FTUE_TOTAL_STEPS}
-          </span>
-        ) : <span />}
+      {/* Just the subtle skip link up here — the step indicator now lives inside the
+          card, tucked under the primary button. */}
+      <div className="flex justify-end items-center px-5 py-4">
         <button onClick={handleSkip}
           className="text-xs font-medium transition hover:underline"
           style={{ color: 'var(--text-subtle)' }}>
@@ -155,33 +134,28 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
           {/* ── Stage: intro ── */}
           {stage === 'intro' && (
             <Card>
-              <SpeechText>{introLine}</SpeechText>
-              <PrimaryButton onClick={() => { stop(); setStage('orient'); setMoment(0) }}>
+              <Narration onReplay={() => speak(introLine)}>{introLine}</Narration>
+              {/* Meet the coaches up front — the student isn't locked into Owen. */}
+              <CoachRow />
+              <PrimaryButton onClick={() => { stop(); setStage('prompts') }}>
                 Let's go →
               </PrimaryButton>
-            </Card>
-          )}
-
-          {/* ── Stage: orientation moments ── */}
-          {stage === 'orient' && (
-            <Card>
-              <MomentVisual which={MOMENTS[moment].key} />
-              <SpeechText>{MOMENTS[moment].line}</SpeechText>
-              <PrimaryButton onClick={() => {
-                stop()
-                if (moment < MOMENTS.length - 1) setMoment(m => m + 1)
-                else setStage('prompts')
-              }}>
-                {MOMENTS[moment].cta}
-              </PrimaryButton>
-              <Dots count={MOMENTS.length} active={moment} />
+              {/* Parents/teachers can bail before the warm-up entirely. */}
+              {isWatcher && (
+                <button onClick={handleSkip}
+                  className="w-full rounded-full py-3 text-sm font-semibold transition"
+                  style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}>
+                  Skip — go to my dashboard →
+                </button>
+              )}
+              {!isWatcher && <StepIndicator n={1} total={FTUE_TOTAL_STEPS} />}
             </Card>
           )}
 
           {/* ── Stage: practice prompt selection ── */}
           {stage === 'prompts' && (
             <Card>
-              <SpeechText>{promptsLine}</SpeechText>
+              <Narration onReplay={() => speak(promptsLine)}>{promptsLine}</Narration>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                 {prompts.map(p => {
@@ -205,15 +179,14 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                 })}
               </div>
 
-              {error && <p className="text-sm text-center mt-4" style={{ color: 'var(--status-error)' }}>{error}</p>}
-
-              {selected && (
-                <button onClick={startPractice} disabled={creating}
-                  className="w-full text-white font-bold rounded-full py-3 mt-5 transition disabled:opacity-60"
-                  style={{ backgroundColor: 'var(--accent)' }}>
-                  {creating ? 'Setting up your practice…' : 'Start with this one →'}
-                </button>
-              )}
+              {/* Always visible, but muted until a prompt is chosen — mirrors the
+                  new-assignment page's "Start writing" button. */}
+              <button onClick={() => { stop(); setStage('plan') }}
+                disabled={!selected}
+                className="w-full font-bold rounded-full py-3 mt-5 transition disabled:opacity-50"
+                style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', cursor: selected ? 'pointer' : 'not-allowed' }}>
+                Continue →
+              </button>
 
               {/* Parents/teachers get an explicit opt-out of the practice. */}
               {isWatcher && (
@@ -223,6 +196,37 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
                   Skip the practice — go to my dashboard →
                 </button>
               )}
+              {!isWatcher && <StepIndicator n={2} total={FTUE_TOTAL_STEPS} />}
+            </Card>
+          )}
+
+          {/* ── Stage: "how we'll build it" — paragraph anatomy, after the pick ── */}
+          {stage === 'plan' && (
+            <Card>
+              <Narration onReplay={() => speak(planLine)}>
+                Great choice for a paragraph topic. Every good paragraph has a few components — but
+                today we&rsquo;ll focus on narrowing your theme and writing a strong{' '}
+                <strong style={{ color: 'var(--text-strong)' }}>hook</strong>. Each piece you lock
+                in shows up in your Draft panel.
+              </Narration>
+              <ParagraphAnatomy />
+
+              {error && <p className="text-sm text-center" style={{ color: 'var(--status-error)' }}>{error}</p>}
+
+              <button onClick={startPractice} disabled={creating}
+                className="w-full text-white font-bold rounded-full py-3 transition disabled:opacity-60"
+                style={{ backgroundColor: 'var(--accent)' }}>
+                {creating ? 'Setting up your warm-up…' : 'Start writing →'}
+              </button>
+
+              {isWatcher && (
+                <button onClick={handleSkip} disabled={creating}
+                  className="w-full rounded-full py-3 text-sm font-semibold transition disabled:opacity-60"
+                  style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}>
+                  Skip the practice — go to my dashboard →
+                </button>
+              )}
+              {!isWatcher && <StepIndicator n={3} total={FTUE_TOTAL_STEPS} />}
             </Card>
           )}
 
@@ -251,6 +255,91 @@ function SpeechText({ children }) {
   )
 }
 
+// Owen's spoken line + a replay control (mirrors the in-chat "replay" affordance).
+// Autoplay is blocked until the first gesture, so the button is the reliable way to
+// hear the line.
+function Narration({ children, onReplay }) {
+  return (
+    <div>
+      <SpeechText>{children}</SpeechText>
+      <ReplayButton onClick={onReplay} />
+    </div>
+  )
+}
+
+function ReplayButton({ onClick }) {
+  return (
+    <div className="flex justify-end mt-1.5">
+      <button onClick={onClick}
+        className="inline-flex items-center gap-1 text-xs font-medium transition hover:underline"
+        style={{ color: 'var(--text-subtle)' }}
+        aria-label="Replay Owen's audio">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <polygon points="6 4 20 12 6 20 6 4" />
+        </svg>
+        Replay
+      </button>
+    </div>
+  )
+}
+
+// The lineup of coaches, shown on the welcome screen so the student knows Owen is
+// one of several styles they can switch to — not the only option.
+function CoachRow() {
+  return (
+    <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
+      <div className="flex items-center justify-center gap-2 mb-2.5">
+        {Object.keys(PERSONAS).map(id => <PersonaAvatar key={id} personaId={id} size={34} />)}
+      </div>
+      <p className="text-xs text-center leading-snug" style={{ color: 'var(--text-subtle)' }}>
+        Six coaches, six styles. You&rsquo;ve got Owen to start — switch to anyone, anytime.
+      </p>
+    </div>
+  )
+}
+
+function StepIndicator({ n, total }) {
+  return (
+    <p className="text-center" style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)' }}>
+      Step {n} of {total}
+    </p>
+  )
+}
+
+// The four pieces of a paragraph, with the hook marked as today's warm-up. Mirrors
+// the "what comes next" list on the completion reveal so the student sees the same
+// shape on both ends, and learns the pieces show up in the Draft.
+const PARAGRAPH_PARTS = [
+  { label: 'Hook', note: "today's warm-up", active: true },
+  { label: 'Context', active: false },
+  { label: 'Body', active: false },
+  { label: 'Closing', active: false },
+]
+
+function ParagraphAnatomy() {
+  return (
+    <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
+      <p className="text-[11px] font-bold uppercase tracking-widest mb-2.5" style={{ color: 'var(--text-subtle)' }}>
+        A paragraph, one piece at a time
+      </p>
+      <div className="space-y-1.5">
+        {PARAGRAPH_PARTS.map(part => (
+          <div key={part.label} className="flex items-center gap-2.5">
+            <span className="rounded-full shrink-0" style={{ width: 8, height: 8, backgroundColor: part.active ? 'var(--accent)' : 'var(--border-strong)' }} />
+            <span className="text-sm" style={{ color: part.active ? 'var(--text-strong)' : 'var(--text-muted)', fontWeight: part.active ? 'var(--fw-semibold)' : 'normal' }}>
+              {part.label}
+            </span>
+            {part.note && <span className="text-[11px]" style={{ color: 'var(--accent-text)' }}>{part.note}</span>}
+          </div>
+        ))}
+      </div>
+      <p className="text-xs mt-3 leading-snug" style={{ color: 'var(--text-subtle)' }}>
+        Each piece shows up in your Draft as you go. Today we&rsquo;ll just nail the opening line.
+      </p>
+    </div>
+  )
+}
+
 function PrimaryButton({ onClick, children }) {
   return (
     <button onClick={onClick}
@@ -261,87 +350,3 @@ function PrimaryButton({ onClick, children }) {
   )
 }
 
-function Dots({ count, active }) {
-  return (
-    <div className="flex items-center justify-center gap-1.5 pt-1"
-      role="progressbar" aria-valuemin={1} aria-valuemax={count} aria-valuenow={active + 1}
-      aria-label={`Step ${active + 1} of ${count}`}>
-      {Array.from({ length: count }).map((_, i) => (
-        <span key={i} aria-hidden="true" className="rounded-full transition-all"
-          style={{
-            width: i === active ? 22 : 8, height: 8,
-            backgroundColor: i === active ? 'var(--accent)' : 'var(--border-strong)',
-            transition: 'all var(--dur-base) var(--ease-soft)',
-          }} />
-      ))}
-    </div>
-  )
-}
-
-// Lightweight visuals for the three orientation moments (no heavy animation —
-// that's a later polish pass).
-function MomentVisual({ which }) {
-  if (which === 'coach') {
-    return (
-      <div className="flex items-center justify-center gap-2 py-2">
-        {Object.keys(PERSONAS).map(id => <PersonaAvatar key={id} personaId={id} size={36} />)}
-      </div>
-    )
-  }
-  if (which === 'how') {
-    return (
-      <div className="flex items-center justify-center gap-2 py-2">
-        <Pill label="You talk" icon="mic" />
-        <Arrow />
-        <Pill label="It's written" icon="text" />
-        <Arrow />
-        <Pill label="Your paragraph" icon="doc" />
-      </div>
-    )
-  }
-  // draft panel sketch
-  return (
-    <div className="rounded-2xl p-4 mx-auto max-w-xs" style={{ backgroundColor: 'var(--bg-page)', border: '1px solid var(--border-default)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-subtle)' }}>Your Draft</p>
-      <div className="space-y-2">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="h-3 rounded-full" style={{ backgroundColor: 'var(--surface-muted)', width: `${[90, 75, 60][i]}%` }} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Pill({ label, icon }) {
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className="w-10 h-10 rounded-full flex items-center justify-center"
-        style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
-        {icon === 'mic' && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v4" />
-          </svg>
-        )}
-        {icon === 'text' && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M4 7h16M4 12h16M4 17h10" />
-          </svg>
-        )}
-        {icon === 'doc' && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" />
-          </svg>
-        )}
-      </div>
-      <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</span>
-    </div>
-  )
-}
-
-function Arrow() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mb-5">
-      <path d="M5 12h14M13 6l6 6-6 6" />
-    </svg>
-  )
-}

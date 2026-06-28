@@ -18,8 +18,12 @@ export default async function OnboardingCompletePage() {
   const imp = await getImpersonation(adminProfile)
   const effectiveUserId = imp?.userId ?? user.id
 
+  // Reader for the impersonated user's data (service bypasses RLS); otherwise the
+  // signed-in user's own client + RLS is enough.
+  const reader = imp ? createServiceClient() : supabase
+
   const profile = imp
-    ? (await createServiceClient().from('profiles').select('full_name').eq('id', effectiveUserId).single()).data
+    ? (await reader.from('profiles').select('full_name').eq('id', effectiveUserId).single()).data
     : adminProfile
 
   // Mark onboarding done for the REAL signed-in student only — never during a remote-in.
@@ -30,7 +34,32 @@ export default async function OnboardingCompletePage() {
       .eq('id', user.id)
   }
 
+  // Pull the opening line the student just locked in, to reveal it large on this
+  // screen. It lives as the confirmed component of the practice session's scaffold —
+  // that's their exact words, not a reassembled paraphrase.
+  const { data: practice } = await reader
+    .from('sessions')
+    .select('id')
+    .eq('student_id', effectiveUserId)
+    .eq('is_onboarding', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let hook = null
+  if (practice?.id) {
+    const { data: sc } = await reader
+      .from('paragraph_scaffolds')
+      .select('components')
+      .eq('session_id', practice.id)
+      .maybeSingle()
+    const items = sc?.components?.[0]?.items ?? []
+    hook = items.find(it => it.status === 'confirmed' && it.text)?.text
+      ?? items.find(it => it.text)?.text
+      ?? null
+  }
+
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
-  return <OnboardingComplete studentName={firstName} />
+  return <OnboardingComplete studentName={firstName} practiceSessionId={practice?.id ?? null} hook={hook} />
 }

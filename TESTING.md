@@ -44,6 +44,15 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Coach switcher (3-dot by the coach name) still switches coaches
 - [ ] ⬜ Bubbles, draft panel, mic, and scribe all behave as before (engine unchanged)
 
+## Type-while-coach-talks + interrupt (coaching session)
+- [ ] 🔧 While the coach is **generating** (caption streaming), the reply box is visible and typable; Send is disabled with the "Coach is writing…" hint
+- [ ] 🔧 The moment the coach's text finishes (message bubble lands), Send enables even though the read-aloud is still playing
+- [ ] 🔧 Pressing **Send** mid-read-aloud cuts the audio and sends immediately; the coach's previous reply stays fully in the transcript (not truncated)
+- [ ] 🔧 Text typed during "Coach is writing" persists once Send unlocks (composer isn't remounted between phases)
+- [ ] 🔧 Greeting: can start typing while the opening greeting is still reading aloud
+- [ ] 🔧 Replay button on a message during a coach read-aloud doesn't get talked over (run-guard); two audio clips never overlap
+- [ ] 🔧 Rapid Send right after the coach's text lands (very short replies) doesn't leave a stale clip playing over the new turn
+
 ## FTUE onboarding (resume + restyle)
 - [ ] ⬜ Reset a student's onboarding flag in Admin → student is routed through the FTUE
 - [ ] ⬜ "Step X of 7" indicator shows; restyled cards (cream bg, raised cards, pill dots) look right

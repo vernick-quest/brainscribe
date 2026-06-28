@@ -2,13 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getImpersonation } from '@/lib/impersonation'
 import { redirect } from 'next/navigation'
-import WritingProfileCard from '@/components/WritingProfileCard'
 import CopyButton from '@/components/CopyButton'
 import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
+import { computeActual, chipState } from '@/lib/requirements'
 
 export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
@@ -69,6 +69,14 @@ export default async function TranscriptPage({ params, searchParams }) {
     : scaffoldLines.join('\n')
   const isStudent = profile?.role === 'student'
   const isComplete = session.status === 'complete'
+
+  // Neutral requirement readout (word/paragraph counts) — recomputed from the
+  // written paragraphs so it's accurate even if requirements.actual is stale.
+  const reqTargets = session.requirements?.targets ?? []
+  const reqActual = reqTargets.length ? computeActual(paragraphs ?? []) : null
+  const reqLine = reqTargets.length
+    ? reqTargets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')
+    : null
   const backHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
   const backLabel = profile?.role === 'parent' ? 'Parent dashboard' : profile?.role === 'teacher' ? 'Teacher dashboard' : 'Dashboard'
   const coachPersona = getPersona(session.persona)
@@ -170,6 +178,9 @@ export default async function TranscriptPage({ params, searchParams }) {
             </div>
             {essay && <CopyButton text={essay} />}
           </div>
+          {reqLine && (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{reqLine}</p>
+          )}
           {!paragraphs?.length && scaffoldLines.length > 0 ? (
             <div className="space-y-1">
               {scaffoldLines.map((line, i) => (
@@ -207,19 +218,6 @@ export default async function TranscriptPage({ params, searchParams }) {
           )}
         </section>
 
-        {/* Writing profile — non-students only */}
-        {!isStudent && (
-          <section className="rounded-2xl p-6 space-y-4"
-            style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
-            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Writing Profile</h2>
-            <WritingProfileCard
-              profile={session.writing_profile ?? null}
-              sessionComplete={session.status === 'complete'}
-              studentName={session.profiles?.full_name?.split(' ')[0]}
-            />
-          </section>
-        )}
-
         {/* Full conversation transcript */}
         <section className="rounded-2xl p-6 space-y-4"
           style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
@@ -248,6 +246,24 @@ export default async function TranscriptPage({ params, searchParams }) {
             </div>
           )}
         </section>
+
+        {/* Next actions — students only; this is the end of a finished piece, not
+            a place to keep writing. Watchers (parent/teacher) use the back link. */}
+        {isStudent && isComplete && (
+          <section className="flex flex-wrap items-center gap-3">
+            <a href="/assignment/new"
+              className="inline-flex items-center gap-2 text-sm font-bold rounded-full px-5 py-2.5 text-white"
+              style={{ backgroundColor: 'var(--accent)' }}>
+              <Icon name="pencil" size={16} />
+              Start another assignment
+            </a>
+            <a href="/dashboard"
+              className="inline-flex items-center gap-2 text-sm font-semibold rounded-full px-5 py-2.5"
+              style={{ color: 'var(--text-body)', border: '1px solid var(--border-strong)' }}>
+              Back to dashboard
+            </a>
+          </section>
+        )}
 
       </main>
     </div>

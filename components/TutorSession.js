@@ -11,6 +11,7 @@ import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
+import { onboardingGreeting } from '@/lib/onboardingPrompts'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
   // "assignment", and never ask whether they've written anything — there's
   // nothing yet. Just warmly invite their first thought on the prompt.
   if (onboarding) {
-    return `Okay ${name}, let's just dive in — no pressure at all. What's the first thing that comes to mind for this one? Just say whatever pops up.`
+    return onboardingGreeting(name)
   }
 
   const hasScaffold = scaffold?.components?.length > 0
@@ -256,7 +257,7 @@ const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref)
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, coachBusy = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -273,6 +274,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
   function submit() {
+    // While the coach is still writing its reply, hold the send — typing is allowed
+    // but the message can't go until the coach's words are fully committed (sending
+    // then interrupts only the read-aloud, never the unfinished text).
+    if (coachBusy) return
     const t = text.trim()
     if (!t) return
     setText('')
@@ -336,31 +341,42 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   }
 
   return (
-    <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
-      <MicButton
-        ref={micRef}
-        disabled={false}
-        assignmentKeyterms={assignmentKeyterms}
-        onInterim={handleInterim}
-        onFinal={(t) => { if (t && !editingRef.current) setText(t) }}
-      />
-      <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={e => handleEdit(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
-          placeholder="Type or speak your reply…"
-          rows={1}
-          className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
-          style={{ color: 'var(--text-body)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
+    <div style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
+      {/* While the coach is still writing, the student can type ahead — Send just
+          waits. Once the coach's text lands, Send unlocks; pressing it then cuts
+          the read-aloud short (the audio runs behind the written words). */}
+      {coachBusy && (
+        <div className="px-5 pt-2 flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--text-subtle)' }}>
+          <span className="animate-pulse" style={{ color: 'var(--accent)' }}>●</span>
+          <span>Coach is writing — you can keep typing; Send unlocks when they finish.</span>
+        </div>
+      )}
+      <div className="px-5 py-3 flex items-center gap-3">
+        <MicButton
+          ref={micRef}
+          disabled={false}
+          assignmentKeyterms={assignmentKeyterms}
+          onInterim={handleInterim}
+          onFinal={(t) => { if (t && !editingRef.current) setText(t) }}
         />
-        <button type="submit" disabled={!text.trim()}
-          className="text-sm text-white rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
-          style={{ backgroundColor: 'var(--accent)' }}>
-          Send
-        </button>
-      </form>
+        <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={e => handleEdit(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+            placeholder="Type or speak your reply…"
+            rows={1}
+            className="flex-1 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 transition-colors resize-none overflow-hidden leading-relaxed"
+            style={{ color: 'var(--text-body)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', '--tw-ring-color': 'var(--accent)', minHeight: '42px', maxHeight: '160px' }}
+          />
+          <button type="submit" disabled={!text.trim() || coachBusy}
+            className="text-sm text-white rounded-xl px-4 py-2.5 transition disabled:opacity-40 shrink-0"
+            style={{ backgroundColor: 'var(--accent)' }}>
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   )
 })
@@ -425,6 +441,7 @@ export default function TutorSession({
   const audioRef          = useRef(null)   // single persistent <audio>, unlocked on first gesture
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
+  const tutorRunRef       = useRef(0)       // bumps each coach turn; a superseded turn's leftover audio bails
   const audioUnlockedRef  = useRef(false)
   const pendingGreetingRef = useRef(null)   // greeting that got autoplay-blocked, to re-speak on first gesture
   const everPlayedRef     = useRef(false)   // has any clip actually started playing yet?
@@ -487,7 +504,18 @@ export default function TutorSession({
   useEffect(() => {
     if (hasGreeted.current || greetedSessions.has(session.id)) return
     hasGreeted.current = true
-    if (initialMessages.length > 0) { setPhase('listening'); return }
+    if (initialMessages.length > 0) {
+      setPhase('listening')
+      // The onboarding greeting is persisted server-side, so it arrives in
+      // initialMessages even on first load. Speak it once in the background — the
+      // student still hears Owen open, but the input is live immediately (no waiting
+      // on audio, which previously gated the whole session behind the greeting clip).
+      if (onboarding && initialMessages.length === 1 && initialMessages[0]?.role === 'assistant') {
+        greetedSessions.add(session.id)
+        replayAudioOnly(initialMessages[0].content, session.persona ?? 'owen')
+      }
+      return
+    }
     greetedSessions.add(session.id)
     const activePersona = session.persona ?? 'owen'
     const greeting = buildGreeting(activePersona, studentName, initialScaffold, onboarding)
@@ -609,8 +637,11 @@ export default function TutorSession({
     setMessages([...history, { role: 'assistant', content: text, persona: activePersona }])
     // Remember the greeting so the first gesture can re-speak it if autoplay blocked it.
     pendingGreetingRef.current = { text, persona: activePersona }
-    await replayAudioOnly(text, activePersona)
+    // Open the composer before the greeting finishes reading — the read-aloud lags
+    // the written text, so the student can start typing (and interrupt the audio by
+    // sending) right away instead of waiting out the whole greeting.
     setPhase('listening')
+    await replayAudioOnly(text, activePersona)
   }
 
   async function replayAudioOnly(text, activePersona = persona) {
@@ -638,6 +669,7 @@ export default function TutorSession({
 
   async function replayMessage(content, index) {
     if (replayingIndex === index) { stopCurrentAudio(); setReplayingIndex(null); return }
+    tutorRunRef.current++   // supersede any coach read-aloud still playing so it won't resume over this replay
     setReplayingIndex(index)
     await replayAudioOnly(content, persona)
     setReplayingIndex(null)
@@ -747,7 +779,12 @@ export default function TutorSession({
       }
     }
 
-    if (changed && !newScaffoldCreated && sc) {
+    // Persist any change — including when the scaffold was created THIS turn. The
+    // hook-only practice flow builds the scaffold and locks the opening line in a
+    // single coach turn; the create POST above only saved the initial (unconfirmed)
+    // tree, so without this PATCH the confirmed component never reaches the DB and the
+    // reveal/transcript come up blank.
+    if (changed && sc) {
       await fetch(`/api/scaffold/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -765,6 +802,7 @@ export default function TutorSession({
   // ── Tutor call ───────────────────────────────────────────────────────────────
 
   async function askTutor(history, activePersona = persona, displayHistory = null) {
+    const myRun = ++tutorRunRef.current
     setPhase('tutor-thinking')
     captionRef.current?.set('…')
 
@@ -783,8 +821,7 @@ export default function TutorSession({
 
       if (!res.ok) {
         console.error('Tutor API error:', res.status, await res.text())
-        captionRef.current?.clear()
-        setPhase('listening')
+        if (tutorRunRef.current === myRun) { captionRef.current?.clear(); setPhase('listening') }
         return
       }
 
@@ -812,7 +849,13 @@ export default function TutorSession({
           if (m && m[1].trim().length >= 8 && clean.length > m[1].length + 1) {
             firstSentence = m[1].trim()
             firstPlay = (async () => {
-              try { await playTtsUrl(await fetchTts(firstSentence, activePersona)) } catch {}
+              try {
+                const url = await fetchTts(firstSentence, activePersona)
+                // If the student already interrupted (newer turn), don't grab the
+                // shared <audio> element out from under the new turn's playback.
+                if (tutorRunRef.current !== myRun) { try { URL.revokeObjectURL(url) } catch {} ; return }
+                await playTtsUrl(url)
+              } catch {}
             })()
           }
         }
@@ -826,30 +869,39 @@ export default function TutorSession({
 
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
-      captionRef.current?.set(displayText)
 
+      // The coach's words are now fully written. Commit the message and reopen the
+      // composer immediately — BEFORE the read-aloud finishes. The audio lags
+      // behind the text, so this lets the student type during the read-aloud and,
+      // by sending, interrupt only the audio — the coach's full reply is already
+      // safely committed and never truncated.
+      setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
+      captionRef.current?.clear()
+      setPhase(hasDictateSignal ? 'dictating' : 'listening')
+
+      // Audio plays out unless a newer turn supersedes this one (the student sent
+      // again, interrupting). Each audio step bails if this run is no longer current
+      // so a leftover remainder clip can't hijack the shared <audio> element.
       if (firstSentence) {
         // Remainder after the first sentence; fetch its audio now (overlaps the
         // first sentence still playing), then play once the first finishes.
         const remainder = displayText.slice(firstSentence.length).trim()
         const remainderUrl = remainder ? fetchTts(remainder, activePersona).catch(() => null) : null
         await firstPlay
+        if (tutorRunRef.current !== myRun) return
         if (remainderUrl) {
           const url = await remainderUrl
+          if (tutorRunRef.current !== myRun) { try { URL.revokeObjectURL(url) } catch {} ; return }
           if (url) await playTtsUrl(url)
         }
       } else {
+        if (tutorRunRef.current !== myRun) return
         // Single short reply (no mid-stream sentence boundary) — speak it whole.
         await replayAudioOnly(displayText, activePersona)
       }
-
-      setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
-      captionRef.current?.clear()
-      setPhase(hasDictateSignal ? 'dictating' : 'listening')
     } catch (err) {
       console.error('askTutor failed:', err)
-      captionRef.current?.clear()
-      setPhase('listening')
+      if (tutorRunRef.current === myRun) { captionRef.current?.clear(); setPhase('listening') }
     }
   }
 
@@ -1281,10 +1333,10 @@ export default function TutorSession({
         {onboarding && (
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
             style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
-            <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice session</span>
-            {/* FTUE step 6 of 7 — writing your paragraph */}
-            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 6 of 7</span>
-            <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just to get the feel of it — nothing here is graded.</span>
+            <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5"><Icon name="pencil" size={12} /> Practice warm-up</span>
+            {/* FTUE step 4 of 5 — your first opening line (5 is the reveal) */}
+            <span className="font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>Step 4 of 5</span>
+            <span className="hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Just your opening line — to get the feel of it. Nothing here is graded.</span>
             <button onClick={exitPractice}
               className="ml-auto font-semibold hover:underline" style={{ color: 'var(--text-muted)' }}>
               Exit practice
@@ -1657,9 +1709,13 @@ export default function TutorSession({
             <div ref={chatBottomRef} />
           </div>
 
-          {/* Input area — changes based on phase */}
-          {phase === 'listening' && (
-            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} />
+          {/* Input area — changes based on phase. The listening composer also stays
+              mounted while the coach is thinking/reading ('tutor-thinking'/'waiting')
+              so the student can type the whole time; coachBusy holds Send until the
+              coach's text is committed, after which a send interrupts the read-aloud.
+              Keeping the same instance mounted across phases preserves typed text. */}
+          {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
+            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} coachBusy={phase !== 'listening'} />
           )}
 
           {phase === 'dictating' && (
@@ -1690,11 +1746,6 @@ export default function TutorSession({
             </div>
           )}
 
-          {(phase === 'tutor-thinking' || phase === 'waiting') && (
-            <div className="px-5 py-3 text-center" style={{ backgroundColor: 'var(--bg-page)', borderTop: '1px solid var(--border-default)' }}>
-              <p className="text-xs italic" style={{ color: 'var(--text-subtle)' }}>{currentMeta.name} is thinking…</p>
-            </div>
-          )}
         </div>
 
         {/* ── Essay panel ── */}
@@ -1747,10 +1798,10 @@ export default function TutorSession({
               <div className="flex-1 min-w-0">
                 {onboarding ? (
                   <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your essay is complete!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Let's take a look at the whole thing — that's the end of the tour.</p>
-                    <a href={`/transcript/${session.id}?onboarding=1`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      See your finished essay →
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
+                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      See your opening line →
                     </a>
                   </>
                 ) : (
@@ -2073,8 +2124,11 @@ export default function TutorSession({
 
                           {/* All parts confirmed. Custom (non-prose) forms are already
                               finished — the parts ARE the draft, so don't merge them into
-                              prose; offer to finish. Prose paragraphs get assembled. */}
-                          {isCurrentPara && allConfirmed && (
+                              prose; offer to finish. Prose paragraphs get assembled.
+                              In the onboarding warm-up the coach auto-completes and the
+                              brand "See your opening line" banner is the clear next step,
+                              so we hide this off-brand manual finish button entirely. */}
+                          {isCurrentPara && allConfirmed && !onboarding && (
                             para.type === 'custom' ? (
                               <button
                                 onClick={markSessionComplete}
