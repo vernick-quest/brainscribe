@@ -1,9 +1,29 @@
 import './globals.css'
 import SiteFooter from '@/components/SiteFooter'
+import { SITE_URL } from '@/lib/site'
+
+const DESCRIPTION = 'The Socratic Writing Coach for Middle & High Schoolers'
 
 export const metadata = {
+  // Resolves relative metadata URLs (incl. the file-convention OG images) and
+  // pins them to the canonical www host. Child pages can override openGraph /
+  // twitter / canonical; the root opengraph-image.js supplies the default
+  // share card for any page without its own.
+  metadataBase: new URL(SITE_URL),
   title: 'BrainScribe',
-  description: 'The Socratic Writing Coach for Middle & High Schoolers',
+  description: DESCRIPTION,
+  openGraph: {
+    type: 'website',
+    siteName: 'BrainScribe',
+    title: 'BrainScribe',
+    description: DESCRIPTION,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'BrainScribe',
+    description: DESCRIPTION,
+  },
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
