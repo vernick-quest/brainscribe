@@ -73,7 +73,7 @@ export async function PATCH(request) {
         )
       }
     } else {
-      // Editing someone else requires a verified parent→child relationship.
+      // Editing someone else's gate requires a verified watcher link…
       const { data: rel } = await service
         .from('relationships')
         .select('watcher_id')
@@ -82,6 +82,21 @@ export async function PATCH(request) {
         .maybeSingle()
       if (!rel) {
         return Response.json({ error: 'You are not authorized to edit this account.' }, { status: 403 })
+      }
+      // …AND parental standing for THIS child. Bare relationship membership is not
+      // enough: `relationships` carries no role, so a read-only CO-PARENT or a
+      // linked TEACHER would otherwise be able to move the age gate and (when
+      // resolving to under-13) auto-grant consent. Only the child's recorded
+      // consenting guardian may move the gate. Before any guardian is recorded,
+      // any linked PARENT (never a teacher) may act — and that action records them
+      // as the guardian (the legitimate bootstrap/first-correction path).
+      const isGuardian = target.coppa_consent_parent_id === user.id
+      const canBootstrap = !target.coppa_consent_parent_id && actor?.role === 'parent'
+      if (!isGuardian && !canBootstrap) {
+        return Response.json(
+          { error: 'Only this child’s consenting parent can change their birthdate. Ask them, or contact support.', code: 'coppa_not_guardian' },
+          { status: 403 }
+        )
       }
       parentEditing = true
     }
