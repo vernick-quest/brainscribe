@@ -14,7 +14,7 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name')
+    .select('role, full_name, writing_profile_aggregate')
     .eq('id', user.id)
     .single()
 
@@ -23,7 +23,6 @@ export default async function ProfilePage() {
   const [
     { count: sessionCount },
     { count: completeCount },
-    { data: latestComplete },
     { data: parents },
     { data: subjectRows },
   ] = await Promise.all([
@@ -33,9 +32,6 @@ export default async function ProfilePage() {
     isStudent
       ? supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id).eq('status', 'complete')
       : Promise.resolve({ count: 0 }),
-    isStudent
-      ? supabase.from('sessions').select('writing_profile').eq('student_id', user.id).eq('status', 'complete').not('writing_profile', 'is', null).order('updated_at', { ascending: false }).limit(1).single()
-      : Promise.resolve({ data: null }),
     // Fetch parents connected to this student
     isStudent
       ? supabase.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name)').eq('student_id', user.id)
@@ -46,7 +42,9 @@ export default async function ProfilePage() {
       : Promise.resolve({ data: [] }),
   ])
 
-  const writingProfile = latestComplete?.writing_profile ?? null
+  // Cross-assignment aggregate — synthesized at completion, stored on the
+  // durable profiles row (not the latest session's per-essay profile).
+  const writingProfile = isStudent ? (profile?.writing_profile_aggregate ?? null) : null
 
   // Build subject breakdown
   const subjectCounts = {}
