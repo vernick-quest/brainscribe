@@ -67,7 +67,12 @@ export default async function InvitePage({ searchParams }) {
     // who is the parent (watcher) and who is the child (student) for this claim.
     let pendingRel = null
     if (invite.role === 'parent' && invite.invited_by) {
-      pendingRel = { watcher_id: user.id, student_id: invite.invited_by }
+      // Co-parent invite (sent by a child's guardian) carries an explicit target
+      // child in invite.student_id; a student-sent parent invite has no target,
+      // so the inviting student (invited_by) is the child. Either way the claimer
+      // becomes a read-only watcher — never a consenting guardian (no consent
+      // columns are written here).
+      pendingRel = { watcher_id: user.id, student_id: invite.student_id ?? invite.invited_by }
     } else if (invite.role === 'student' && invite.invited_by) {
       pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
     }
