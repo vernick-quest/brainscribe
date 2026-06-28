@@ -107,6 +107,31 @@ Parent generates an invite link for their child; child claims it and is linked.
 - [ ] ⬜ Re-claiming an **already-linked** pair still succeeds (idempotent; cap not falsely triggered)
 - [ ] ⬜ COPPA consent still links a parent even if it would exceed the cap (consent path is exempt — verify an under-13 with 2 voluntary parents can still be consented by a 3rd guardian)
 
+## Parent Settings page (`/parent/settings` — new 2026-06-28, branch `focus/parents`, NOT yet deployed)
+Account + relationship management was **consolidated** here and **removed** from the
+dashboard. The dashboard (`/parent`) now shows only children's writing + an
+"Account & children" link; per-assignment teacher management **stayed** on the
+dashboard (it's writing context). So the birthday-edit, unlink, and add-a-child
+checks above now apply on **`/parent/settings`**, not the dashboard.
+- [ ] ⬜ Navbar account menu shows **"Settings"** for a parent → `/parent/settings` (other roles still show "Profile" → `/profile`)
+- [ ] ⬜ Dashboard header "Account & children" link → `/parent/settings`; the "← Dashboard" pill returns
+- [ ] ⬜ Dashboard no longer shows the own-birthday block, Add-a-child, or per-child birthday/unlink (all moved to Settings)
+- [ ] ⬜ Account section: name editable (saves via ProfileForm), email read-only, "Your birthday" edits via the guarded gate
+- [ ] ⬜ Children section header shows "X of 3 linked"; at the cap, Add-a-child is replaced by the max-reached notice
+- [ ] ⬜ Each child row: avatar (under-13 = initials only), email, "View profile →", birthday edit, Unlink
+- [ ] ⬜ **Remote-in**: admin impersonating a parent sees the **read-only identity card** (not the editable ProfileForm) so a name edit can't mis-target the admin; birthday edits still target the impersonated parent/child
+
+### Co-parent invite (guardian-only — new 2026-06-28) — ⚠️ BLOCKED ON MIGRATION 022 (`invites.student_id`)
+A child's **consenting guardian** invites a second parent for that under-13 child
+(read-only oversight, not a consent grant). Until migration 022 is applied the
+invite **insert fails** — test the gating now, the happy path after the migration.
+- [ ] ⬜ "Invite another parent" appears on a child row **only** when the caller is that child's recorded consent parent AND the child is **under-13** AND under the 2-parents cap
+- [ ] ⬜ It does **not** appear for a 13+ child, for a non-guardian linked parent, or while remoting in
+- [ ] ⬜ (post-022) Guardian generates a co-parent link → second parent claims it → linked as a **read-only watcher** on the child; appears on both parents' dashboards
+- [ ] ⬜ (post-022) The co-parent is **not** granted consent: the child's `coppa_consent_parent_id` is unchanged; the original guardian is still the one the unlink guard protects
+- [ ] ⬜ (post-022) The 2-parents-per-child cap is enforced (generation-time guardian check + claim-time cap); recipient must be 13+ (claim age gate)
+- [ ] ⬜ API authz: a non-guardian parent (or any non-parent) calling `POST /api/invites` with `role:'parent' + childId` is rejected ("Only this child's approving parent can invite a co-parent.")
+
 ## Teacher dashboard (teacher account or remote-in)
 - [ ] ⬜ Collapsible block per student (expand/collapse); auto-open if only one student
 - [ ] ⬜ Notification bell in the header opens (newly mounted today)
