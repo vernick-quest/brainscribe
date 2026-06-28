@@ -6,6 +6,7 @@ import UserAvatar from '@/components/UserAvatar'
 import BirthdateField from '@/components/BirthdateField'
 import AddChildForm from '@/components/AddChildForm'
 import UnlinkChildButton from '@/components/UnlinkChildButton'
+import CoParentInviteForm from '@/components/CoParentInviteForm'
 import Icon from '@/components/Icon'
 
 const ROLE_LABELS = {
@@ -41,8 +42,12 @@ function IdentityCard({ profile }) {
 }
 
 // ── One linked child row ───────────────────────────────────────────────
-function ChildRow({ child, viewerId }) {
+function ChildRow({ child, viewerId, impersonating }) {
   const firstName = child.full_name?.split(' ')[0] ?? 'your student'
+  // The co-parent invite posts as the authenticated user, so it can't work while
+  // an admin is remoting in (the guardian check is against the real caller) —
+  // hide it in that case rather than offer a button that would 403.
+  const showCoParent = child.canAddCoParent && !impersonating
   return (
     <div className="rounded-2xl px-5 py-4 space-y-3"
       style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
@@ -73,6 +78,12 @@ function ChildRow({ child, viewerId }) {
           <UnlinkChildButton studentId={child.id} watcherId={viewerId} childName={firstName} />
         </div>
       </div>
+
+      {showCoParent && (
+        <div className="pt-1">
+          <CoParentInviteForm childId={child.id} childName={firstName} />
+        </div>
+      )}
     </div>
   )
 }
@@ -141,7 +152,7 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
           ) : (
             <div className="space-y-3">
               {children.map(child => (
-                <ChildRow key={child.id} child={child} viewerId={viewerId} />
+                <ChildRow key={child.id} child={child} viewerId={viewerId} impersonating={impersonating} />
               ))}
             </div>
           )}
