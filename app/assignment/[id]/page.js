@@ -119,6 +119,16 @@ export default async function AssignmentPage({ params }) {
   // like any other completed assignment.
   const onboardingMode = session.is_onboarding === true && !ownerProfile?.onboarding_complete
 
+  // The writing view is active-only: a completed assignment reopens at its canonical
+  // end-state page (/transcript). Exempt the live FTUE tour — the practice run must
+  // stay in TutorSession until the student reaches the finale (which sets
+  // onboarding_complete and then routes through /transcript?onboarding=1 itself).
+  // Teachers never reach here (read-only branch returned above); completion mid-session
+  // is client-side in TutorSession, so this only bites on a fresh load/reopen.
+  if (isOwner && session.status === 'complete' && !onboardingMode) {
+    redirect(`/transcript/${id}`)
+  }
+
   return (
     <TutorSession
       session={session}
