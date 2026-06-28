@@ -57,17 +57,16 @@ export default async function StudentProfilePage({ params }) {
     { data: student },
     { count: sessionCount },
     { count: completeCount },
-    { data: latestComplete },
     { data: subjectRows },
   ] = await Promise.all([
-    service.from('profiles').select('full_name').eq('id', studentId).single(),
+    service.from('profiles').select('full_name, writing_profile_aggregate').eq('id', studentId).single(),
     service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId),
     service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('status', 'complete'),
-    service.from('sessions').select('writing_profile').eq('student_id', studentId).eq('status', 'complete').not('writing_profile', 'is', null).order('updated_at', { ascending: false }).limit(1).single(),
     service.from('sessions').select('subject, subject_custom_label').eq('student_id', studentId),
   ])
 
-  const writingProfile = latestComplete?.writing_profile ?? null
+  // Cross-assignment aggregate from the durable profiles row.
+  const writingProfile = student?.writing_profile_aggregate ?? null
   const studentName = student?.full_name ?? 'Student'
   const firstName = studentName.split(' ')[0]
 
