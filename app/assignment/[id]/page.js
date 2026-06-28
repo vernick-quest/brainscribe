@@ -59,7 +59,7 @@ export default async function AssignmentPage({ params }) {
         .order('position'),
       supabase
         .from('profiles')
-        .select('full_name')
+        .select('full_name, avatar_url, age_bracket')
         .eq('id', session.student_id)
         .single(),
     ])
@@ -70,6 +70,8 @@ export default async function AssignmentPage({ params }) {
         messages={messages ?? []}
         paragraphs={paragraphs ?? []}
         studentName={studentProfile?.full_name ?? 'Student'}
+        studentAvatarUrl={studentProfile?.avatar_url ?? null}
+        studentAgeBracket={studentProfile?.age_bracket ?? null}
         user={user}
         teacherProfile={profile}
         writingProfile={session.writing_profile ?? null}
