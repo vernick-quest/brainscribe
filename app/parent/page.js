@@ -25,7 +25,7 @@ export default async function ParentDashboardPage() {
 
   // Fetch the profile we're viewing as
   const { data: profile } = await service
-    .from('profiles').select('role, full_name').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, birthdate').eq('id', targetId).single()
 
   const { data: rels } = await service
     .from('relationships').select('student_id').eq('watcher_id', targetId)
@@ -37,7 +37,7 @@ export default async function ParentDashboardPage() {
 
   if (studentIds.length > 0) {
     const [{ data: profileData }, { data: sessionData }] = await Promise.all([
-      service.from('profiles').select('id, full_name, email').in('id', studentIds),
+      service.from('profiles').select('id, full_name, email, avatar_url, age_bracket, birthdate').in('id', studentIds),
       service.from('sessions')
         .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label')
         .in('student_id', studentIds)
@@ -46,6 +46,31 @@ export default async function ParentDashboardPage() {
     ])
     children = profileData ?? []
     sessions = sessionData ?? []
+  }
+
+  // Teachers added to each child's assignments, so the parent can see + manage
+  // them. Two queries (not an embed) to avoid the dual-FK ambiguity on
+  // assignment_teachers (teacher_id + added_by both reference profiles). The
+  // teacher *profile* lookup uses the service client: RLS lets a parent read the
+  // assignment_teachers rows but not a teacher's profile row, and the parent —
+  // who invited the teacher by email — is entitled to see their name here.
+  let teachersBySession = {}
+  if (sessions.length > 0) {
+    const elevated = imp ? service : createServiceClient()
+    const { data: atRows } = await elevated
+      .from('assignment_teachers')
+      .select('session_id, teacher_id')
+      .in('session_id', sessions.map(s => s.id))
+    const teacherIds = [...new Set((atRows ?? []).map(r => r.teacher_id))]
+    let teacherProfiles = {}
+    if (teacherIds.length > 0) {
+      const { data: tp } = await elevated
+        .from('profiles').select('id, full_name, email').in('id', teacherIds)
+      for (const p of tp ?? []) teacherProfiles[p.id] = p
+    }
+    for (const r of atRows ?? []) {
+      (teachersBySession[r.session_id] ??= []).push(teacherProfiles[r.teacher_id] ?? { id: r.teacher_id })
+    }
   }
 
   // The parent's OWN writing (they can use the coaches too) — separate from their
@@ -64,8 +89,10 @@ export default async function ParentDashboardPage() {
       <ParentDashboard
         user={user}
         profile={profile}
+        viewerId={targetId}
         children={children}
         sessions={sessions}
+        teachersBySession={teachersBySession}
         ownSessions={ownSessions}
       />
     </>

@@ -114,8 +114,13 @@ export async function POST(request) {
   // Coach age gate — role-independent. No one creates a coach session without a
   // 13+ assertion (or completed parental consent). Backs up the UI entry points.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_given').eq('id', user.id).single()
-  const ageOk = gate?.age_bracket === '13plus' || gate?.coppa_consent_given === true || gate?.role === 'admin'
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+  // A self-declared under-13 carries coppa_consent_required=true; once that's set,
+  // an unconsented account is blocked even if age_bracket later reads '13plus'
+  // (defends against a re-declaration that flips the bracket without consent).
+  const ageOk = gate?.role === 'admin'
+    || gate?.coppa_consent_given === true
+    || (gate?.age_bracket === '13plus' && !gate?.coppa_consent_required)
   if (!ageOk) {
     return Response.json({ error: 'Please confirm your age before writing with a coach.', code: 'age_verification_required' }, { status: 403 })
   }

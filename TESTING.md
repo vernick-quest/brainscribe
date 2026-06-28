@@ -52,10 +52,51 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Complete → transcript (Step 7 banner) → reflection → dashboard
 
 ## Parent dashboard (parent account or remote-in)
+- [ ] ⬜ Child block header shows the child's **Google photo** (13+) via shared `<UserAvatar>`
+- [ ] ⬜ An **under-13** child shows a blue-initial circle, **never** a photo (COPPA), even if a stored avatar_url still exists pre-019
+- [ ] ⬜ A broken/expired Google photo URL falls back to the blue-initial circle (no broken-image icon)
+
+### Birthdate edit (parent dashboard → guarded gate endpoint, new 2026-06-27)
+- [ ] ⬜ "Your birthday" card + each child block shows a birthday row; "Not set" shows "Add", a value shows "Edit"
+- [ ] ⬜ Setting a child's birthday saves, refreshes, and the new age bracket is reflected (e.g. <13 → avatar drops to initials)
+- [ ] ⬜ Setting a child **under 13** keeps them active (parent correction counts as consent — not bounced to /coppa/pending) and writes a `coppa_consent_log` row (`parent_birthdate_correction`)
+- [ ] ⬜ Future date / malformed date is rejected (client `max=today` + server validation)
+- [ ] ⬜ Remote-in: admin impersonating a parent edits the **parent's** and the **child's** birthday (not the admin's) — explicit studentId is always sent
+- [ ] ⬜ Edit persists across reload (RLS read of own + linked-child birthdate)
+
+### Parent teacher management (new 2026-06-27)
+- [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
+- [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears
+- [ ] ⬜ Removing a teacher chip (×) revokes access and refreshes; the teacher loses transcript access
+- [ ] ⬜ A parent cannot invite/remove teachers for a session that isn't their linked child's (API 404/403)
+- [ ] ⬜ Remote-in: admin impersonating a parent can add/remove teachers
+
+### Unlink a child (new 2026-06-27)
+- [ ] ⬜ "Unlink" in the child header → confirm → child removed from the dashboard (account + work untouched)
+- [ ] ⬜ Unlinking an **under-13** child where you are the recorded consent parent is refused (COPPA guardian guard, `coppa_guardian`)
+- [ ] ⬜ A parent can only unlink their own link (API rejects a watcherId ≠ caller for non-admins)
 - [ ] ⬜ One block per child, each listing that child's assignments
 - [ ] ⬜ "View profile" → read-only student profile (stats + writing profile)
 - [ ] ⬜ "Your writing" block (parent's own work) with "+ New"
 - [ ] ⬜ Try opening a non-child's `/profile/<id>` by URL → should redirect (access gate)
+
+## Parent-initiated child linking (Entry Point B — new 2026-06-27)
+Parent generates an invite link for their child; child claims it and is linked.
+- [ ] ⬜ Empty parent dashboard (no children) shows "Add a child" + updated copy
+- [ ] ⬜ "Add a child" card opens → enter child email → "Generate link" → copyable `/invite?token=…`
+- [ ] ⬜ Entering the **parent's own** email is rejected ("That's your own email…")
+- [ ] ⬜ Open the link in a fresh Google account → claims it → child is linked, appears on the parent dashboard
+- [ ] ⬜ Claimed child still runs **their own** age-first onboarding (`/welcome`): under-13 → COPPA parent-email step; 13+ → normal student start. Linking is **not** parental consent — verify an under-13 child is still held at `/coppa/pending` until real consent
+- [ ] ⬜ An existing **confirmed parent/teacher** account opening a student invite is refused ("already set up as a {role}")
+- [ ] ⬜ Reusing an already-claimed link → "This invite has already been used."
+- [ ] ⬜ A **student** account hitting `POST /api/invites` with `role:'student'` is rejected ("Only parents can invite a child."); a **parent** sending a `parent`/`teacher` invite is rejected ("Only students…")
+
+### Relationship caps (max 3 students/parent, max 2 parents/child — new 2026-06-27)
+- [ ] ⬜ A parent already linked to 3 students → "Add a child" rejects with "…maximum of 3 students." (generation-time)
+- [ ] ⬜ A student already linked to 2 parents → "Invite a parent" rejects with "…maximum of 2 parents." (generation-time)
+- [ ] ⬜ Generate a link while under the cap, then push the sender to the cap before it's claimed → claiming the link is refused with the cap message (claim-time gate, no token burn / role flip)
+- [ ] ⬜ Re-claiming an **already-linked** pair still succeeds (idempotent; cap not falsely triggered)
+- [ ] ⬜ COPPA consent still links a parent even if it would exceed the cap (consent path is exempt — verify an under-13 with 2 voluntary parents can still be consented by a 3rd guardian)
 
 ## Teacher dashboard (teacher account or remote-in)
 - [ ] ⬜ Collapsible block per student (expand/collapse); auto-open if only one student

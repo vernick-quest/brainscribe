@@ -53,16 +53,20 @@ export async function GET(request) {
   // Use the user from the session directly — avoids stale cookie reads after exchange
   const user = session?.user
   if (user) {
-    const avatarUrl = user.user_metadata?.avatar_url
-    if (avatarUrl) {
-      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id)
-    }
-
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role, role_confirmed')
+      .select('role, role_confirmed, age_bracket')
       .eq('id', user.id)
       .single()
+
+    // Persist the Google avatar — but NEVER for an under-13 account (COPPA
+    // data-minimization). Migration 019 nulls existing under-13 avatars; this
+    // stops a fresh photo from re-accumulating on every login. avatar_url stays
+    // client-writable (not revoked by 020), so the user-scoped client is fine here.
+    const avatarUrl = user.user_metadata?.avatar_url
+    if (avatarUrl && profile?.age_bracket !== 'under13') {
+      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id)
+    }
 
     console.log('[auth callback]', user.email, '| profile:', profile ? `role=${profile.role} confirmed=${profile.role_confirmed}` : 'MISSING (trigger lag)')
 

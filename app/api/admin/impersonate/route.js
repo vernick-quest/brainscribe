@@ -29,8 +29,10 @@ export async function POST(request) {
 
   response.cookies.set('bs_impersonate', JSON.stringify({ userId, role, name: target.full_name }), {
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
+    maxAge: 60 * 60 * 4, // auto-expire after 4h so a forgotten impersonation can't linger
   })
 
   return response

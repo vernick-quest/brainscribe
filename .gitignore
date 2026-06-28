@@ -42,4 +42,5 @@ next-env.d.ts
 .env.local
 
 # local-only design/product specs (imported from the claude.ai project; backed up there)
-/docs/specs/
+# no trailing slash: docs/specs is a symlink/gitlink in worktrees that a dir-only pattern would miss
+/docs/specs

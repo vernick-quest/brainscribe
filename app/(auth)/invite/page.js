@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import { createNotification } from '@/lib/notifications'
 import InviteAgeGate from '@/components/InviteAgeGate'
+import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 
 export default async function InvitePage({ searchParams }) {
   const params = await searchParams
@@ -50,7 +52,9 @@ export default async function InvitePage({ searchParams }) {
 
     // Parent/teacher accounts require 13+. Gate on age before granting the role:
     // if we don't know their age yet, ask; an under-13 can't accept the invite.
-    if (claimerProfile?.age_bracket !== '13plus') {
+    // Student invites (a parent linking their child) are exempt — students can be
+    // any age, and the child still runs their own age-first onboarding afterward.
+    if (invite.role !== 'student' && claimerProfile?.age_bracket !== '13plus') {
       if (claimerProfile?.age_bracket === 'under13') {
         return <InviteError message="Parent and teacher invites are for ages 13 and older, so this invite can't be used on your account." />
       }
@@ -58,20 +62,66 @@ export default async function InvitePage({ searchParams }) {
       return <InviteAgeGate token={token} role={invite.role} />
     }
 
+    // Both the parent invite (student invited a parent) and the student invite
+    // (parent invited a child) create one watcher→student relationship. Resolve
+    // who is the parent (watcher) and who is the child (student) for this claim.
+    let pendingRel = null
+    if (invite.role === 'parent' && invite.invited_by) {
+      pendingRel = { watcher_id: user.id, student_id: invite.invited_by }
+    } else if (invite.role === 'student' && invite.invited_by) {
+      pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
+    }
+
+    // Service client for all the privileged writes below: the role/role_confirmed
+    // update (gate columns REVOKEd from `authenticated` by migration 020), the
+    // relationship upsert, and the cap counts. Counts in particular need it because
+    // under RLS the claimer only sees relationships on their own side, and the
+    // insert policy (watcher_id = auth.uid()) would otherwise reject a child
+    // claiming a parent-sent invite.
+    const service = createServiceClient()
+
+    // Enforce relationship caps BEFORE consuming the invite, so a capped link
+    // doesn't burn the token or flip the profile role.
+    if (pendingRel) {
+      const { data: existing } = await service
+        .from('relationships').select('id')
+        .eq('watcher_id', pendingRel.watcher_id)
+        .eq('student_id', pendingRel.student_id)
+        .limit(1)
+
+      // Skip the caps for an already-linked pair (idempotent re-claim).
+      if (!(existing?.length)) {
+        const [{ count: childCount }, { count: parentCount }] = await Promise.all([
+          service.from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', pendingRel.watcher_id),
+          service.from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', pendingRel.student_id),
+        ])
+        if ((childCount ?? 0) >= MAX_CHILDREN_PER_PARENT) {
+          return <InviteError message={`That parent account is already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.`} />
+        }
+        if ((parentCount ?? 0) >= MAX_PARENTS_PER_CHILD) {
+          return <InviteError message={`That student already has the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.`} />
+        }
+      }
+    }
+
     await supabase.from('invites').update({
       claimed_by: user.id,
       claimed_at: new Date().toISOString(),
     }).eq('id', invite.id)
 
-    // Update their profile role — mark confirmed since invite pre-assigns the role
-    await supabase.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
+    // Update their profile role — mark confirmed since invite pre-assigns the role.
+    // role/role_confirmed are gate columns REVOKEd from `authenticated` by migration
+    // 020, so this write goes through the service client created above.
+    await service.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
 
-    // Parent invite → create relationship with the student who sent the invite
-    if (invite.role === 'parent' && invite.invited_by) {
-      await supabase.from('relationships').insert({
-        watcher_id: user.id,
-        student_id: invite.invited_by,
-      }).single() // ignore duplicate error if already linked
+    // Create the watcher→student link (service client: see the cap note above).
+    // A student claiming a parent-sent invite still runs their own age-first /
+    // COPPA onboarding separately — this relationship is read-only oversight.
+    if (pendingRel) {
+      await service.from('relationships').upsert(
+        pendingRel,
+        { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
+      )
     }
 
     // Teacher invite scoped to a specific assignment → grant access + notify

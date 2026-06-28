@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import Icon from '@/components/Icon'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
@@ -132,7 +133,11 @@ export default async function CoppaCompletePage({ searchParams }) {
       { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
     )
 
-  // 5. Log the consent (audit trail)
+  // 5. Log the consent (audit trail). COPPA requires recording the parent's IP and
+  //    device at the moment of consent — capture them from the request headers.
+  const hdrs = await headers()
+  const ipAddress = (hdrs.get('x-forwarded-for') ?? '').split(',')[0].trim() || null
+  const userAgent = hdrs.get('user-agent') || null
   await service
     .from('coppa_consent_log')
     .insert({
@@ -140,6 +145,8 @@ export default async function CoppaCompletePage({ searchParams }) {
       parent_id: user.id,
       pending_id: pending.id,
       consent_method: 'email_approval',
+      ip_address: ipAddress,
+      user_agent: userAgent,
       privacy_policy_version: 'v1.0-june-2025',
     })
 

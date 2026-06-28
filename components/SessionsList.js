@@ -92,7 +92,11 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
   const subjectLabel = session.subject === 'other' ? (session.subject_custom_label || 'Other') : subjectInfo?.label
 
   function close() { setMenu(false); setPicking(false) }
-  function open() { router.push(`/assignment/${session.id}`) }
+  // Completed assignments open the read-only transcript (the canonical end-state
+  // page); in-progress ones open the active-writing view.
+  function open() {
+    router.push(session.status === 'complete' ? `/transcript/${session.id}` : `/assignment/${session.id}`)
+  }
 
   async function saveRename() {
     const t = draft.trim()

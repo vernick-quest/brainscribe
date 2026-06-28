@@ -1,0 +1,33 @@
+-- 021 — Add profiles.writing_profile_aggregate (cross-assignment writing profile)
+-- File: 021_writing_profile_aggregate.sql · Date: 2026-06-27
+--
+-- Adds a nullable jsonb column holding a student's CROSS-ASSIGNMENT writing
+-- profile (aggregated across all their sessions). Requested by the focus/profile
+-- session.
+--
+-- Distinct from the existing per-session sessions.writing_profile (migration 005):
+-- that one describes a single session; this one is the rolled-up, account-level
+-- view. The _aggregate suffix is deliberate to keep them unambiguous.
+--
+-- Shape it will hold (FYI — NOT enforced in SQL, kept flexible):
+--   { summary, strengths[], growth_areas[], voice, vocabulary, patterns[],
+--     trajectory, milestones[], based_on_count, updated_at }
+--   (vocabulary is a descriptor, not a grade level.)
+--
+-- Access (no RLS change needed):
+--   - Student reads their own row via the authed client — covered by the existing
+--     column-agnostic "profiles: own" policy (001) + table-level SELECT grant
+--     (migration 020 only altered UPDATE grants, so SELECT is unaffected).
+--   - Watcher / teacher / admin views read via the service client (bypasses RLS).
+--   - Writes are expected to come from the service role (the aggregation job/
+--     endpoint). Per 020's deny-by-default on profiles UPDATE, no client GRANT is
+--     added — if a user-scoped client ever needs to write this column, it must add
+--     its own `grant update (writing_profile_aggregate) on profiles to authenticated`.
+--
+-- Deletion: none required — it's a column on profiles, so it's removed when the
+-- auth user is deleted (COPPA 7-day cleanup cascades via profiles.id → auth.users).
+--
+-- Run in the Supabase SQL Editor.
+
+alter table profiles
+  add column if not exists writing_profile_aggregate jsonb;
