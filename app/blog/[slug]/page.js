@@ -1,6 +1,7 @@
 import { Lora } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import { getAllPosts, getPostBySlug } from '@/lib/blog'
+import { SITE_URL } from '@/lib/site'
 import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
@@ -14,7 +15,28 @@ export async function generateMetadata({ params }) {
   const { slug } = await params
   const post = getPostBySlug(slug)
   if (!post) return { title: 'Not found — BrainScribe' }
-  return { title: `${post.title} — BrainScribe`, description: post.summary || undefined }
+  const url = `${SITE_URL}/blog/${post.slug}`
+  const description = post.summary || undefined
+  // The per-post opengraph-image.js auto-injects the og:image / twitter:image
+  // tags for this route — no need to set `images` here.
+  return {
+    title: `${post.title} — BrainScribe`,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: 'article',
+      title: post.title,
+      description,
+      url,
+      siteName: 'BrainScribe',
+      publishedTime: post.date || undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description,
+    },
+  }
 }
 
 function formatDate(d) {
@@ -29,8 +51,29 @@ export default async function BlogPostPage({ params }) {
   const post = getPostBySlug(slug)
   if (!post) notFound()
 
+  const url = `${SITE_URL}/blog/${post.slug}`
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.summary || undefined,
+    datePublished: post.date || undefined,
+    dateModified: post.date || undefined,
+    url,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+    image: `${url}/opengraph-image`,
+    author: { '@type': 'Organization', name: 'BrainScribe', url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: 'BrainScribe',
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/brainscribe-logo.png` },
+    },
+  }
+
   return (
     <div style={{ backgroundColor: 'var(--brand-cream)', minHeight: '100vh', color: 'var(--brand-navy)' }}>
+
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <SiteHeader active="blog" />
 
