@@ -1,11 +1,8 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
-import AddChildForm from '@/components/AddChildForm'
 import UserAvatar from '@/components/UserAvatar'
-import BirthdateField from '@/components/BirthdateField'
 import AssignmentTeachers from '@/components/AssignmentTeachers'
-import UnlinkChildButton from '@/components/UnlinkChildButton'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -81,17 +78,22 @@ function EmptyState() {
       <div className="space-y-1">
         <p className="font-semibold text-lg" style={{ color: 'var(--text-strong)' }}>No students linked yet</p>
         <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
-          Use <span className="font-semibold">Add a child</span> below to invite your child,
+          Invite your child from <span className="font-semibold">Account &amp; children</span>,
           or ask them to invite you from their own dashboard. Either way, once they sign in
           you'll be connected.
         </p>
       </div>
+      <a href="/parent/settings"
+        className="text-sm font-semibold rounded-full px-4 py-2 text-white transition"
+        style={{ backgroundColor: 'var(--accent)' }}>
+        Add a child →
+      </a>
     </div>
   )
 }
 
 // ── Per-child block ───────────────────────────────────────────
-function ChildBlock({ child, sessions, teachersBySession = {}, viewerId }) {
+function ChildBlock({ child, sessions, teachersBySession = {} }) {
   const childSessions = sessions
     .filter(s => s.student_id === child.id)
     .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
@@ -123,16 +125,6 @@ function ChildBlock({ child, sessions, teachersBySession = {}, viewerId }) {
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
           View profile →
         </a>
-        <UnlinkChildButton studentId={child.id} watcherId={viewerId} childName={firstName} />
-      </div>
-
-      {/* Birthday — sets the COPPA age gate; a parent edit is the trusted path */}
-      <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
-        <BirthdateField
-          studentId={child.id}
-          birthdate={child.birthdate}
-          label={`${firstName}'s birthday`}
-        />
       </div>
 
       {/* Assignments */}
@@ -155,7 +147,7 @@ function ChildBlock({ child, sessions, teachersBySession = {}, viewerId }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, viewerId, children, sessions, teachersBySession = {}, ownSessions = [] }) {
+export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -166,27 +158,26 @@ export default function ParentDashboard({ user, profile, viewerId, children, ses
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
 
         {/* Greeting */}
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
-            Hey, {firstName}!
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            {children.length === 0
-              ? 'Connect with your child to see their progress.'
-              : children.length === 1
-                ? `Following ${children[0].full_name?.split(' ')[0] ?? 'your student'}'s writing.`
-                : `Following ${children.length} students.`}
-          </p>
-        </div>
-
-        {/* Your own details */}
-        <div className="rounded-2xl px-5 py-4"
-          style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
-          <BirthdateField
-            studentId={viewerId}
-            birthdate={profile?.birthdate}
-            label="Your birthday"
-          />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
+              Hey, {firstName}!
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {children.length === 0
+                ? 'Connect with your child to see their progress.'
+                : children.length === 1
+                  ? `Following ${children[0].full_name?.split(' ')[0] ?? 'your student'}'s writing.`
+                  : `Following ${children.length} students.`}
+            </p>
+          </div>
+          <a href="/parent/settings"
+            className="shrink-0 text-xs font-semibold rounded-full px-3 py-1.5 transition mt-1"
+            style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+            Account &amp; children
+          </a>
         </div>
 
         {/* Your own writing — parents can use the coaches too */}
@@ -198,11 +189,8 @@ export default function ParentDashboard({ user, profile, viewerId, children, ses
         {/* One block per child — all expanded (parents have few kids) */}
         {children.map(child => (
           <ChildBlock key={child.id} child={child} sessions={sessions}
-            teachersBySession={teachersBySession} viewerId={viewerId} />
+            teachersBySession={teachersBySession} />
         ))}
-
-        {/* Parent-initiated linking — invite a child to connect */}
-        <AddChildForm />
 
       </main>
     </div>

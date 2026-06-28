@@ -10,9 +10,14 @@ export default function Navbar({ user, profile }) {
   const renderedUserId = user?.id ?? null
 
   const isAdmin = profile?.role === 'admin'
+  const isParent = profile?.role === 'parent'
   const homeHref = profile?.role === 'teacher' ? '/teacher'
     : profile?.role === 'parent' ? '/parent'
     : '/dashboard'
+  // Parents get a dedicated account home (/parent/settings) that supersedes the
+  // bare /profile page; everyone else keeps /profile.
+  const accountHref = isParent ? '/parent/settings' : '/profile'
+  const accountLabel = isParent ? 'Settings' : 'Profile'
   const avatarUrl = profile?.avatar_url ?? user?.user_metadata?.avatar_url
   const name = profile?.full_name ?? user?.user_metadata?.full_name ?? user?.email ?? ''
   const email = user?.email ?? ''
@@ -112,13 +117,13 @@ export default function Navbar({ user, profile }) {
 
             {/* Links */}
             <div className="py-1">
-              <a href="/profile"
+              <a href={accountHref}
                 className="flex items-center px-4 py-2 text-sm transition"
                 style={{ color: 'var(--text-body)' }}
                 onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 onClick={() => setOpen(false)}>
-                Profile
+                {accountLabel}
               </a>
               {isAdmin && (
                 <a href="/admin"
