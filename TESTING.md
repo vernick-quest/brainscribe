@@ -72,6 +72,7 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Future date / malformed date is rejected (client `max=today` + server validation)
 - [ ] ⬜ Remote-in: admin impersonating a parent edits the **parent's** and the **child's** birthday (not the admin's) — explicit studentId is always sent
 - [ ] ⬜ Edit persists across reload (RLS read of own + linked-child birthdate)
+- [ ] ⬜ Only the child's **consenting guardian** can edit a child's birthday: a read-only **co-parent** or a linked **teacher** is refused (403 `coppa_not_guardian`) — bare watcher link is not enough to move the gate (new 2026-06-28)
 
 ### Parent teacher management (new 2026-06-27)
 - [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
