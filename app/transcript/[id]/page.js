@@ -24,13 +24,13 @@ export default async function TranscriptPage({ params, searchParams }) {
   // Honor admin "remote in": read the impersonated student's data (RLS would block
   // the admin) and route/label by their role.
   const { data: adminProfile } = await supabase
-    .from('profiles').select('role, full_name').eq('id', user.id).single()
+    .from('profiles').select('role, full_name, age_bracket').eq('id', user.id).single()
   const imp = await getImpersonation(adminProfile)
   const effectiveUserId = imp?.userId ?? user.id
   const db = imp ? createServiceClient() : supabase
 
   const profile = imp
-    ? (await db.from('profiles').select('role, full_name').eq('id', effectiveUserId).single()).data
+    ? (await db.from('profiles').select('role, full_name, age_bracket').eq('id', effectiveUserId).single()).data
     : adminProfile
 
   const { data: session } = await db
