@@ -1,7 +1,7 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
-import UserAvatar from '@/components/UserAvatar'
+import Avatar from '@/components/Avatar'
 import AssignmentTeachers from '@/components/AssignmentTeachers'
 import Navbar from '@/components/Navbar'
 import { PersonaAvatar } from '@/lib/personas'
@@ -106,7 +106,7 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
       {/* Header */}
       <div className="px-5 py-4 flex items-center gap-4"
         style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--bg-page-alt)' }}>
-        <UserAvatar
+        <Avatar
           name={child.full_name}
           avatarUrl={child.avatar_url}
           ageBracket={child.age_bracket}

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import Navbar from '@/components/Navbar'
-import StudentAvatar from '@/components/StudentAvatar'
+import Avatar from '@/components/Avatar'
 
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 
@@ -179,7 +179,7 @@ export default function TeacherAssignmentView({ session, messages, paragraphs, s
           {/* Student + tutor + date */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <StudentAvatar
+              <Avatar
                 name={studentName}
                 avatarUrl={studentAvatarUrl}
                 ageBracket={studentAgeBracket}

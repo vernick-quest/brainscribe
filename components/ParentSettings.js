@@ -2,7 +2,7 @@
 
 import Navbar from '@/components/Navbar'
 import ProfileForm from '@/components/ProfileForm'
-import UserAvatar from '@/components/UserAvatar'
+import Avatar from '@/components/Avatar'
 import BirthdateField from '@/components/BirthdateField'
 import AddChildForm from '@/components/AddChildForm'
 import UnlinkChildButton from '@/components/UnlinkChildButton'
@@ -24,7 +24,9 @@ function IdentityCard({ profile }) {
   const role = ROLE_LABELS[profile?.role] ?? profile?.role ?? '—'
   return (
     <div className="flex items-center gap-4">
-      <UserAvatar name={profile?.full_name} avatarUrl={profile?.avatar_url} size={64} />
+      {/* Parent's own identity card: an adult self-view, so pass '13plus' to keep
+          the photo — the parent row may carry no birthdate-derived age_bracket. */}
+      <Avatar name={profile?.full_name} avatarUrl={profile?.avatar_url} ageBracket="13plus" size={64} />
       <div className="min-w-0">
         <p className="font-bold text-base truncate" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
           {name}
@@ -53,7 +55,7 @@ function ChildRow({ child, viewerId, impersonating }) {
       style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
 
       <div className="flex items-center gap-4">
-        <UserAvatar name={child.full_name} avatarUrl={child.avatar_url} ageBracket={child.age_bracket} size={40} />
+        <Avatar name={child.full_name} avatarUrl={child.avatar_url} ageBracket={child.age_bracket} size={40} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold truncate" style={{ color: 'var(--text-strong)' }}>{child.full_name ?? 'Student'}</p>
           {child.email && (
