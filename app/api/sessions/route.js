@@ -38,8 +38,8 @@ async function generateSessionMeta(assignmentText, userId) {
 
 "summary": a JSON array of the key requirements. Each item has "label" (short category like "Format", "Topic", "Must include", "Length", "Goal") and "detail" (concise value). 3–6 items max, only what is explicitly stated.
 
-"requirements": a JSON array of the NUMERIC targets the assignment explicitly states, for the progress tracker. Only include numbers that are actually given; otherwise use []. Item shapes:
-- words: { "type": "words", "min": <int, optional>, "max": <int, optional>, "label": "<e.g. 300–400 words>" } — "300–400 words" → min 300, max 400; "at least 500 words" / "500 words minimum" / "500 words" → min 500; "no more than 200 words" / "up to 200 words" → max 200.
+"requirements": a JSON array of the NUMERIC targets that the assignment explicitly states FOR THE PIECE AS A WHOLE, for the progress tracker (it measures the student's full draft). Only include numbers that are actually given; otherwise use []. Item shapes:
+- words: { "type": "words", "min": <int, optional>, "max": <int, optional>, "label": "<e.g. 300–400 words>" } — "300–400 words" → min 300, max 400; "at least 500 words" / "500 words minimum" / "500 words" → min 500; "no more than 200 words" / "up to 200 words" → max 200. NEVER from a count scoped to one section ("conclusion of at least 100 words" is NOT a words item — put it in that section's outline checklist).
 - paragraphs: { "type": "paragraphs", "target": <int>, "label": "<e.g. 5 paragraphs>" } — "five paragraphs" → target 5; "intro, 3 body paragraphs, conclusion" → target 5.
 Only words and paragraphs are supported — ignore line/syllable/sentence counts.
 

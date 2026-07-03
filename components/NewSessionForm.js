@@ -38,15 +38,41 @@ export default function NewSessionForm() {
     return () => clearInterval(t)
   }, [loading])
 
+  // Phone photos routinely exceed the 5 MB cap and carry EXIF rotation that the
+  // vision model can't compensate for (rotated text garbles extraction). Re-encode
+  // images through a canvas: the browser applies EXIF orientation on decode, so
+  // drawing bakes the correct rotation into the pixels, and downscaling to what
+  // the model actually reads keeps big photos well under the upload cap.
+  async function normalizeImage(file) {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file // PDFs/GIFs pass through
+    try {
+      const bitmap = await createImageBitmap(file)
+      const MAX_EDGE = 2000
+      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(bitmap.width * scale)
+      canvas.height = Math.round(bitmap.height * scale)
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      bitmap.close()
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+      return blob && blob.size < file.size ? blob : file
+    } catch { return file } // older browser or undecodable image — send as-is
+  }
+
   async function handleFile(file) {
     if (!file) return
     setUploadError('')
-    if (file.size > MAX_MB * 1024 * 1024) { setUploadError(`File too large — max ${MAX_MB} MB.`); return }
     setUploading(true)
     setUploadedFileName(file.name)
     try {
+      const upload = await normalizeImage(file)
+      if (upload.size > MAX_MB * 1024 * 1024) {
+        setUploadError(`File too large — max ${MAX_MB} MB.`)
+        setUploadedFileName('')
+        return
+      }
       const form = new FormData()
-      form.append('file', file)
+      form.append('file', upload, file.name)
       const res = await fetch('/api/parse-assignment', { method: 'POST', body: form })
       const json = await res.json()
       if (!res.ok || json.error) { setUploadError(json.error ?? 'Could not read the file.'); setUploadedFileName('') }
