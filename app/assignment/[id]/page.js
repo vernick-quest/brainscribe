@@ -80,39 +80,44 @@ export default async function AssignmentPage({ params }) {
   }
 
   // ── Student / admin: full TutorSession ───────────────────────
-  const { data: messages } = await service
-    .from('messages')
-    .select('role, content')
-    .eq('session_id', id)
-    .order('created_at')
-
-  const { data: paragraphs } = await service
-    .from('paragraphs')
-    .select('*')
-    .eq('session_id', id)
-    .order('position')
-
-  // Linked teachers for this assignment
-  const { data: assignmentTeachers } = await service
-    .from('assignment_teachers')
-    .select('teacher_id, profiles(full_name)')
-    .eq('session_id', id)
-
-  // Scaffold for the active paragraph.
-  const { data: scaffoldData } = await service
-    .from('paragraph_scaffolds')
-    .select('*')
-    .eq('session_id', id)
-    .single()
-
+  // These reads are independent of one another — run them concurrently.
   // Name + onboarding flag come from the SESSION OWNER, never from whoever the admin
   // is currently remoted into — a stale remote-in must never relabel someone else's
   // session (this is how a friend's practice once got greeted with another kid's name).
-  const { data: ownerProfile } = await service
-    .from('profiles')
-    .select('full_name')
-    .eq('id', session.student_id)
-    .single()
+  const [
+    { data: messages },
+    { data: paragraphs },
+    { data: assignmentTeachers },
+    { data: scaffoldData },
+    { data: ownerProfile },
+  ] = await Promise.all([
+    service
+      .from('messages')
+      .select('role, content')
+      .eq('session_id', id)
+      .order('created_at'),
+    service
+      .from('paragraphs')
+      .select('*')
+      .eq('session_id', id)
+      .order('position'),
+    // Linked teachers for this assignment
+    service
+      .from('assignment_teachers')
+      .select('teacher_id, profiles(full_name)')
+      .eq('session_id', id),
+    // Scaffold for the active paragraph.
+    service
+      .from('paragraph_scaffolds')
+      .select('*')
+      .eq('session_id', id)
+      .single(),
+    service
+      .from('profiles')
+      .select('full_name')
+      .eq('id', session.student_id)
+      .single(),
+  ])
 
   const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
 
