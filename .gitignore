@@ -44,3 +44,7 @@ next-env.d.ts
 # local-only design/product specs (imported from the claude.ai project; backed up there)
 # no trailing slash: docs/specs is a symlink/gitlink in worktrees that a dir-only pattern would miss
 /docs/specs
+
+# local-only adversarial red-team harness — keep bypass/attack strings out of the
+# public repo (same rationale as the gitignored anti-jailbreak spec above)
+/scripts/redteam
