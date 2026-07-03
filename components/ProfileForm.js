@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Avatar from '@/components/Avatar'
 
 const ROLE_LABELS = {
   student: 'Student',
@@ -15,8 +16,6 @@ export default function ProfileForm({ profile, user }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
-  const avatarUrl = user?.user_metadata?.avatar_url
-  const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
   const role = ROLE_LABELS[profile?.role] ?? profile?.role ?? '—'
 
   async function handleSave(e) {
@@ -45,24 +44,15 @@ export default function ProfileForm({ profile, user }) {
 
       {/* Avatar + identity */}
       <div className="flex items-center gap-4">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt=""
-            width={64}
-            height={64}
-            className="rounded-full object-cover shrink-0"
-            style={{ border: '2px solid var(--border-default)' }}
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
-            style={{ backgroundColor: 'var(--accent)', color: 'white', fontFamily: 'var(--font-display)' }}
-          >
-            {initial}
-          </div>
-        )}
+        {/* COPPA data-minimization: minimized profiles.avatar_url only, never
+            user.user_metadata.avatar_url. Avatar fail-closes on age_bracket. */}
+        <Avatar
+          name={name || user?.email}
+          avatarUrl={profile?.avatar_url}
+          ageBracket={profile?.age_bracket}
+          size={64}
+          style={{ border: '2px solid var(--border-default)' }}
+        />
         <div>
           <p className="font-bold text-base" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
             {name || user?.email}

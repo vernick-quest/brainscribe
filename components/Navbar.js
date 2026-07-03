@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import Avatar from '@/components/Avatar'
 
 export default function Navbar({ user, profile }) {
   const [open, setOpen] = useState(false)
-  const [avatarError, setAvatarError] = useState(false)
   const dropdownRef = useRef(null)
   const renderedUserId = user?.id ?? null
 
@@ -18,10 +18,13 @@ export default function Navbar({ user, profile }) {
   // bare /profile page; everyone else keeps /profile.
   const accountHref = isParent ? '/parent/settings' : '/profile'
   const accountLabel = isParent ? 'Settings' : 'Profile'
-  const avatarUrl = profile?.avatar_url ?? user?.user_metadata?.avatar_url
+  // COPPA data-minimization: the avatar reads the minimized profiles.avatar_url
+  // ONLY — never user.user_metadata.avatar_url (the raw Google photo migration 019
+  // does not null). Avatar fail-closes on age_bracket, so an under-13/unknown-age
+  // account renders initials, never a photo. (full_name is a display label, not a
+  // photo, so its metadata fallback is fine.)
   const name = profile?.full_name ?? user?.user_metadata?.full_name ?? user?.email ?? ''
   const email = user?.email ?? ''
-  const initial = (name[0] ?? '?').toUpperCase()
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -85,18 +88,13 @@ export default function Navbar({ user, profile }) {
           aria-label="Account menu"
           aria-expanded={open}
         >
-          {avatarUrl && !avatarError ? (
-            <img src={avatarUrl} alt="" width={36} height={36}
-              className="rounded-full object-cover"
-              style={{ border: '2px solid var(--border-default)' }}
-              referrerPolicy="no-referrer"
-              onError={() => setAvatarError(true)} />
-          ) : (
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
-              style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
-              {initial}
-            </div>
-          )}
+          <Avatar
+            name={name}
+            avatarUrl={profile?.avatar_url}
+            ageBracket={profile?.age_bracket}
+            size={36}
+            style={{ border: '2px solid var(--border-default)' }}
+          />
         </button>
 
         {open && (

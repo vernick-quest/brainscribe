@@ -24,7 +24,7 @@ export default async function TeacherDashboardPage() {
   const service = imp ? createServiceClient() : supabase
 
   const { data: profile } = await service
-    .from('profiles').select('role, full_name').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, avatar_url, age_bracket').eq('id', targetId).single()
 
   // All session IDs this teacher has been added to
   const { data: teacherLinks } = await service
