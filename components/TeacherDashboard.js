@@ -7,7 +7,7 @@ import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import Icon from '@/components/Icon'
-import StudentAvatar from '@/components/StudentAvatar'
+import Avatar from '@/components/Avatar'
 
 
 function formatDate(str) {
@@ -202,7 +202,7 @@ function StudentBlock({ student, sessions, defaultOpen }) {
         className="w-full px-5 py-4 flex items-center gap-4 text-left transition"
         style={{ backgroundColor: 'var(--bg-page-alt)', borderBottom: open ? '1px solid var(--border-default)' : 'none' }}
       >
-        <StudentAvatar
+        <Avatar
           name={student.full_name}
           avatarUrl={student.avatar_url}
           ageBracket={student.age_bracket}
