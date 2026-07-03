@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getImpersonation } from '@/lib/impersonation'
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import CopyButton from '@/components/CopyButton'
 import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
@@ -51,12 +52,16 @@ export default async function TranscriptPage({ params, searchParams }) {
 
   // FTUE finale: landing on the practice transcript is the end of the tutorial.
   // Mark onboarding done for the real student (never during an admin remote-in).
+  // Defer the write via after() so it runs once the response has flushed — the
+  // first-time finale render shouldn't block on a profile UPDATE round-trip.
   const onboardingFinish = sp?.onboarding === '1' && session.is_onboarding === true
   if (onboardingFinish && !imp) {
-    await createServiceClient()
-      .from('profiles')
-      .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
-      .eq('id', effectiveUserId)
+    after(async () => {
+      await createServiceClient()
+        .from('profiles')
+        .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
+        .eq('id', effectiveUserId)
+    })
   }
 
   // Final content lives in paragraphs for prose, but in the scaffold's confirmed
