@@ -13,7 +13,15 @@ export default function Navbar({ user, profile }) {
   const homeHref = profile?.role === 'teacher' ? '/teacher'
     : profile?.role === 'parent' ? '/parent'
     : '/dashboard'
-  const avatarUrl = profile?.avatar_url ?? user?.user_metadata?.avatar_url
+  // COPPA data-minimization: an under-13 account NEVER renders a photo — initials
+  // only. profiles.avatar_url is already scrubbed to null for under-13 (callback +
+  // migration 019), but user_metadata.avatar_url is the RAW Google photo, which
+  // OAuth re-populates on every login and is never scrubbed. Gating here — not just
+  // the source column — keeps the raw fallback from leaking a minor's photo in
+  // self-view. Requires age_bracket in the profile prop; every student-reachable
+  // page that mounts <Navbar/> must select it (else this fails open for that page).
+  const under13 = profile?.age_bracket === 'under13'
+  const avatarUrl = under13 ? null : (profile?.avatar_url ?? user?.user_metadata?.avatar_url)
   const name = profile?.full_name ?? user?.user_metadata?.full_name ?? user?.email ?? ''
   const email = user?.email ?? ''
   const initial = (name[0] ?? '?').toUpperCase()

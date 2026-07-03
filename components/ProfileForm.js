@@ -15,7 +15,12 @@ export default function ProfileForm({ profile, user }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
-  const avatarUrl = user?.user_metadata?.avatar_url
+  // COPPA data-minimization: never render an under-13's photo, even in their own
+  // self-view. profiles.avatar_url is scrubbed for under-13; user_metadata.avatar_url
+  // is the raw Google photo (re-populated each login, never scrubbed) so it must be
+  // gated here. Requires age_bracket + avatar_url in the profile prop (see profile/page.js).
+  const under13 = profile?.age_bracket === 'under13'
+  const avatarUrl = under13 ? null : (profile?.avatar_url ?? user?.user_metadata?.avatar_url)
   const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
   const role = ROLE_LABELS[profile?.role] ?? profile?.role ?? '—'
 

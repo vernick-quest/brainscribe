@@ -13,7 +13,7 @@ export default async function AssignmentPage({ params }) {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('full_name, role, onboarding_complete').eq('id', user.id).single()
+    .from('profiles').select('full_name, role, onboarding_complete, age_bracket').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
 
@@ -24,7 +24,7 @@ export default async function AssignmentPage({ params }) {
   const [{ data: session }, { data: profile }] = await Promise.all([
     service.from('sessions').select('*').eq('id', id).single(),
     imp
-      ? service.from('profiles').select('full_name, role, onboarding_complete').eq('id', effectiveUserId).single()
+      ? service.from('profiles').select('full_name, role, onboarding_complete, age_bracket').eq('id', effectiveUserId).single()
       : Promise.resolve({ data: adminProfile }),
   ])
 

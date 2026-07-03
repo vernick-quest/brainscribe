@@ -64,6 +64,7 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Child block header shows the child's **Google photo** (13+) via shared `<UserAvatar>`
 - [ ] ⬜ An **under-13** child shows a blue-initial circle, **never** a photo (COPPA), even if a stored avatar_url still exists pre-019
 - [ ] ⬜ A broken/expired Google photo URL falls back to the blue-initial circle (no broken-image icon)
+- [ ] ⬜ **Under-13 self-view never shows their own photo** (new 2026-06-28): log in as an under-13 student and confirm the **navbar** avatar (dashboard, writing session, transcript, profile) and the **/profile** header both show initials, never the Google photo — even though the raw photo still lives in `auth.users.user_metadata.avatar_url`. 13+ students/adults still see their photo.
 
 ### Birthdate edit (parent dashboard → guarded gate endpoint, new 2026-06-27)
 - [ ] ⬜ "Your birthday" card + each child block shows a birthday row; "Not set" shows "Add", a value shows "Edit"
