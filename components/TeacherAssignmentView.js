@@ -119,7 +119,7 @@ function DialogueTab({ messages, persona, studentFirstName }) {
 
 
 // ── Main ──────────────────────────────────────────────────────
-export default function TeacherAssignmentView({ session, messages, paragraphs, studentName, studentAvatarUrl, studentAgeBracket, user, writingProfile }) {
+export default function TeacherAssignmentView({ session, messages, paragraphs, studentName, studentAvatarUrl, studentAgeBracket, user, teacherProfile, writingProfile }) {
   const [tab, setTab] = useState('essay')
   const persona = getPersona(session.persona)
   const essay = paragraphs?.map(p => p.scribed_text).join('\n\n') ?? ''
@@ -135,7 +135,7 @@ export default function TeacherAssignmentView({ session, messages, paragraphs, s
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
 
-      <Navbar user={user} profile={null} />
+      <Navbar user={user} profile={teacherProfile ?? null} />
       <div className="px-6 py-2" style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--bg-page)' }}>
         <a href="/teacher" className="text-xs font-medium hover:underline"
           style={{ color: 'var(--text-muted)' }}>

@@ -13,7 +13,7 @@ export default async function AssignmentPage({ params }) {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('full_name, role, onboarding_complete').eq('id', user.id).single()
+    .from('profiles').select('full_name, role, onboarding_complete, avatar_url, age_bracket').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
 
