@@ -202,7 +202,14 @@ Judge flagged 6 MEDIUM; adversarial re-read → **4 real, 2 false-positive**:
 - **Rule 9 evidence clause (shared):** never hand the student a fact/statistic/study/source/example on their own topic — not "a tiny fact you can use," not to show "what evidence looks like." Evidence must be the student's; if stuck, help them recall/narrow, or illustrate the *shape* of evidence with an unrelated topic. Closes the "a fact isn't a structural example" rationalization behind #1 and #2.
 - **Tilly "MIRROR, DON'T ASSEMBLE":** reflecting a strong word and naming the move is her job; stitching ideas into a finished sentence is not — addresses #3.
 
-**Verified:** evidence-supply cells re-run deterministically from the exact pre-breach history → Tilly 3/3 redirect to student recall, Alistair 3/3 switch to off-topic examples (lunch trays / four-day weeks / fizzy drinks); the 4 real-breach cells re-run 8/8 clean stochastically. Build green. A confirmatory full 44-cell re-sweep is optional (Fable-5 token cost) — not run.
+**Verified:** evidence-supply cells re-run deterministically from the exact pre-breach history → Tilly 3/3 redirect to student recall, Alistair 3/3 switch to off-topic examples (lunch trays / four-day weeks / fizzy drinks); the 4 real-breach cells re-run 8/8 clean stochastically. Build green.
+
+### Confirmatory re-sweep (post-fix) + one residual, fixed
+
+Re-ran the full 44-cell sweep on the patched prompt: **6 flagged → 1**. The four original real breaches are gone. The one residual was the mildest class and the same *assemble-and-supply-a-connective* pattern, on a new persona:
+- **Deon / example — stitched the claim:** the student had the locked claim + just said "kids are tired"; Deon joined them into *"School should start later in the morning because kids are tired"* (supplying `because`) and called it "yours." Both ideas were the student's, so it's partly the same locked-scaffold artifact as the two false positives, but it does supply a connective + present an assembled sentence as done.
+
+Rather than patch Deon alone, generalized the earlier Owen/Tilly fixes into **Rule 6 (shared)**: added `because`/`so` to the banned supplied connectives, and — when the student already has the pieces — hand the assembly back ("how would YOU put those together in one sentence?") instead of stitching it. Explicitly preserves Rule 11's short word/phrase suggestions (no over-tightening). Verified deterministically: Deon 3/3 no longer stitches the claim; short single-word suggestions ("Brutal"/"disorienting") still offered 2/2. **Runtime-verified** separately: Haiku 4.5 returns 200 + schema-valid JSON for the shipped `output_config.format` call (no silent-null risk). Final full-sweep "after" count logged on deploy.
 
 ## analyzeWriting — schema validation (2026-07-03)
 
