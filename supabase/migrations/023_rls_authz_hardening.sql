@@ -1,0 +1,71 @@
+-- 023 — RLS authz hardening (drop two over-permissive policies)
+-- File: 023_rls_authz_hardening.sql · Date: 2026-07-03
+--
+-- Requested by the focus/auth-coppa session's audit (AUDIT-2026-07-03-coppa.md,
+-- findings 8 & 9). Two RLS policies from the 001 initial schema are broader than
+-- the app now needs — every legitimate read/write of these tables goes through
+-- the service-role client as of that branch (merged to main @ ad67b6b). Dropping
+-- them removes a world-readable invite surface and a self-service watcher-link
+-- escalation, with no remaining client-side caller.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ⚠️⚠️ SEQUENCING — APPLY ONLY *AFTER* main @ ad67b6b (or later) IS DEPLOYED. ⚠️⚠️
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The OLD production code (pre-ad67b6b) reads `invites` client-side via the
+-- authenticated RLS client and relies on the `using (true)` SELECT policy below.
+-- If this migration is applied while old code is still live, invite *claims break*
+-- (the lookup returns 0 rows → "invalid invite link"). ad67b6b moves every invite
+-- read/write and every relationship write to the service client, so the policies
+-- become dead weight — but only once that code is the one running in prod.
+-- Verified at ad67b6b: invites reads/writes → service client
+-- (app/(auth)/invite/page.js, app/api/invites/route.js); relationship writes →
+-- service client (invite claim, /coppa/complete, /api/profile/birthdate).
+--
+-- After deploy, apply BY HAND in the Supabase SQL Editor for project
+--   lakozspeyxsuunogfant  (NOT qqxgfgbuvggzhpmbtmvg — check the project switcher).
+--
+-- Idempotent (drop … if exists). Reversible: the original definitions are quoted
+-- in the comments below each drop if a rollback is ever needed.
+
+-- Finding 8 — `invites` SELECT was `using (true)`: the entire table (emails,
+-- tokens, roles, invited_by, and student_id — which flags "this uuid is an
+-- under-13 child") was readable by ANY authenticated session. All invite reads
+-- now go through the service/token lookup, so drop it outright. No other SELECT
+-- policy remains on invites → the authenticated role can no longer read the
+-- table at all, which is the intent.
+--   Original: create policy "invites: read by token" on invites
+--               for select using (true);
+drop policy if exists "invites: read by token" on invites;
+
+-- Finding 9 — `relationships` INSERT was `with check (auth.uid() = watcher_id)`:
+-- any authenticated user could self-insert a watcher→student row for ANY student
+-- uuid, then read that student's sessions/messages/paragraphs/profile via the
+-- watcher SELECT policies — a full unauthorized-oversight escalation. Every
+-- legitimate relationship write is service-role now (invite claim, consent
+-- completion, birthdate linking), so drop the client insert path. The
+-- `relationships: watcher` SELECT policy is intentionally kept (watchers still
+-- read their own rows).
+--   Original: create policy "relationships: insert by watcher" on relationships
+--               for insert with check (auth.uid() = watcher_id);
+drop policy if exists "relationships: insert by watcher" on relationships;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- NOT INCLUDED (routed back — see the response / memory for details):
+--
+-- Finding 10 (messages INSERT `with check (role='user')`) is DEFERRED. It cannot
+-- be added as a pure RLS backstop today: /api/tutor (role='assistant'),
+-- /api/sessions greeting (role='assistant'), and /api/sessions/[id]/persona
+-- (role='system') all INSERT via the *authenticated* server client, so a
+-- restrictive role='user' check on `authenticated` would reject the coach's own
+-- messages, not just client forgeries. RLS can't tell "server route acting for
+-- the user" from "browser forging a message" — same authenticated role, same
+-- auth.uid(). Prerequisite: move those three inserts to the service client
+-- (coaching-session / tutor lane); then a restrictive policy is safe. The primary
+-- fix (force role:'user' in /api/messages) is already routed to that lane.
+--
+-- Finding 11 (sessions INSERT coach gate) is DEFERRED as optional. The endpoint
+-- gates (canUseCoach in /api/sessions, /api/tutor, /api/scribe*) already close the
+-- root cause. A SQL coach-gate would duplicate canUseCoach's consent/age logic in
+-- a second source of truth that can drift, and risks false-blocking legitimate
+-- inserts. Author on explicit request.
+-- ─────────────────────────────────────────────────────────────────────────────
