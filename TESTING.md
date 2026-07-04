@@ -75,6 +75,16 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ Edit persists across reload (RLS read of own + linked-child birthdate)
 - [ ] ⬜ Only the child's **consenting guardian** can edit a child's birthday: a read-only **co-parent** or a linked **teacher** is refused (403 `coppa_not_guardian`) — bare watcher link is not enough to move the gate (new 2026-06-28)
 
+### COPPA audit hardening (new 2026-07-03 — lib/coppa.js predicates)
+- [ ] ⬜ An **unconsented under-13** cannot reach the coach at all: `/api/tutor`, `/api/scribe`, and `/api/scribe-token` each 403 (`age_verification_required`) even against a pre-existing session row
+- [ ] ⬜ A consented under-13, 13+ student, and admin remote-in all still coach normally (gate re-check added per turn — watch for regressions here)
+- [ ] ⬜ Consent email: a student display name containing `<b>HTML</b>` arrives escaped (no rendered markup) in the parent's inbox
+- [ ] ⬜ `/api/coppa/initiate` rejects the student's own email and junk addresses (not just missing `@`)
+- [ ] ⬜ An **admin** approving a consent link keeps their admin role (no demotion to parent) and `/admin` still works after
+- [ ] ⬜ Invite claimed by a **brand-new Google account** (signup after invite sent) still creates the relationship / teacher grant on first visit (trigger pre-claim no longer skips it) — re-test Entry Point B fresh-account flow
+- [ ] ⬜ A claimed invite is actually burned: opening the link from a different account says "already been used"
+- [ ] ⬜ Cron sweep: an under-13 account that never submitted a parent email is deleted after 7 days (`swept` counter in `/api/cron/coppa-cleanup` response)
+
 ### Parent teacher management (new 2026-06-27)
 - [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
 - [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears

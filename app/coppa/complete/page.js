@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Icon from '@/components/Icon'
+import { validateConsentBinding, escapeHtml } from '@/lib/coppa'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -45,44 +46,40 @@ export default async function CoppaCompletePage({ searchParams }) {
     return <ErrorPage message="This consent link has expired. The student's account has been deleted. They can sign up again at brainscribe.io." />
   }
 
-  // Safety check: make sure the parent isn't a student account
   const { data: parentCurrentProfile } = await service
     .from('profiles')
     .select('role, full_name')
     .eq('id', user.id)
     .single()
 
-  if (parentCurrentProfile?.role === 'student') {
+  // Consent binding (lib/coppa.js): the signer must not be a student account, must
+  // not be the student being approved, and must be signed in as EXACTLY the email
+  // the consent request was sent to — that's what makes the consent verifiable.
+  const binding = validateConsentBinding({
+    signerId: user.id,
+    signerEmail: user.email,
+    signerRole: parentCurrentProfile?.role,
+    pending,
+  })
+  if (!binding.ok) {
+    const copy = {
+      student_account: {
+        message: "The Google account you signed in with appears to be a student account on BrainScribe. Please sign in with a parent or guardian's Google account instead.",
+        linkLabel: 'Try again with a different account',
+      },
+      self_consent: {
+        message: "This account can't approve itself. A parent or guardian must approve from their own Google account.",
+        linkLabel: 'Use a different account',
+      },
+      email_mismatch: {
+        message: `This approval was sent to ${maskEmail(pending.parent_email)}. Please sign in with that Google account to approve — that's how we confirm a parent or guardian gave consent.`,
+        linkLabel: 'Sign in with the right account',
+      },
+    }[binding.code]
     return (
       <ErrorPage
-        message="The Google account you signed in with appears to be a student account on BrainScribe. Please sign in with a parent or guardian's Google account instead."
-        linkLabel="Try again with a different account"
-        linkHref={`/coppa/consent?token=${token}`}
-      />
-    )
-  }
-
-  // Block self-consent: the account being approved can't approve itself.
-  if (user.id === pending.student_id) {
-    return (
-      <ErrorPage
-        message="This account can't approve itself. A parent or guardian must approve from their own Google account."
-        linkLabel="Use a different account"
-        linkHref={`/coppa/consent?token=${token}`}
-      />
-    )
-  }
-
-  // Bind consent to the invited parent: the signed-in email MUST match the address
-  // the consent request was sent to. This is what makes it verifiable parental
-  // consent — without it, anyone with the link + any Google account could approve.
-  const signerEmail = (user.email ?? '').toLowerCase().trim()
-  const invitedEmail = (pending.parent_email ?? '').toLowerCase().trim()
-  if (!signerEmail || signerEmail !== invitedEmail) {
-    return (
-      <ErrorPage
-        message={`This approval was sent to ${maskEmail(pending.parent_email)}. Please sign in with that Google account to approve — that's how we confirm a parent or guardian gave consent.`}
-        linkLabel="Sign in with the right account"
+        message={copy.message}
+        linkLabel={copy.linkLabel}
         linkHref={`/coppa/consent?token=${token}`}
       />
     )
@@ -105,11 +102,13 @@ export default async function CoppaCompletePage({ searchParams }) {
     .eq('id', pending.id)
     .eq('status', 'pending')
 
-  // 2. Update parent profile (ensure role='parent', role_confirmed=true)
+  // 2. Update the signer's profile (ensure role='parent', role_confirmed=true) —
+  //    but NEVER demote an admin: an admin approving a consent link must keep
+  //    their admin role, or approving would lock them out of /admin.
   await service
     .from('profiles')
     .update({
-      role: 'parent',
+      ...(parentCurrentProfile?.role === 'admin' ? {} : { role: 'parent' }),
       role_confirmed: true,
       age_bracket: '13plus',  // must be 13+ to be a consenting parent
     })
@@ -163,7 +162,8 @@ export default async function CoppaCompletePage({ searchParams }) {
 async function sendApprovalEmail({ studentEmail, studentName }) {
   if (!studentEmail || !process.env.RESEND_API_KEY) return
 
-  const firstName = studentName?.split(' ')[0] ?? 'there'
+  // full_name is client-writable — escape before HTML interpolation.
+  const firstName = escapeHtml(studentName?.split(' ')[0] ?? 'there')
 
   const html = `
     <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#211D17">

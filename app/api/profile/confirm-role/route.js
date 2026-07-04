@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { isCoppaProtected } from '@/lib/coppa'
 
 const ALLOWED_ROLES = ['student', 'parent', 'teacher']
 
@@ -12,6 +14,12 @@ export async function PATCH(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Role/age declarations happen a handful of times per account lifetime —
+  // anything faster is probing the gate.
+  if (!await checkRateLimit(`confirm-role:${user.id}`, 10, 3600)) {
+    return rateLimited('Too many attempts — please try again later.')
+  }
 
   const service = createServiceClient()
 
@@ -28,8 +36,7 @@ export async function PATCH(request) {
     .eq('id', user.id)
     .single()
 
-  const alreadyUnder13 = existing?.age_bracket === 'under13' || existing?.coppa_consent_required === true
-  if (alreadyUnder13 && age_bracket === '13plus') {
+  if (isCoppaProtected(existing) && age_bracket === '13plus') {
     return Response.json(
       { error: 'This account is registered as under 13 and needs parental approval.', code: 'coppa_locked' },
       { status: 403 }

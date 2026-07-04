@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { escapeHtml } from '@/lib/coppa'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -65,6 +66,9 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
   const daysLeft = Math.max(1, Math.ceil(
     (new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
   ))
+  // full_name is client-writable — escape it, or a student could inject markup
+  // into the reminder email their parent trusts.
+  const safeName = escapeHtml(studentName)
 
   const html = `
     <div style="font-family:sans-serif;max-width:540px;margin:0 auto;color:#211D17">
@@ -72,11 +76,11 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
            style="height:32px;margin-bottom:28px" />
 
       <h2 style="font-size:20px;font-weight:700;margin:0 0 16px;color:#14385A">
-        Reminder: ${studentName} is waiting for your approval
+        Reminder: ${safeName} is waiting for your approval
       </h2>
 
       <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
-        We sent you an approval request for ${studentName} to use BrainScribe.
+        We sent you an approval request for ${safeName} to use BrainScribe.
         They're still waiting!
       </p>
 
@@ -84,7 +88,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
                   padding:16px 20px;margin:24px 0">
         <p style="margin:0;font-size:13px;color:#7C2D12;line-height:1.6">
           <strong>⚠ This link expires ${expiryDate} (${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining).</strong><br>
-          If not approved, ${studentName}'s account will be automatically deleted.
+          If not approved, ${safeName}'s account will be automatically deleted.
         </p>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isValidConsentToken } from '@/lib/coppa'
 
 export default function ConsentForm({ token, studentName, studentEmail }) {
   const [checked1, setChecked1] = useState(false)
@@ -12,6 +13,15 @@ export default function ConsentForm({ token, studentName, studentEmail }) {
 
   async function approve() {
     if (!canApprove) return
+
+    // The token rides inside the OAuth `next` redirect — only ever compose a
+    // DB-shaped hex token into that URL (the page already validated it against
+    // the DB, but never trust a prop into a redirect unchecked).
+    if (!isValidConsentToken(token)) {
+      window.location.assign('/coppa/consent')
+      return
+    }
+
     setLoading(true)
 
     const supabase = createClient()
