@@ -67,6 +67,8 @@ export async function POST(request) {
           type: 'text',
           text: `Extract the writing assignment from this ${typeMeta.kind === 'document' ? 'PDF' : 'image'}.
 
+The ${typeMeta.kind === 'document' ? 'document' : 'photo'} may be imperfect — a handwritten note, a whiteboard, a worksheet snapped at an angle, rotated sideways, blurry, or poorly lit. If the text is rotated, read it in the orientation the text actually runs. Transcribe what is really there; if a part is unreadable, skip it — NEVER guess or invent requirements you cannot actually read. The assignment may also be embedded in a larger page (a newsletter, syllabus, or agenda) — extract just the writing assignment.
+
 Capture everything the student needs to know about WHAT to write and HOW it must be structured — this drives the coaching, so don't lose it:
 - the prompt/topic
 - the form or format (essay, narrative, haiku, poem, list, lab report, cover letter, etc.)
@@ -85,9 +87,12 @@ If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
 
   logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
 
-  const extracted = response.content[0].text.trim()
+  // Find the text block explicitly — content[0] isn't guaranteed to be text on
+  // every model (e.g. thinking-enabled models emit a thinking block first).
+  const extracted = (response.content.find(b => b.type === 'text')?.text ?? '').trim()
 
-  if (extracted === 'NO_ASSIGNMENT_FOUND') {
+  // startsWith, not ===: the model occasionally appends a clause after the sentinel.
+  if (!extracted || extracted.startsWith('NO_ASSIGNMENT_FOUND')) {
     return Response.json(
       { error: "Couldn't find an assignment in that file. Try a clearer photo or paste the text directly." },
       { status: 422 }
