@@ -1,11 +1,16 @@
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { persistRequirementsActual } from '@/lib/requirements'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 
 export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // A student writes at most a few paragraphs a minute — anything faster is a
+  // script filling the DB. (Shared key with PATCH: it's one writing activity.)
+  if (!await checkRateLimit(`paragraphs:${user.id}`, 30, 60)) return rateLimited()
 
   const { sessionId, scribedText, rawSpokenText, position, isThin } = await request.json()
 
@@ -28,6 +33,8 @@ export async function PATCH(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (!await checkRateLimit(`paragraphs:${user.id}`, 30, 60)) return rateLimited()
 
   const { sessionId, position, scribedText } = await request.json()
 

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 
 const anthropic = new Anthropic()
 
@@ -17,6 +18,14 @@ export async function POST(request) {
   if (!await checkRateLimit(`tutor:day:${user.id}`, 600, 86400)) {
     return rateLimited("You've reached today's coaching limit — it resets tomorrow.")
   }
+
+  // COPPA coach age gate (lib/coppa.js) — re-checked here, not just at session
+  // creation: RLS lets a student insert a sessions row directly (client-side
+  // supabase-js), which would otherwise skip /api/sessions' gate and let an
+  // unconsented under-13 talk to the coach. Admins pass (remote-in runs as admin).
+  const { data: gate } = await supabase
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+  if (!canUseCoach(gate)) return coachGateResponse()
 
   const { sessionId, messages, assignment, persona = 'owen', scaffold = null } = await request.json()
 

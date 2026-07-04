@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { isValidEmail, escapeHtml } from '@/lib/coppa'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -16,8 +17,15 @@ export async function POST(request) {
 
   const { parentEmail } = await request.json()
 
-  if (!parentEmail || !parentEmail.includes('@')) {
+  if (!isValidEmail(parentEmail)) {
     return Response.json({ error: 'Valid parent email required' }, { status: 400 })
+  }
+
+  // The student's own address can't receive parental consent — /coppa/complete
+  // would reject the self-signer anyway (signer ≠ student), so fail it here with
+  // a clear message instead of sending a dead-end email.
+  if (parentEmail.trim().toLowerCase() === (user.email ?? '').toLowerCase()) {
+    return Response.json({ error: "That's your own email — enter a parent or guardian's address." }, { status: 400 })
   }
 
   const service = createServiceClient()
@@ -90,6 +98,10 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
     (new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
   )
   const firstName = (studentName || '').trim().split(/\s+/)[0] || 'your child'
+  // full_name is client-writable — escape it, or a student could inject markup
+  // into the consent email their parent trusts.
+  const safeName = escapeHtml(studentName)
+  const safeFirst = escapeHtml(firstName)
 
   const divider = `<hr style="border:none;border-top:1px solid #E7DECB;margin:24px 0" />`
 
@@ -99,7 +111,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
            style="height:32px;margin-bottom:28px" />
 
       <h2 style="font-size:20px;font-weight:700;margin:0 0 16px;color:#14385A">
-        ${studentName} wants to use BrainScribe
+        ${safeName} wants to use BrainScribe
       </h2>
 
       <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
@@ -110,7 +122,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
       </p>
 
       <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
-        Since ${studentName} is under 13, we need your approval before they can
+        Since ${safeName} is under 13, we need your approval before they can
         start. <strong>This is completely free — no credit card required.</strong>
       </p>
 
@@ -118,7 +130,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
                   padding:16px 20px;margin:24px 0">
         <p style="margin:0;font-size:13px;color:#7C2D12;line-height:1.6">
           <strong>⚠ This link expires ${expiryDate} (${daysLeft} days from now).</strong><br>
-          If not approved by then, ${studentName}'s account request will be automatically deleted.
+          If not approved by then, ${safeName}'s account request will be automatically deleted.
         </p>
       </div>
 
@@ -126,7 +138,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
          style="display:inline-block;background:#F0811E;color:#fff;text-decoration:none;
                 font-weight:700;padding:14px 28px;border-radius:12px;font-size:15px;
                 margin-bottom:8px">
-        Approve ${firstName}'s account →
+        Approve ${safeFirst}'s account →
       </a>
 
       ${divider}

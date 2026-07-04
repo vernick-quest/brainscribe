@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { deriveAgeBracket, evaluateGateEdit } from '@/lib/coppa'
 
 // PATCH /api/profile/birthdate — set or correct a birthdate, the source of truth for
 // the COPPA age gate. age_bracket is DERIVED here (<13 → under13) and stored as a
@@ -28,6 +30,12 @@ export async function PATCH(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Gate writes are cheap but sensitive (they can auto-grant consent + write
+  // audit-log rows) — cap the churn per account.
+  if (!await checkRateLimit(`birthdate:${user.id}`, 15, 3600)) {
+    return rateLimited('Too many birthdate changes — please try again later.')
+  }
+
   const { birthdate, studentId } = await request.json()
 
   // Validate: YYYY-MM-DD, a real date, in the past, not absurdly old.
@@ -40,7 +48,7 @@ export async function PATCH(request) {
     return Response.json({ error: 'That birthdate doesn’t look right.' }, { status: 400 })
   }
 
-  const newBracket = ageInYears(dob, now) < 13 ? 'under13' : '13plus'
+  const newBracket = deriveAgeBracket(dob, now)
 
   const service = createServiceClient()
 
@@ -59,48 +67,30 @@ export async function PATCH(request) {
     .single()
   if (!target) return Response.json({ error: 'Profile not found.' }, { status: 404 })
 
-  const targetProtected = target.age_bracket === 'under13' || target.coppa_consent_required === true
-
-  // ── Authorization ────────────────────────────────────────────────────────────
-  let parentEditing = false
-  if (!isAdmin) {
-    if (isSelf) {
-      // Self may move INTO protection but NEVER out of it.
-      if (targetProtected && newBracket === '13plus') {
-        return Response.json(
-          { error: 'This account is registered as under 13 and needs parental approval to change.', code: 'coppa_locked' },
-          { status: 403 }
-        )
-      }
-    } else {
-      // Editing someone else's gate requires a verified watcher link…
-      const { data: rel } = await service
-        .from('relationships')
-        .select('watcher_id')
-        .eq('watcher_id', user.id)
-        .eq('student_id', targetId)
-        .maybeSingle()
-      if (!rel) {
-        return Response.json({ error: 'You are not authorized to edit this account.' }, { status: 403 })
-      }
-      // …AND parental standing for THIS child. Bare relationship membership is not
-      // enough: `relationships` carries no role, so a read-only CO-PARENT or a
-      // linked TEACHER would otherwise be able to move the age gate and (when
-      // resolving to under-13) auto-grant consent. Only the child's recorded
-      // consenting guardian may move the gate. Before any guardian is recorded,
-      // any linked PARENT (never a teacher) may act — and that action records them
-      // as the guardian (the legitimate bootstrap/first-correction path).
-      const isGuardian = target.coppa_consent_parent_id === user.id
-      const canBootstrap = !target.coppa_consent_parent_id && actor?.role === 'parent'
-      if (!isGuardian && !canBootstrap) {
-        return Response.json(
-          { error: 'Only this child’s consenting parent can change their birthdate. Ask them, or contact support.', code: 'coppa_not_guardian' },
-          { status: 403 }
-        )
-      }
-      parentEditing = true
-    }
+  // ── Authorization — the directional/guardian rules live in lib/coppa.js ──────
+  let hasWatcherLink = false
+  if (!isAdmin && !isSelf) {
+    const { data: rel } = await service
+      .from('relationships')
+      .select('watcher_id')
+      .eq('watcher_id', user.id)
+      .eq('student_id', targetId)
+      .maybeSingle()
+    hasWatcherLink = !!rel
   }
+
+  const decision = evaluateGateEdit({
+    actorId: user.id,
+    actorRole: actor?.role,
+    targetId,
+    target,
+    newBracket,
+    hasWatcherLink,
+  })
+  if (!decision.allowed) {
+    return Response.json({ error: decision.error, code: decision.code }, { status: decision.status })
+  }
+  const parentEditing = decision.parentEditing
 
   // ── Build the gate update ─────────────────────────────────────────────────────
   const update = { birthdate, age_bracket: newBracket }
@@ -144,12 +134,4 @@ export async function PATCH(request) {
   }
 
   return Response.json({ ok: true, age_bracket: newBracket })
-}
-
-// Whole years between dob and ref (UTC), accounting for month/day.
-function ageInYears(dob, ref) {
-  let age = ref.getUTCFullYear() - dob.getUTCFullYear()
-  const m = ref.getUTCMonth() - dob.getUTCMonth()
-  if (m < 0 || (m === 0 && ref.getUTCDate() < dob.getUTCDate())) age--
-  return age
 }

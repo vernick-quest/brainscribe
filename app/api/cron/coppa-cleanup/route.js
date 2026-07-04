@@ -65,7 +65,57 @@ export async function GET(request) {
     deleted++
   }
 
-  const summary = { checked: expired?.length ?? 0, deleted, skipped, orphans, errors }
+  // ── Profile-side sweep — the pending-row query above can't see two cases ──────
+  // (1) an under-13 who never submitted a parent email (no pending row exists), and
+  // (2) a pending row a late /coppa/consent visit already flipped to status=
+  // 'expired' (dropping it out of the status='pending' query). Both leave an
+  // unconsented under-13 account alive past the promised 7 days. Sweep directly:
+  // consent required, not given, account older than 7 days, and no ACTIVE pending
+  // window (a live consent request defers deletion to the pending-row path above —
+  // its expiry restarts the clock from the moment the email went out).
+  let swept = 0
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: stale, error: staleErr } = await service
+    .from('profiles')
+    .select('id')
+    .eq('coppa_consent_required', true)
+    .eq('coppa_consent_given', false)
+    .lt('created_at', cutoff)
+
+  if (staleErr) {
+    console.error('[coppa-cleanup] sweep query error:', staleErr)
+    errors.push({ sweep: staleErr.message })
+  }
+
+  for (const row of (stale ?? [])) {
+    // Defer to an active (unexpired) consent request — the parent may still approve.
+    const { data: active } = await service
+      .from('pending_coppa_signups')
+      .select('id')
+      .eq('student_id', row.id)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .limit(1)
+    if (active?.length) continue
+
+    // Re-check consent at the moment of deletion (same lag defense as above).
+    const { data: prof } = await service
+      .from('profiles')
+      .select('coppa_consent_given')
+      .eq('id', row.id)
+      .single()
+    if (!prof || prof.coppa_consent_given) continue
+
+    const { error: delErr } = await service.auth.admin.deleteUser(row.id)
+    if (delErr) {
+      console.error('[coppa-cleanup] sweep deleteUser failed:', row.id, delErr.message)
+      errors.push({ student_id: row.id, error: delErr.message })
+      continue
+    }
+    swept++
+  }
+
+  const summary = { checked: expired?.length ?? 0, deleted, skipped, orphans, swept, errors }
   console.log('[coppa-cleanup]', JSON.stringify(summary))
   return NextResponse.json({ ok: true, ...summary })
 }

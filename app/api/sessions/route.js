@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 
 const anthropic = new Anthropic()
@@ -111,19 +112,14 @@ export async function POST(request) {
     return rateLimited("You've started a lot of sessions today — please try again tomorrow.")
   }
 
-  // Coach age gate — role-independent. No one creates a coach session without a
-  // 13+ assertion (or completed parental consent). Backs up the UI entry points.
+  // Coach age gate — role-independent (lib/coppa.js). No one creates a coach
+  // session without a 13+ assertion (or completed parental consent). Backs up the
+  // UI entry points; /api/tutor, /api/scribe, and /api/scribe-token re-check the
+  // same predicate, so a sessions row inserted client-side (RLS allows it) still
+  // can't reach a model or the voice pipeline.
   const { data: gate } = await supabase
     .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  // A self-declared under-13 carries coppa_consent_required=true; once that's set,
-  // an unconsented account is blocked even if age_bracket later reads '13plus'
-  // (defends against a re-declaration that flips the bracket without consent).
-  const ageOk = gate?.role === 'admin'
-    || gate?.coppa_consent_given === true
-    || (gate?.age_bracket === '13plus' && !gate?.coppa_consent_required)
-  if (!ageOk) {
-    return Response.json({ error: 'Please confirm your age before writing with a coach.', code: 'age_verification_required' }, { status: 403 })
-  }
+  if (!canUseCoach(gate)) return coachGateResponse()
 
   const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
           isOnboarding = false, onboardingPromptKey = null } = await request.json()

@@ -18,8 +18,12 @@ export default async function InvitePage({ searchParams }) {
     redirect(`/login?invite=${token}`)
   }
 
-  // Look up the invite
-  const { data: invite } = await supabase
+  // Look up the invite with the service client: the token IS the capability, so
+  // the lookup shouldn't depend on invites being SELECT-able by `authenticated`
+  // (the 001 "read by token" policy is `using (true)` — world-readable — and is
+  // slated for removal; this page must keep working once it's gone).
+  const service = createServiceClient()
+  const { data: invite } = await service
     .from('invites')
     .select('*')
     .eq('token', token)
@@ -38,8 +42,13 @@ export default async function InvitePage({ searchParams }) {
     return <InviteError message="This invite link has expired. Please ask for a new one." />
   }
 
-  // If the invite matches this user's email and isn't claimed yet, claim it
-  if (!invite.claimed_by && invite.email === (user.email ?? '').toLowerCase()) {
+  // Claim when the invite matches this user's email and is unclaimed — OR was
+  // already claimed by THIS user. The 001 handle_new_user trigger auto-claims a
+  // matching invite at signup (stamping claimed_by + role) BEFORE this page can
+  // run its guards or create the relationship/assignment grant, so a fresh-signup
+  // claim used to arrive here pre-claimed and skip all of it. Re-running is safe:
+  // every write below is guarded or idempotent.
+  if ((!invite.claimed_by || invite.claimed_by === user.id) && invite.email === (user.email ?? '').toLowerCase()) {
     const { data: claimerProfile } = await supabase
       .from('profiles').select('age_bracket, role, role_confirmed').eq('id', user.id).single()
 
@@ -77,13 +86,12 @@ export default async function InvitePage({ searchParams }) {
       pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
     }
 
-    // Service client for all the privileged writes below: the role/role_confirmed
-    // update (gate columns REVOKEd from `authenticated` by migration 020), the
-    // relationship upsert, and the cap counts. Counts in particular need it because
-    // under RLS the claimer only sees relationships on their own side, and the
-    // insert policy (watcher_id = auth.uid()) would otherwise reject a child
-    // claiming a parent-sent invite.
-    const service = createServiceClient()
+    // All privileged writes below run on the service client created above: the
+    // role/role_confirmed update (gate columns REVOKEd from `authenticated` by
+    // migration 020), the relationship upsert, and the cap counts. Counts in
+    // particular need it because under RLS the claimer only sees relationships on
+    // their own side, and the insert policy (watcher_id = auth.uid()) would
+    // otherwise reject a child claiming a parent-sent invite.
 
     // Enforce relationship caps BEFORE consuming the invite, so a capped link
     // doesn't burn the token or flip the profile role.
@@ -109,10 +117,15 @@ export default async function InvitePage({ searchParams }) {
       }
     }
 
-    await supabase.from('invites').update({
-      claimed_by: user.id,
-      claimed_at: new Date().toISOString(),
-    }).eq('id', invite.id)
+    // Burn the token (service client — invites has NO UPDATE policy for
+    // `authenticated`, so a user-scoped update here silently affected 0 rows and
+    // claimed invites never actually got stamped).
+    if (!invite.claimed_by) {
+      await service.from('invites').update({
+        claimed_by: user.id,
+        claimed_at: new Date().toISOString(),
+      }).eq('id', invite.id)
+    }
 
     // Update their profile role — mark confirmed since invite pre-assigns the role.
     // role/role_confirmed are gate columns REVOKEd from `authenticated` by migration
@@ -129,16 +142,28 @@ export default async function InvitePage({ searchParams }) {
       )
     }
 
-    // Teacher invite scoped to a specific assignment → grant access + notify
+    // Teacher invite scoped to a specific assignment → grant access + notify.
+    // Service client: no RLS policy lets the claiming TEACHER insert their own
+    // assignment_teachers row (only the student owner / linked parent "manage"),
+    // so the user-scoped insert silently failed. Idempotency guard keeps a
+    // re-claim (e.g. after the signup trigger pre-claimed) from duplicating the
+    // grant or re-sending the notification.
     if (invite.role === 'teacher' && invite.assignment_id) {
-      await supabase.from('assignment_teachers').insert({
+      const { data: existingGrant } = await service
+        .from('assignment_teachers').select('id')
+        .eq('session_id', invite.assignment_id)
+        .eq('teacher_id', user.id)
+        .maybeSingle()
+      if (existingGrant) redirect('/teacher')
+
+      await service.from('assignment_teachers').insert({
         session_id: invite.assignment_id,
         teacher_id: user.id,
         added_by: invite.invited_by,
       })
 
       // Fetch session title + student name for the notification message
-      const { data: sessionData } = await supabase
+      const { data: sessionData } = await service
         .from('sessions')
         .select('title, assignment_text, profiles!sessions_student_id_fkey(full_name)')
         .eq('id', invite.assignment_id)
