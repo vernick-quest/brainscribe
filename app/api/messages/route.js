@@ -5,11 +5,12 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { sessionId, role, content } = await request.json()
+  const { sessionId, content } = await request.json()
 
+  // Never trust a client-supplied role — force 'user' (CLAUDE.md invariant).
   const { data, error } = await supabase
     .from('messages')
-    .insert({ session_id: sessionId, role, content })
+    .insert({ session_id: sessionId, role: 'user', content })
     .select()
     .single()
 
