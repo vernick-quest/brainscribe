@@ -399,6 +399,14 @@ export default function TutorSession({
   profile = null,
   onboarding = false,
   impersonation = null,
+  // ── Writing Gym reuse seams (additive; defaults preserve assignment-mode behavior) ──
+  // The gym runs the exact same coaching surface against a different backend: a
+  // gym-mode coach prompt (/api/gym/tutor) and a completion path that awards the
+  // Practiced badge + portfolio entry (/api/gym/complete/[id]). `gym` carries the
+  // skill label + back links for the header and the completion card.
+  tutorEndpoint = '/api/tutor',
+  completeEndpoint = null,
+  gym = null,
 }) {
   const [messages, setMessages]           = useState(
     initialMessages.map(m => m.role === 'assistant' ? { ...m, persona: session.persona } : m)
@@ -807,7 +815,7 @@ export default function TutorSession({
     captionRef.current?.set('…')
 
     try {
-      const res = await fetch('/api/tutor', {
+      const res = await fetch(tutorEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -977,7 +985,7 @@ export default function TutorSession({
     if (sessionComplete) return
     setSessionComplete(true)
     try {
-      const res = await fetch(`/api/sessions/${session.id}/complete`, { method: 'PATCH' })
+      const res = await fetch(completeEndpoint ?? `/api/sessions/${session.id}/complete`, { method: 'PATCH' })
       // The server assembles any unbuilt paragraph into prose on complete and hands
       // it back — adopt it so the finished paragraph shows above its components.
       const data = await res.json().catch(() => null)
@@ -1344,6 +1352,35 @@ export default function TutorSession({
           </div>
         )}
 
+        {/* ── Writing Gym banner (gym sessions only): skill focus + beat stepper ── */}
+        {gym && (() => {
+          const beats = ['Intro', 'Warm-up', 'Write', 'Review', 'Lock it in']
+          const anyConfirmed = scaffold?.components?.some(p => (p.items ?? []).some(c => c.status === 'confirmed'))
+          const hasScaffold  = scaffold?.components?.length > 0
+          const activeBeat = sessionComplete ? 4 : anyConfirmed ? 3 : hasScaffold ? 2 : 0
+          return (
+            <div className="shrink-0 flex items-center gap-3 px-4 py-2 text-xs flex-wrap"
+              style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)' }}>
+              <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5 shrink-0" style={{ color: 'var(--accent-text)' }}>
+                <Icon name="pencil" size={12} /> Writing Gym
+              </span>
+              <span className="font-semibold shrink-0" style={{ color: 'var(--text-strong)' }}>{gym.skillLabel}</span>
+              {/* Beat stepper — progress, never minutes (design: no clock in untimed sessions) */}
+              <span className="hidden sm:flex items-center gap-1.5" aria-hidden="true">
+                {beats.map((b, i) => (
+                  <span key={b} className="inline-flex items-center gap-1.5">
+                    <span style={{ color: i <= activeBeat ? 'var(--accent-text)' : 'var(--text-subtle)', fontWeight: i === activeBeat ? 'var(--fw-bold)' : 'var(--fw-medium)' }}>{b}</span>
+                    {i < beats.length - 1 && <span style={{ color: 'var(--text-subtle)' }}>›</span>}
+                  </span>
+                ))}
+              </span>
+              <a href={gym.backHref ?? '/gym'} className="ml-auto font-semibold hover:underline shrink-0" style={{ color: 'var(--text-muted)' }}>
+                Leave
+              </a>
+            </div>
+          )
+        })()}
+
         {/* ── Assignment bar ── */}
         <div className="shrink-0" ref={barPanelRef} style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
 
@@ -1351,8 +1388,9 @@ export default function TutorSession({
           <div className="flex items-center gap-0 px-3 py-2.5" style={{ minHeight: 52 }}>
 
             {/* Back to the assignments list — replaces the old in-workspace sidebar.
-                Role-aware: students land on /dashboard, parents/teachers on their home. */}
-            {!onboarding && (
+                Role-aware: students land on /dashboard, parents/teachers on their home.
+                Gym sessions use the "Leave" link in the gym banner instead. */}
+            {!onboarding && !gym && (
               <a href={profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'}
                 className="-ml-1 mr-1 flex items-center gap-1.5 h-9 px-2 rounded-lg shrink-0 text-xs font-medium transition"
                 style={{ color: 'var(--text-muted)' }}
@@ -1796,7 +1834,20 @@ export default function TutorSession({
               style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
               <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
               <div className="flex-1 min-w-0">
-                {onboarding ? (
+                {gym ? (
+                  <>
+                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <a href={gym.portfolioHref ?? '/gym/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                        See your portfolio →
+                      </a>
+                      <a href={gym.backHref ?? '/gym'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                        Back to the Gym
+                      </a>
+                    </div>
+                  </>
+                ) : onboarding ? (
                   <>
                     <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
                     <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>

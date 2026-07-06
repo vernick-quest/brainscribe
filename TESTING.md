@@ -271,3 +271,44 @@ Re-run (`node scripts/redteam/ftue-funnel.mjs --persona=…`, coach=claude-sonne
 - "New assignment" while remoted-in (create *as* the student) — deferred; create currently attributes to the logged-in admin, so impersonating admins are kept out of the create page.
 - Teacher feedback-count bubble, teacher roster picker + remove-teacher — no backend yet.
 - Free-sessions usage meter — built but behind `SHOW_USAGE_METER=false`.
+
+## Writing Gym — Phase 1 (core loop) (2026-07-05)
+
+**Blocked on migration 025 (`supabase/migrations/025_writing_gym.sql`) being applied to
+Supabase project `lakozspeyxsuunogfant` — apply BEFORE deploy.** Code that reads the
+gym tables (and `sessions.gym_session_id`) is dead until then; `/dashboard` and
+`/assignment/[id]` reference the new column (both are resilient to its absence, but
+gym features do nothing pre-apply).
+
+Automated (green): `npm run build` passes; `lib/gymCurriculum.js` + `lib/gymAwards.js`
++ the gym prompt block pass a 52-assertion suite (progression path, per-skill unlocks,
+level thresholds incl. Builder-not-at-7/8, portfolio_review volume gate, streak
+increment/freeze/reset/accrual, portfolio content typing, and the prompt-caching
+invariant: static prefix identical with/without gym, gym block only in the dynamic
+tail, no new stream tokens). Challenge bank (72 cards) transcribed verbatim + verified.
+
+Manual checklist (run once 025 is applied, as a 13+ / consented test student):
+- [ ] `/gym` renders: level meter (Finder), all-skills browser grouped by tier, streak
+      demoted below badges/level, no empty badge sockets.
+- [ ] Locked skill shows "Complete X to unlock"; a root/unlocked skill shows "Practice".
+- [ ] Start a skill → lands in the gym session (Writing Gym banner + beat stepper, no
+      clock); the coach focuses the one skill and stays low-stakes.
+- [ ] Complete the session → completion card says "<Skill> — practiced!"; a full-color
+      Practiced badge appears on `/gym`; a typed entry appears in `/gym/portfolio`.
+- [ ] Word Choice (pair output) → portfolio renders before/after side-by-side.
+- [ ] 3-session progression: hook → specific_detail → closing_line each award a badge;
+      after 8 T1 skills the level reads Builder (never at 7/8).
+- [ ] Coach age gate blocks a pre-consent under-13 on `/api/gym/sessions`, `/api/gym/tutor`.
+- [ ] Direct PostgREST write to `gym_skill_state` as the student is rejected (RLS;
+      badge writes are service-role only).
+- [ ] Gym-backing sessions rows do NOT appear in `/dashboard`; visiting
+      `/assignment/<gym sessions row>` redirects to `/gym/session/...`.
+- [ ] `[SKILL_OUTCOME]`/timed/placement are P2/P3 — NOT expected in P1.
+
+### Known deferred within build-plan P1 (next gym pass)
+- Parent portfolio split view (build-plan 1.8) — not built; student surface only.
+- Async Locked-In checks + coach in-session Locked-In (`[SKILL_EVIDENCE]`) — P2/P3
+  (needs coach-ai tokens). P1 only ever awards Practiced.
+- Structured in-session pair/blueprint capture — P1 stores the real draft typed by
+  output shape; richer capture is P2/P3.
+- Impersonation on gym pages — deferred.

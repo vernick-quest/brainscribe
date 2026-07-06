@@ -81,9 +81,18 @@ export default function Navbar({ user, profile }) {
         borderBottom: '1px solid var(--border-default)',
       }}>
 
-      <a href={homeHref}>
-        <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
-      </a>
+      <div className="flex items-center gap-5">
+        <a href={homeHref}>
+          <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
+        </a>
+        {/* Writing Gym — a distinct mode from Assignments; students only. */}
+        {profile?.role === 'student' && (
+          <a href="/gym" className="hidden sm:inline transition hover:opacity-80"
+            style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-body)' }}>
+            Writing Gym
+          </a>
+        )}
+      </div>
 
       <div className="relative" ref={dropdownRef}>
         <button

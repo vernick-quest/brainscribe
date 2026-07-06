@@ -1,0 +1,122 @@
+import { createClient } from '@/lib/supabase/server'
+import { assembleParagraphText } from '@/lib/assembleParagraph'
+import { getSkill } from '@/lib/gymCurriculum'
+import {
+  awardPracticed, createPortfolioEntry, recomputeLevel, updateStreakOnComplete,
+} from '@/lib/gymAwards'
+import { NextResponse } from 'next/server'
+
+// Turn any confirmed-but-unassembled scaffold paragraphs into flowing prose before we
+// read the final draft. Mirrors app/api/sessions/[id]/complete's helper (kept local so
+// the gym completion path doesn't reach into the assignment route). Uses the caller's
+// RLS-scoped client — the student owns this session, so RLS permits the writes.
+async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
+  const [{ data: scaffold }, { data: existing }] = await Promise.all([
+    supabase.from('paragraph_scaffolds').select('components').eq('session_id', sessionId).single(),
+    supabase.from('paragraphs').select('position, paragraph_index').eq('session_id', sessionId),
+  ])
+  const built = new Set((existing ?? []).map(p => p.paragraph_index ?? p.position))
+  const toBuild = (scaffold?.components ?? [])
+    .map((para, idx) => ({ para, idx }))
+    .filter(({ para, idx }) =>
+      !built.has(idx) &&
+      (para.items ?? []).some(c => c.status === 'confirmed' && (c.text || c.nuggetText)))
+
+  await Promise.all(toBuild.map(async ({ para, idx }) => {
+    const components = (para.items ?? [])
+      .filter(c => c.status === 'confirmed' && (c.text || c.nuggetText))
+      .map(c => ({ id: c.id, label: c.label ?? c.id, text: c.text || c.nuggetText }))
+    const { assembled, componentText } = await assembleParagraphText({
+      components, paragraphType: para.type, sessionId, userId,
+    })
+    if (!assembled) return
+    const { error } = await supabase.from('paragraphs').insert({
+      session_id: sessionId,
+      scribed_text: assembled,
+      raw_spoken_text: componentText,
+      position: idx,
+      paragraph_index: idx,
+      paragraph_type: para.type,
+      is_thin: false,
+    })
+    if (error) console.error('[gym complete auto-assemble]', error.message)
+  }))
+}
+
+// PATCH /api/gym/complete/[id]  ([id] = the reused sessions row id)
+// Completes a gym session: assembles the draft, awards the Practiced badge
+// (service-role), commits the typed portfolio entry, advances streak + level.
+export async function PATCH(request, { params }) {
+  const { id } = await params
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: session } = await supabase
+    .from('sessions').select('id, student_id, status, gym_session_id').eq('id', id).single()
+  if (!session || session.student_id !== user.id || !session.gym_session_id) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
+  const { data: gymSession } = await supabase
+    .from('gym_sessions').select('id, skill_key, tier, status, created_at').eq('id', session.gym_session_id).single()
+  const skill = getSkill(gymSession?.skill_key)
+
+  // Idempotent — a re-fire (double [COMPLETE], reload) must not double-award.
+  if (gymSession?.status === 'complete') {
+    const { data: paragraphs } = await supabase
+      .from('paragraphs').select('scribed_text, is_thin, position, paragraph_index')
+      .eq('session_id', id).order('position')
+    return NextResponse.json({ ok: true, alreadyComplete: true, paragraphs: paragraphs ?? [] })
+  }
+
+  // Mark the writing session complete + assemble any unbuilt paragraphs.
+  await supabase.from('sessions').update({ status: 'complete' }).eq('id', id)
+  await assembleUnbuiltParagraphs(supabase, id, user.id)
+
+  const { data: paragraphs } = await supabase
+    .from('paragraphs').select('scribed_text, is_thin, position, paragraph_index')
+    .eq('session_id', id).order('position')
+  const paragraphTexts = (paragraphs ?? []).map(p => p.scribed_text).filter(Boolean)
+
+  // Service-role award path (badge integrity). Portfolio first so the badge can
+  // point its evidence_ref at the artifact.
+  const portfolio = await createPortfolioEntry({
+    studentId: user.id,
+    gymSessionId: gymSession.id,
+    skillKey: gymSession.skill_key,
+    tier: gymSession.tier,
+    paragraphTexts,
+  })
+  const award = await awardPracticed(user.id, gymSession.skill_key, {
+    source: 'session', evidenceRef: portfolio?.id ?? null,
+  })
+
+  // Close the gym session record.
+  const durationSeconds = gymSession.created_at
+    ? Math.max(0, Math.round((Date.now() - new Date(gymSession.created_at).getTime()) / 1000))
+    : null
+  await supabase.from('gym_sessions')
+    .update({ status: 'complete', completed_at: new Date().toISOString(), duration_seconds: durationSeconds })
+    .eq('id', gymSession.id)
+
+  // Streak (demoted) + level milestone. Streak before level so both land in one turn.
+  await updateStreakOnComplete(user.id)
+  const level = await recomputeLevel(user.id)
+
+  return NextResponse.json({
+    ok: true,
+    paragraphs: paragraphs ?? [],
+    award: {
+      skillKey: gymSession.skill_key,
+      skillLabel: skill?.label ?? gymSession.skill_key,
+      practicedAwarded: award.awarded,
+      alreadyHad: award.alreadyHad,
+      level: level.level,
+      previousLevel: level.previousLevel,
+      leveledUp: level.leveledUp,
+      portfolioEntryId: portfolio?.id ?? null,
+    },
+  })
+}
