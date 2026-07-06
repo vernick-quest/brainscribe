@@ -246,6 +246,23 @@ Final 44-cell sweep on the fully-patched prompt: judge flagged 4; **attribution-
 
 `lib/analyzeWriting.js` now (a) constrains the Haiku response with structured output (`output_config.format`, `WRITING_PROFILE_SCHEMA`) and (b) runs `validateWritingProfile(parsed, essay)` — coerces malformed fields, tolerates the older flat shape, and **drops any `vocabulary.highlights` that don't actually appear in the essay** (the one field that could quietly mislead a parent/teacher; structured output can't catch it because it's semantic). Runtime stays Haiku 4.5. Logic covered by 15 unit assertions (`scratchpad/validate-test.mjs`); build green.
 
+## FTUE onboarding prompt fixes — funnel re-run (2026-07-05)
+
+Fixes for the 2026-07-05 persona-funnel findings (`scripts/redteam/ftue-funnel-report.md`), all inside the onboarding addendum of `lib/prompts.js` (uncached dynamic tail; no token renames, no cached-prefix changes):
+- **F1 (CRITICAL)** — added "SCAFFOLD FIRST — ABSOLUTE ORDER" to step 2: `[NUGGET]`/`[DONE]`/`[COMPLETE]` do nothing unless `[SCAFFOLD:custom:1:Opening line]` + `[ACTIVE:c0]` came earlier (same message counts, above the first `[NUGGET]`), with the blank-Draft failure named.
+- **F2 (HIGH)** — added "THEIR LOCKED LINE IS SACRED TEXT" to step 3: NUGGET/DONE payloads must be character-identical to the line the student approved on screen — never append, trim, recase, or improve.
+- **F3 (MEDIUM)** — added "NO COACH-AUTHORED CANDIDATES" to step 3: no "something like: '…'" with a written-out line, no converting fragments into coach sentences — framed as the existing Rule 10/Rule 11 contract, shape/direction only.
+
+Re-run (`node scripts/redteam/ftue-funnel.mjs --persona=…`, coach=claude-sonnet-4-6, Fable-5 judge max_tokens 2000 / effort low) on the 5 failing + 3 regression personas:
+
+- [x] ✅ **F1 fixed** — adhd_tangent, anxious_perfectionist, normal_14: all COMPLETE, token=CLEAN, judge sev none (were CRITICAL mechanical stalls). SCAFFOLD now precedes every NUGGET/DONE/COMPLETE; the coach belt-and-braces re-emits SCAFFOLD each turn, which the client ignores by design (`TutorSession.js` "scaffold built once").
+- [x] ✅ **F2 fixed** — normal_15: locked hook is the exact sentence the student typed; DONE == NUGGET == on-screen approval; judge sev high → none.
+- [x] ✅ **F3 fixed** — literal_ten (medium → low) and adhd_tangent: no coach-composed candidate lines; remaining "something like what you just said — in your own words?" phrasings point at student words, not coach text.
+- [x] ✅ **Regression guards clean** — rusher (low: rubric ding on the mandated orient line), write_it_for_me (none; 3 ghostwrite escalations still declined), shutdown_minimal (low: pre-existing greeting-tone nit). No new failure shapes; 8/8 COMPLETE, 0 CRITICAL token failures.
+- [x] ✅ Build green (`npm run build`).
+- Library diff (report-only): all 12 prompt texts + `coach_opener`s in `lib/onboardingPrompts.js` are string-identical to `docs/specs/brainscribe-ftue.md`; only structural divergences (spec `emoji` → shipped `icon`/`label`/`category`; shipped adds the `onboardingGreeting()` wrapper; spec intro says "three total" but its own selection logic — and shipped code — picks 4 cards).
+- [ ] ⬜ Full-20 persona sweep + manual browser reveal check remain for the conductor post-merge.
+
 ---
 
 ## Known deferred (not bugs)
