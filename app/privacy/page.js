@@ -24,7 +24,7 @@ const sections = [
           <li><strong>Account information</strong> — name and email address, provided when you sign in with Google. This information is used solely to identify your account and send service-related messages. It is not used for advertising, sold to third parties, or combined with data from other services.</li>
           <li><strong>Assignment content</strong> — the text of writing assignments students enter. Used to generate the tutoring session and outline.</li>
           <li><strong>Voice and spoken text</strong> — when a student speaks, their audio is transcribed. We store the transcription, not the audio. Audio is processed in real time and not retained.</li>
-          <li><strong>Session transcripts</strong> — the full dialogue between the student and the AI tutor. Stored so students, parents, and teachers can review the session.</li>
+          <li><strong>Session transcripts</strong> — the full dialogue between the student and the AI tutor. Stored so students, parents, and teachers can review the session. We also run automated AI reviews of transcripts for internal quality and safety monitoring.</li>
           <li><strong>Written paragraphs</strong> — the scribed essay sections that result from each tutoring session.</li>
           <li><strong>Relationship data</strong> — which parents are linked to which students, and which teachers are connected to which assignments. Used only to provide dashboard access.</li>
         </ul>
