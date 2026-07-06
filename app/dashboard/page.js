@@ -55,12 +55,28 @@ export default async function DashboardPage() {
   const service = imp ? createServiceClient() : supabase
   const { data: profile } = await service.from('profiles').select('*').eq('id', targetId).single()
 
-  const { data: sessions } = await service
+  // "Your assignments" excludes gym-backing sessions rows (a gym practice session
+  // reuses a sessions row, marked by gym_session_id). Resilient to the apply-before-
+  // deploy window: if the gym_session_id column isn't present yet (migration 025 not
+  // applied), fall back to the unfiltered query — pre-migration there are no gym
+  // sessions anyway, so nothing is hidden.
+  const baseCols = 'id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label, is_onboarding, requirements'
+  let sessionsRes = await service
     .from('sessions')
-    .select('id, assignment_text, status, persona, created_at, updated_at, title, subject, subject_custom_label, is_onboarding, requirements')
+    .select(baseCols)
     .eq('student_id', targetId)
+    .is('gym_session_id', null)
     .order('updated_at', { ascending: false })
     .limit(50)
+  if (sessionsRes.error) {
+    sessionsRes = await service
+      .from('sessions')
+      .select(baseCols)
+      .eq('student_id', targetId)
+      .order('updated_at', { ascending: false })
+      .limit(50)
+  }
+  const sessions = sessionsRes.data
 
   // Zero assignments ever → skip the empty list and drop them straight on the
   // new-assignment page. (Not while impersonating — admin views the real state.)
@@ -105,6 +121,17 @@ export default async function DashboardPage() {
             </a>
           )}
         </div>
+
+        {/* Writing Gym entry — a separate practice mode from assignments. */}
+        {!imp && (
+          <a href="/gym" className="inline-flex items-center gap-1.5 transition hover:opacity-80"
+            style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-link)', marginBottom: 'var(--space-5)' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6.5 6.5h11M6.5 17.5h11M4 9v6M20 9v6M4 12h16"/>
+            </svg>
+            Practice a skill in the Writing Gym →
+          </a>
+        )}
 
         {/* Watcher line — who can see this student's work */}
         {watchers.length > 0 && (
