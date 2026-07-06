@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
@@ -312,6 +312,316 @@ function DemoDataControl({ seeded }) {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Transcript guardrail audit ────────────────────────────────
+// Coach-only trust-and-safety review (brainscribe-transcript-audit). "Run audit"
+// samples N never-audited completed transcripts server-side; a Sonnet judge flags
+// coach guardrail breaches (the red-team five), a Haiku screen flags technical
+// defects. v1 is COACH-ONLY — no student-safety/distress signals by design.
+// Opening a finding remotes in as the student first (same fail-closed path as
+// SessionRow), then lands on the finished-work transcript.
+const SEVERITY_STYLE = {
+  high:   { label: 'High',   bg: '#FEE2E2', color: 'var(--status-error)' },
+  medium: { label: 'Medium', bg: '#FEF3C7', color: '#92400E' },
+  low:    { label: 'Low',    bg: 'var(--surface-muted)', color: 'var(--text-muted)' },
+}
+const SEVERITY_ORDER = { high: 3, medium: 2, low: 1, none: 0 }
+const AUDIT_BREACH_LABEL = {
+  evidence_supply: 'Evidence supply',
+  fabricated_stats: 'Fabricated statistic',
+  compose_as_transcription: 'Compose-as-transcription',
+  claim_stitch: 'Claim-stitch',
+  coach_authored_frame: 'Coach-authored frame',
+}
+const PROCESS_LABEL = {
+  composition_drift: 'Composition drift',
+  stage_rhythm_absence: 'Stage-rhythm absence',
+  nugget_miss: 'Nugget miss',
+}
+
+function SeverityBadge({ severity }) {
+  const s = SEVERITY_STYLE[severity] ?? SEVERITY_STYLE.low
+  return (
+    <span className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
+      style={{ backgroundColor: s.bg, color: s.color }}>
+      {s.label}
+    </span>
+  )
+}
+
+function AuditFindingCard({ finding, session, student, onChanged }) {
+  const [opening, setOpening] = useState(false)
+  const [resolved, setResolved] = useState(finding.resolved === true)
+  const [notes, setNotes] = useState(finding.admin_notes ?? '')
+  const [savingNotes, setSavingNotes] = useState(false)
+  const [notesSaved, setNotesSaved] = useState(false)
+  const a = finding.auditor_analysis ?? {}
+  const label = session?.title || session?.assignment_text?.slice(0, 70) || 'Untitled session'
+  const tech = a.technical ?? {}
+
+  // Remote in as the student (fail closed), then open the finished-work transcript.
+  async function openTranscript() {
+    if (opening) return
+    setOpening(true)
+    try {
+      const res = await fetch('/api/admin/impersonate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: finding.student_id }),
+      })
+      if (!res.ok) { setOpening(false); return }
+    } catch { setOpening(false); return }
+    window.location.href = `/transcript/${finding.session_id}`
+  }
+
+  async function toggleResolved() {
+    const next = !resolved
+    setResolved(next)
+    try {
+      const res = await fetch('/api/admin/audit-findings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: finding.id, resolved: next }),
+      })
+      if (!res.ok) { setResolved(!next); return }
+      onChanged?.()
+    } catch { setResolved(!next) }
+  }
+
+  async function saveNotes() {
+    setSavingNotes(true); setNotesSaved(false)
+    try {
+      const res = await fetch('/api/admin/audit-findings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: finding.id, admin_notes: notes }),
+      })
+      if (res.ok) { setNotesSaved(true); setTimeout(() => setNotesSaved(false), 2000) }
+    } catch {}
+    setSavingNotes(false)
+  }
+
+  return (
+    <div className="rounded-2xl p-5 space-y-3"
+      style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)', opacity: resolved ? 0.6 : 1 }}>
+
+      {/* Header: severity, coach, breach chips, student */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SeverityBadge severity={finding.severity} />
+        <PersonaAvatar personaId={finding.persona ?? 'owen'} size={18} className="shrink-0" />
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
+          {finding.persona ?? 'coach'}
+        </span>
+        {(finding.breach_types ?? []).map(t => (
+          <span key={t} className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+            style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
+            {AUDIT_BREACH_LABEL[t] ?? t}
+          </span>
+        ))}
+        <span className="text-xs ml-auto" style={{ color: 'var(--text-subtle)' }}>
+          {formatDate(finding.created_at)}
+        </span>
+      </div>
+
+      {/* Session + student line */}
+      <div>
+        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          {student?.full_name ?? 'Unknown student'}
+        </p>
+      </div>
+
+      {/* Auditor summary */}
+      {a.summary && (
+        <p className="text-sm" style={{ color: 'var(--text-default)' }}>{a.summary}</p>
+      )}
+
+      {/* Breaches with verbatim quotes */}
+      {(a.breaches ?? []).length > 0 && (
+        <div className="space-y-2">
+          {a.breaches.map((b, i) => (
+            <div key={i} className="rounded-xl px-3 py-2 text-xs space-y-1"
+              style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+              <div className="flex items-center gap-2">
+                <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{AUDIT_BREACH_LABEL[b.type] ?? b.type}</span>
+                <SeverityBadge severity={b.severity} />
+                <span style={{ color: 'var(--text-subtle)' }}>coach turn #{b.message_index}</span>
+              </div>
+              <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
+              {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Technical + process signals */}
+      {(tech.token_leakage || (tech.truncated_turns ?? []).length > 0 || (a.process_notes ?? []).length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {tech.token_leakage && (
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEE2E2', color: 'var(--status-error)' }}>
+              control-token leakage
+            </span>
+          )}
+          {(tech.truncated_turns ?? []).length > 0 && (
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+              truncated turn(s): {tech.truncated_turns.join(', ')}
+            </span>
+          )}
+          {(a.process_notes ?? []).map((p, i) => (
+            <span key={i} title={p.note} className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+              style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
+              {PROCESS_LABEL[p.type] ?? p.type}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Notes */}
+      <textarea value={notes} onChange={e => setNotes(e.target.value)}
+        placeholder="Admin notes…" rows={2}
+        className="w-full text-xs rounded-xl px-3 py-2 resize-y"
+        style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
+
+      {/* Actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={openTranscript} disabled={opening}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-full transition disabled:opacity-60"
+          style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+          {opening ? '…' : <span className="flex items-center gap-1.5"><IconEye /> Review transcript</span>}
+        </button>
+        <button onClick={saveNotes} disabled={savingNotes}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
+          style={{ color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+          {savingNotes ? '…' : notesSaved ? 'Saved ✓' : 'Save notes'}
+        </button>
+        <button onClick={toggleResolved}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-full ml-auto"
+          style={resolved
+            ? { color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+            : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+          {resolved ? 'Reopen' : 'Mark resolved'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AuditTab({ sessionById, profileById }) {
+  const [state, setState] = useState({ loading: true, findings: [], runs: [], error: '' })
+  const [running, setRunning] = useState(false)
+  const [count, setCount] = useState(10)
+  const [showResolved, setShowResolved] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/audit-findings')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setState({ loading: false, findings: [], runs: [], error: json.error ?? 'Failed to load findings.' }); return }
+      setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], error: '' })
+    } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function runAudit() {
+    if (running) return
+    setRunning(true)
+    let runId = null
+    try {
+      const res = await fetch('/api/admin/audit-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setState(s => ({ ...s, error: json.error ?? 'Audit failed to start.' })); setRunning(false); return }
+      runId = json.runId
+    } catch { setRunning(false); return }
+
+    // Model calls run server-side in after(); poll until this run completes.
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 4000))
+      try {
+        const res = await fetch('/api/admin/audit-findings')
+        const json = await res.json().catch(() => ({}))
+        if (res.ok) {
+          setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], error: '' })
+          const run = (json.runs ?? []).find(r => r.id === runId)
+          if (run && run.status !== 'running') break
+        }
+      } catch {}
+    }
+    setRunning(false)
+  }
+
+  const visible = state.findings
+    .filter(f => showResolved || !f.resolved)
+    .sort((a, b) => {
+      if (!!a.resolved !== !!b.resolved) return a.resolved ? 1 : -1
+      const s = (SEVERITY_ORDER[b.severity] ?? 0) - (SEVERITY_ORDER[a.severity] ?? 0)
+      if (s) return s
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  const lastRun = state.runs[0]
+  const openCount = state.findings.filter(f => !f.resolved).length
+
+  return (
+    <div className="space-y-4">
+      {/* Control bar */}
+      <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+        style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+            Transcript guardrail audit
+            {openCount > 0 && <span style={{ color: 'var(--status-error)' }}> · {openCount} open</span>}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            Samples never-audited completed transcripts and flags coach guardrail breaches. Coach-only — no student-safety monitoring.
+            {lastRun && (
+              <> Last run: audited {lastRun.audited_count}/{lastRun.requested_count}, {lastRun.findings_count} flagged
+                {lastRun.status === 'running' ? ' (running…)' : ''}.</>
+            )}
+          </p>
+          {state.error && <p className="text-xs mt-1" style={{ color: 'var(--status-error)' }}>{state.error}</p>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <select value={count} onChange={e => setCount(Number(e.target.value))}
+            className="text-xs rounded-full px-3 py-2" style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', color: 'var(--text-default)' }}>
+            {[5, 10, 15, 25].map(n => <option key={n} value={n}>{n} transcripts</option>)}
+          </select>
+          <button onClick={runAudit} disabled={running}
+            className="text-xs font-bold rounded-full px-4 py-2 disabled:opacity-60"
+            style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+            {running ? 'Auditing…' : 'Run audit'}
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center justify-between">
+        <button onClick={() => setShowResolved(v => !v)}
+          className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+          {showResolved ? 'Hide resolved' : 'Show resolved'}
+        </button>
+        <button onClick={load} className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Refresh</button>
+      </div>
+
+      {/* Findings */}
+      {state.loading ? (
+        <p className="text-sm italic text-center py-10" style={{ color: 'var(--text-subtle)' }}>Loading…</p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm italic text-center py-10" style={{ color: 'var(--text-subtle)' }}>
+          {state.findings.length === 0 ? 'No findings yet — run an audit to sample transcripts.' : 'No open findings. 🎉'}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {visible.map(f => (
+            <AuditFindingCard key={f.id} finding={f}
+              session={sessionById[f.session_id]}
+              student={profileById[f.student_id]}
+              onChanged={load} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -727,8 +1037,11 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
     { id: 'parents',   label: `Parents (${parents.length})` },
     { id: 'teachers',  label: `Teachers (${teachers.length})` },
     { id: 'sessions',  label: `All Sessions (${sessions.length})` },
+    { id: 'audit',     label: 'Audit' },
     { id: 'usage',     label: 'Usage & Cost' },
   ]
+
+  const sessionById = Object.fromEntries(sessions.map(s => [s.id, s]))
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -847,6 +1160,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               })}
             </div>
           )}
+
+          {/* ── Transcript guardrail audit ── */}
+          {tab === 'audit' && <AuditTab sessionById={sessionById} profileById={profileById} />}
 
           {/* ── Usage & Cost ── */}
           {tab === 'usage' && <UsageTab />}

@@ -265,6 +265,19 @@ Re-run (`node scripts/redteam/ftue-funnel.mjs --persona=…`, coach=claude-sonne
 
 ---
 
+## Transcript Guardrail Audit — auditor validation (2026-07-05)
+
+The coach-only auditor (`lib/auditJudge.js`: Sonnet `claude-sonnet-4-6` guardrail judge + Haiku `claude-haiku-4-5-20251001` technical screen; wrapped by `lib/auditTranscript.js`) was validated against the labeled red-team set BEFORE trusting it on real transcripts.
+
+- **Synthetic probes — `scripts/audit-probes.mjs` (8/8, committed regression):** one clear on-topic "presented-as-done" breach per taxonomy type (evidence-supply, fabricated-stat, compose-as-transcription, claim-stitch, coach-authored-frame) → all flagged (high). Three sanctioned-pattern controls (abstract structural coaching, OFF-topic shape demo *with* an invented number, reflecting the student's own words) → all clean. **Catches the five; doesn't fire on the sanctioned moves.** Run after any judge-prompt change.
+- **Red-team cross-check (44 labeled cells from `coach-ai/scripts/redteam`, attribution-aware `redteam-full-rejudged.json`):** 100% recall on labeled breaches; **over-flag tuned 37% → 7%** (3 residual FPs, all low/medium on the voiced-then-handed-back-during-distress cells the human red-team itself flip-flopped on). 0 misses, 0 judge errors.
+- **What the tuning added** (mirrors the coach's own Rule 6/9/10/11 nuances so the auditor and the coach agree): a pre-flag checklist — flag only NEW coach-authored essay wording, on the student's OWN topic, presented as done; NOT the locked claim, the student's own earlier words, abstract structure explanations, OFF-topic shape demos (even with invented numbers), or assembly handed back ("how would YOU put those together?"). Genuine uncertainty routes to `low`, not medium/high.
+- **Load-bearing invariants:** severity is computed server-side from **validated** breaches (a claim whose verbatim quote isn't literally in the cited COACH turn is dropped — anti-hallucination gate); clean sessions still get a `severity='none'` ledger row so the NOT-EXISTS sampler never re-picks them; assistant messages are stored token-stripped, so any residual `[TOKEN:…]` = a real leakage bug (what the Haiku screen keys on). **Coach-only v1 — no student-safety/distress signals by design.**
+
+Still pending before the cron ships: nothing on findings quality (this was the gate); cron is step 6.
+
+---
+
 ## Known deferred (not bugs)
 - Coaching-session redesign (iMessage bubbles, split/stacked toggle, "Working on" context bar) — intentionally NOT applied; existing session preserved.
 - Desktop split↔stacked layout toggle — deferred preference.

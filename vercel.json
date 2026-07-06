@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/cron/coppa-cleanup", "schedule": "0 8 * * *" }
+    { "path": "/api/cron/coppa-cleanup", "schedule": "0 8 * * *" },
+    { "path": "/api/cron/transcript-audit", "schedule": "30 9 * * *" }
   ]
 }
