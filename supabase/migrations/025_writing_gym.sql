@@ -125,7 +125,7 @@ create table gym_access_grants (
 -- P1 DELTA: link the writing session back to its gym session, so app/dashboard can
 -- exclude gym-backing rows from "Your assignments" and app/assignment/[id] can bounce
 -- them to /gym/session/[gym_session_id]. Nullable — assignment sessions leave it null.
-alter table sessions add column gym_session_id uuid references gym_sessions(id) on delete set null;
+alter table sessions add column if not exists gym_session_id uuid references gym_sessions(id) on delete set null;
 create index sessions_gym_session_idx on sessions (gym_session_id);
 
 -- ============ RLS ============
@@ -135,19 +135,25 @@ alter table gym_progress enable row level security;
 alter table portfolio_entries enable row level security;
 alter table gym_access_grants enable row level security;
 
--- Watcher read predicate mirrors "sessions: watcher reads" (001_initial_schema)
--- + gym grants. INFRA CHECK: confirm whether relationships rows exist for teachers
--- as whole-student watchers; design intent is parent=automatic, teacher=grant-only.
--- If teacher rows exist in relationships, add a role filter here to keep teachers
--- grant-only for gym surfaces.
+-- Watcher read predicate. Design intent: PARENT = automatic (via relationships),
+-- TEACHER = grant-only (via gym_access_grants). Confirmed with infra that teachers
+-- DO appear in `relationships` (CLAUDE.md watcher model), so the automatic-read arm
+-- is ROLE-FILTERED to parents — a bare relationships membership would otherwise leak
+-- gym data to a linked teacher. Teachers reach gym surfaces only through an explicit
+-- gym_access_grants row (the OR-clause below).
 
--- gym_sessions: student owns; watchers read
+-- gym_sessions: student owns; watchers read.
+-- ACCEPTED RISK: the student "owns" policy is FOR ALL, so a student can INSERT/UPDATE
+-- their own gym_sessions rows directly via PostgREST. This mints nothing — badges,
+-- portfolio entries, and level are written ONLY by the service role (RLS makes those
+-- tables read-only to the student), so a forged gym_sessions row confers no progress.
+-- Same reasoning as the COPPA audit's deferred finding 11 (self-owned session rows).
 create policy "gym_sessions: student owns" on gym_sessions
   for all using (auth.uid() = student_id) with check (auth.uid() = student_id);
 create policy "gym_sessions: watcher reads" on gym_sessions
   for select using (
-    exists (select 1 from relationships
-            where watcher_id = auth.uid() and student_id = gym_sessions.student_id)
+    exists (select 1 from relationships r join profiles p on p.id = r.watcher_id
+            where r.watcher_id = auth.uid() and r.student_id = gym_sessions.student_id and p.role = 'parent')
     or exists (select 1 from gym_access_grants
             where watcher_id = auth.uid() and student_id = gym_sessions.student_id)
   );
@@ -159,8 +165,8 @@ create policy "gym_skill_state: student reads" on gym_skill_state
   for select using (auth.uid() = student_id);
 create policy "gym_skill_state: watcher reads" on gym_skill_state
   for select using (
-    exists (select 1 from relationships
-            where watcher_id = auth.uid() and student_id = gym_skill_state.student_id)
+    exists (select 1 from relationships r join profiles p on p.id = r.watcher_id
+            where r.watcher_id = auth.uid() and r.student_id = gym_skill_state.student_id and p.role = 'parent')
     or exists (select 1 from gym_access_grants
             where watcher_id = auth.uid() and student_id = gym_skill_state.student_id)
   );
@@ -170,8 +176,8 @@ create policy "gym_progress: student reads" on gym_progress
   for select using (auth.uid() = student_id);
 create policy "gym_progress: watcher reads" on gym_progress
   for select using (
-    exists (select 1 from relationships
-            where watcher_id = auth.uid() and student_id = gym_progress.student_id)
+    exists (select 1 from relationships r join profiles p on p.id = r.watcher_id
+            where r.watcher_id = auth.uid() and r.student_id = gym_progress.student_id and p.role = 'parent')
     or exists (select 1 from gym_access_grants
             where watcher_id = auth.uid() and student_id = gym_progress.student_id)
   );
@@ -181,8 +187,8 @@ create policy "portfolio_entries: student reads" on portfolio_entries
   for select using (auth.uid() = student_id);
 create policy "portfolio_entries: watcher reads" on portfolio_entries
   for select using (
-    exists (select 1 from relationships
-            where watcher_id = auth.uid() and student_id = portfolio_entries.student_id)
+    exists (select 1 from relationships r join profiles p on p.id = r.watcher_id
+            where r.watcher_id = auth.uid() and r.student_id = portfolio_entries.student_id and p.role = 'parent')
     or exists (select 1 from gym_access_grants
             where watcher_id = auth.uid() and student_id = portfolio_entries.student_id)
   );
@@ -190,12 +196,15 @@ create policy "portfolio_entries: watcher reads" on portfolio_entries
 -- gym_access_grants: student or linked parent grants; watcher + student read
 create policy "gym_access_grants: read" on gym_access_grants
   for select using (auth.uid() = student_id or auth.uid() = watcher_id or auth.uid() = granted_by);
+-- A grant may be created by the student themself OR a linked PARENT — never by a
+-- teacher (a teacher self-granting would defeat the grant-only model). Same role
+-- filter as the watcher-read arm.
 create policy "gym_access_grants: student or parent grants" on gym_access_grants
   for insert with check (
     auth.uid() = granted_by and (
       auth.uid() = student_id
-      or exists (select 1 from relationships
-                 where watcher_id = auth.uid() and student_id = gym_access_grants.student_id)
+      or exists (select 1 from relationships r join profiles p on p.id = r.watcher_id
+                 where r.watcher_id = auth.uid() and r.student_id = gym_access_grants.student_id and p.role = 'parent')
     )
   );
 create policy "gym_access_grants: granter or student revokes" on gym_access_grants
