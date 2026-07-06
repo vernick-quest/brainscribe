@@ -4,6 +4,9 @@ import { canUseCoach, coachGateResponse, ageInYears } from '@/lib/coppa'
 import { getSkill, getGradeBand, getUnlockedSkills } from '@/lib/gymCurriculum'
 import { getChallenge } from '@/lib/gymChallengeBank'
 import { ensureGymProgress, getPracticedKeys } from '@/lib/gymAwards'
+import { buildWarmupAssignmentText } from '@/lib/gymPlacement'
+import { recordSuggestionAction } from '@/lib/gymSuggest'
+import { after } from 'next/server'
 
 // Compose the student-facing practice card the coach works from. The band card's
 // coach-only guidance (skill-check bar + anti-gaming note) is NOT included here — the
@@ -43,7 +46,35 @@ export async function POST(request) {
     .eq('id', user.id).single()
   if (!canUseCoach(profile)) return coachGateResponse()
 
-  const { skillKey, persona = 'owen' } = await request.json()
+  const { skillKey, persona = 'owen', warmup = false } = await request.json()
+
+  await ensureGymProgress(user.id)
+
+  // ── Placement warm-up: a synthetic "session" that isn't a real skill ──
+  // Fun personal paragraph, scored async on completion (never a test). No skill, no
+  // prereq check, no challenge card.
+  if (warmup) {
+    const { data: gymSession, error: gymErr } = await supabase
+      .from('gym_sessions')
+      .insert({ student_id: user.id, skill_key: 'placement_warmup', tier: 1, coach_persona: persona, session_type: 'warmup', status: 'active' })
+      .select().single()
+    if (gymErr) {
+      console.error('[gym/sessions] warmup gym_sessions insert failed:', gymErr.message)
+      return Response.json({ error: gymErr.message }, { status: 500 })
+    }
+    const { data: session, error: sessErr } = await supabase
+      .from('sessions')
+      .insert({ student_id: user.id, assignment_text: buildWarmupAssignmentText(), persona, subject: 'unspecified', title: 'Gym — warm-up', gym_session_id: gymSession.id })
+      .select().single()
+    if (sessErr) {
+      console.error('[gym/sessions] warmup sessions insert failed:', sessErr.message)
+      await supabase.from('gym_sessions').delete().eq('id', gymSession.id)
+      return Response.json({ error: sessErr.message }, { status: 500 })
+    }
+    await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+    return Response.json({ gymSessionId: gymSession.id, sessionId: session.id, warmup: true })
+  }
+
   const skill = getSkill(skillKey)
   if (!skill) return Response.json({ error: 'Unknown skill' }, { status: 400 })
 
@@ -61,8 +92,6 @@ export async function POST(request) {
   const band = getGradeBand({ age, ageBracket: profile?.age_bracket })
   const card = getChallenge(skill.key, band)
   const assignmentText = buildChallengeText(skill, card)
-
-  await ensureGymProgress(user.id)
 
   // 1) gym_sessions row (the gym-domain record).
   const { data: gymSession, error: gymErr } = await supabase
@@ -102,6 +131,9 @@ export async function POST(request) {
 
   // 3) close the loop: gym_sessions.session_id → the writing session.
   await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+
+  // Override/follow tracking for the suggestion engine (soften copy after 3 overrides).
+  after(() => recordSuggestionAction(user.id, skill.key).catch(e => console.error('[gym/sessions] recordSuggestionAction:', e)))
 
   return Response.json({
     gymSessionId: gymSession.id,

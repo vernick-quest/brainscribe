@@ -45,8 +45,9 @@ export async function POST(request) {
     return Response.json({ error: 'Not a gym session' }, { status: 400 })
   }
   const { data: gymSession } = await supabase
-    .from('gym_sessions').select('skill_key, tier').eq('id', sessionRow.gym_session_id).single()
+    .from('gym_sessions').select('skill_key, tier, session_type').eq('id', sessionRow.gym_session_id).single()
 
+  const isWarmup = gymSession?.session_type === 'warmup'
   const skill = getSkill(gymSession?.skill_key)
   const challengePrompt = sessionRow.assignment_text ?? ''
 
@@ -63,7 +64,7 @@ export async function POST(request) {
   const cleanedMessages = firstUser > 0 ? filtered.slice(firstUser) : filtered
 
   const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, challengePrompt, scaffold, {
-    gym: {
+    gym: isWarmup ? { warmup: true } : {
       skillLabel: skill?.label ?? 'this skill',
       skillDescription: skill?.description ?? '',
       tier: gymSession?.tier ?? skill?.tier ?? 1,

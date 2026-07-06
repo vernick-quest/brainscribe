@@ -1,9 +1,15 @@
+import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
 import { getSkill } from '@/lib/gymCurriculum'
+import { ageInYears } from '@/lib/coppa'
 import {
   awardPracticed, createPortfolioEntry, recomputeLevel, updateStreakOnComplete,
 } from '@/lib/gymAwards'
+import {
+  scorePlacement, applyPlacementAwards, savePlacement, createPlacementPortfolioEntry,
+} from '@/lib/gymPlacement'
+import { recomputeSuggestion } from '@/lib/gymSuggest'
 import { NextResponse } from 'next/server'
 
 // Turn any confirmed-but-unassembled scaffold paragraphs into flowing prose before we
@@ -60,8 +66,9 @@ export async function PATCH(request, { params }) {
   }
 
   const { data: gymSession } = await supabase
-    .from('gym_sessions').select('id, skill_key, tier, status, created_at').eq('id', session.gym_session_id).single()
+    .from('gym_sessions').select('id, skill_key, tier, status, session_type, created_at').eq('id', session.gym_session_id).single()
   const skill = getSkill(gymSession?.skill_key)
+  const isWarmup = gymSession?.session_type === 'warmup'
 
   // Idempotent — a re-fire (double [COMPLETE], reload) must not double-award.
   if (gymSession?.status === 'complete') {
@@ -76,9 +83,57 @@ export async function PATCH(request, { params }) {
   await assembleUnbuiltParagraphs(supabase, id, user.id)
 
   const { data: paragraphs } = await supabase
-    .from('paragraphs').select('scribed_text, is_thin, position, paragraph_index')
+    .from('paragraphs').select('scribed_text, raw_spoken_text, is_thin, position, paragraph_index')
     .eq('session_id', id).order('position')
   const paragraphTexts = (paragraphs ?? []).map(p => p.scribed_text).filter(Boolean)
+
+  // ── Placement warm-up: score async, pre-award, portfolio entry, entry-point ──
+  if (isWarmup) {
+    const first = (paragraphs ?? [])[0] ?? {}
+    // Voice-first app: if a raw transcript exists, score THAT with the register rules;
+    // else the student typed. input_mode drives the Sentence-Variety non-negotiable.
+    const inputMode = first.raw_spoken_text ? 'voice_transcript' : 'typed'
+    const paragraphText = (first.raw_spoken_text || first.scribed_text || '').trim()
+
+    const { data: prof } = await supabase.from('profiles').select('birthdate, age_bracket').eq('id', user.id).single()
+    const age = prof?.birthdate ? ageInYears(new Date(prof.birthdate), new Date()) : null
+
+    let placementResult = null
+    if (paragraphText) {
+      try {
+        placementResult = await scorePlacement({ age, inputMode, paragraph: paragraphText, userId: user.id, sessionId: id })
+      } catch (e) { console.error('[gym complete] placement scoring failed:', e) }
+    }
+
+    const portfolio = await createPlacementPortfolioEntry({
+      studentId: user.id, gymSessionId: gymSession.id, text: paragraphText, inputMode,
+    })
+    let awarded = []
+    if (placementResult) {
+      awarded = await applyPlacementAwards(user.id, placementResult.metMarkers, { portfolioEntryId: portfolio?.id ?? null })
+      await savePlacement(user.id, {
+        scored_at: new Date().toISOString(),
+        input_mode: inputMode,
+        verdicts: placementResult.verdicts,
+        entry_point: placementResult.entryPoint,
+        second_look: placementResult.secondLook,
+        second_look_done: false,
+      })
+    }
+    await supabase.from('gym_sessions')
+      .update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', gymSession.id)
+    await updateStreakOnComplete(user.id)
+    const level = await recomputeLevel(user.id)
+    // Reasoned suggestion now that pre-awards are in (runs off the fresh practiced set).
+    await recomputeSuggestion(user.id).catch(e => console.error('[gym complete] recompute:', e))
+
+    return NextResponse.json({
+      ok: true,
+      warmup: true,
+      paragraphs: paragraphs ?? [],
+      award: { placement: true, awardedSkills: awarded, level: level.level, leveledUp: level.leveledUp },
+    })
+  }
 
   // Service-role award path (badge integrity). Portfolio first so the badge can
   // point its evidence_ref at the artifact.
@@ -104,6 +159,9 @@ export async function PATCH(request, { params }) {
   // Streak (demoted) + level milestone. Streak before level so both land in one turn.
   await updateStreakOnComplete(user.id)
   const level = await recomputeLevel(user.id)
+
+  // Recompute the standing suggestion off the fresh practiced set (trigger, not page load).
+  after(() => recomputeSuggestion(user.id).catch(e => console.error('[gym complete] recompute:', e)))
 
   return NextResponse.json({
     ok: true,

@@ -51,7 +51,7 @@ function SkillBadge({ skill, state }) {
 }
 
 // ── All-skills row ──────────────────────────────────────────────────────────
-function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, onStart, starting }) {
+function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, isQueued, onStart, starting }) {
   const practiced = state === 'practiced' || state === 'locked_in'
   const tier = TIER_META[skill.tier]
   return (
@@ -73,11 +73,16 @@ function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, onStart, sta
           {isSuggested && !practiced && (
             <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--accent-text)' }}>Suggested</span>
           )}
+          {isQueued && !practiced && !unlocked && (
+            <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: tier.color }}>Queued for you</span>
+          )}
         </div>
         <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
           {unlocked
             ? skill.description
-            : `Complete ${blockedBy.map(k => getSkill(k)?.label ?? k).join(' and ')} to unlock`}
+            : isQueued
+              ? `Queued from your writing profile — unlocks once you finish ${blockedBy.map(k => getSkill(k)?.label ?? k).join(' and ')}`
+              : `Complete ${blockedBy.map(k => getSkill(k)?.label ?? k).join(' and ')} to unlock`}
         </p>
       </div>
       {unlocked ? (
@@ -112,6 +117,9 @@ export default function GymHome({
   practicedKeys = [],        // keys at practiced+
   completedSessionCount = 0,
   suggestedSkillKey = null,
+  suggestionReason = null,   // reasoned copy line from the suggestion engine (or null)
+  queuedKeys = [],           // prereq-locked skills queued from the writing profile
+  needsWarmup = false,       // brand-new gym-first student → placement warm-up first
   portfolioCount = 0,
 }) {
   const router = useRouter()
@@ -119,22 +127,37 @@ export default function GymHome({
   const [error, setError] = useState(null)
 
   const practicedSet = new Set(practicedKeys)
+  const queuedSet = new Set(queuedKeys)
   const suggested = suggestedSkillKey ? getSkill(suggestedSkillKey) : null
+
+  async function post(body) {
+    const res = await fetch('/api/gym/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Could not start that session.')
+    return data
+  }
 
   async function startSkill(skillKey) {
     if (starting) return
     setStarting(true); setError(null)
     try {
-      const res = await fetch('/api/gym/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skillKey, persona: 'owen' }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Could not start that session.'); setStarting(false); return }
+      const data = await post({ skillKey, persona: 'owen' })
       router.push(`/gym/session/${data.gymSessionId}`)
     } catch (e) {
-      console.error(e); setError('Something went wrong starting your session.'); setStarting(false)
+      console.error(e); setError(e.message ?? 'Something went wrong.'); setStarting(false)
+    }
+  }
+
+  async function startWarmup() {
+    if (starting) return
+    setStarting(true); setError(null)
+    try {
+      const data = await post({ warmup: true, persona: 'owen' })
+      router.push(`/gym/session/${data.gymSessionId}`)
+    } catch (e) {
+      console.error(e); setError(e.message ?? 'Something went wrong.'); setStarting(false)
     }
   }
 
@@ -180,16 +203,37 @@ export default function GymHome({
         </p>
       </section>
 
-      {/* This week's practice card */}
-      {suggested && (
+      {/* Warm-up card — brand-new gym-first student. Never framed as a test. */}
+      {needsWarmup ? (
+        <section className="mb-8 p-6" style={{ background: 'var(--surface-spark)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-accent)' }}>
+          <p style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent-text)', fontWeight: 'var(--fw-bold)', margin: 0 }}>
+            Start here
+          </p>
+          <h2 style={{ font: 'var(--type-subhead)', color: 'var(--text-strong)', margin: '6px 0 4px' }}>A quick warm-up</h2>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: '0 0 4px' }}>
+            Write one short, fun paragraph so your coach can see how you already write — then we'll pick a great place to start. Nothing here is graded.
+          </p>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 16px' }}>~10 minutes · your coach is ready</p>
+          <button
+            onClick={startWarmup}
+            disabled={starting}
+            className="inline-flex items-center gap-2 transition hover:opacity-90 disabled:opacity-50"
+            style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', background: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '11px 22px' }}
+          >
+            {starting ? 'Starting…' : 'Start warm-up'}
+          </button>
+          {error && <p style={{ font: 'var(--type-meta)', color: 'var(--status-error)', marginTop: 10 }}>{error}</p>}
+        </section>
+      ) : suggested && (
         <section className="mb-8 p-6" style={{ background: 'var(--surface-spark)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-accent)' }}>
           <p style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent-text)', fontWeight: 'var(--fw-bold)', margin: 0 }}>
             This week's practice
           </p>
           <h2 style={{ font: 'var(--type-subhead)', color: 'var(--text-strong)', margin: '6px 0 4px' }}>{suggested.label}</h2>
           <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: '0 0 4px' }}>{suggested.description}.</p>
+          {/* Why this pick — the suggestion engine's reason line (with the matched phrase). */}
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 16px' }}>
-            {practicedCount === 0 ? "A good place to start." : "Next in your path."} · ~25 minutes · your coach is ready
+            {suggestionReason ?? (practicedCount === 0 ? 'A good place to start.' : 'Next in your path.')} · ~25 minutes · your coach is ready
           </p>
           <button
             onClick={() => startSkill(suggested.key)}
@@ -237,6 +281,7 @@ export default function GymHome({
                   unlocked={unlocked}
                   blockedBy={unlocked ? [] : (skill.volumeGate ? [] : missingPrereqs(skill, practicedSet))}
                   isSuggested={skill.key === suggestedSkillKey}
+                  isQueued={queuedSet.has(skill.key)}
                   onStart={startSkill}
                   starting={starting}
                 />

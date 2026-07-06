@@ -3,6 +3,7 @@ import { createNotificationsForSession } from '@/lib/notifications'
 import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
 import { persistRequirementsActual } from '@/lib/requirements'
+import { recomputeSuggestion } from '@/lib/gymSuggest'
 import { NextResponse } from 'next/server'
 
 // Build flowing prose for any scaffold paragraph whose components are confirmed but
@@ -124,6 +125,10 @@ export async function PATCH(request, { params }) {
   // the student's writing profile.
   if (!session.is_onboarding) {
     analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
+      // Once the fresh writing profile is saved, recompute the student's gym suggestion
+      // (no-op if they don't use the gym — recomputeSuggestion returns null). Provenance
+      // stays one-way: the gym reads the assignment profile, never writes to it.
+      .then(() => recomputeSuggestion(user.id))
       .catch(e => console.error('[analyzeWriting complete]', e))
   }
 

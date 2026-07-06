@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import GymHome from '@/components/GymHome'
 import { getNextSequentialSkill } from '@/lib/gymCurriculum'
+import { initGymForStudent } from '@/lib/gymPlacement'
+import { reasonLine } from '@/lib/gymSuggest'
 
 export default async function GymPage() {
   const supabase = await createClient()
@@ -14,14 +16,16 @@ export default async function GymPage() {
   // the coach age gate is enforced when a session is STARTED, not for viewing.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, avatar_url, age_bracket, onboarding_complete')
+    .select('role, full_name, avatar_url, age_bracket, onboarding_complete, writing_profile_aggregate')
     .eq('id', user.id).single()
 
-  // These reads are independent — run them together. Each defaults to empty if the
-  // gym tables aren't present yet (migration 025 not applied) so the page renders an
-  // empty gym rather than crashing during the apply-before-deploy window.
+  // First-touch init: create gym_progress, and profile-seed existing assignment-mode
+  // students (their profile IS their placement). Idempotent — no-op after first visit.
+  // Guarded so a missing gym table (pre-migration) can't break the page.
+  try { await initGymForStudent(user.id) } catch (e) { console.error('[gym] init:', e) }
+
   const [progressRes, statesRes, portfolioRes, completedRes] = await Promise.all([
-    supabase.from('gym_progress').select('current_level, current_streak, longest_streak').eq('student_id', user.id).maybeSingle(),
+    supabase.from('gym_progress').select('current_level, current_streak, longest_streak, suggested_next_skill, suggested_reason, placement').eq('student_id', user.id).maybeSingle(),
     supabase.from('gym_skill_state').select('skill_key, state').eq('student_id', user.id),
     supabase.from('portfolio_entries').select('id', { count: 'exact', head: true }).eq('student_id', user.id),
     supabase.from('gym_sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id).eq('status', 'complete'),
@@ -33,8 +37,21 @@ export default async function GymPage() {
   const practicedKeys = states.map(s => s.skill_key)
   const portfolioCount = portfolioRes.count ?? 0
   const completedSessionCount = completedRes.count ?? 0
+  const aggCount = profile?.writing_profile_aggregate?.based_on_count ?? 0
 
-  const suggested = getNextSequentialSkill(new Set(practicedKeys), completedSessionCount)
+  // A brand-new gym-first student (no placement, no practiced skills, no completed
+  // sessions, no assignment profile) starts with the warm-up. Everyone else goes
+  // straight to a suggested skill.
+  const needsWarmup = !progress?.placement && practicedKeys.length === 0
+    && completedSessionCount === 0 && aggCount < 1
+
+  // Prefer the persisted, reasoned suggestion (from a recompute trigger); fall back to
+  // the sequential default (fresh account with no triggers yet).
+  const storedReason = progress?.suggested_reason ?? null
+  const seqNext = getNextSequentialSkill(new Set(practicedKeys), completedSessionCount)
+  const suggestedSkillKey = storedReason?.skill_key ?? seqNext?.key ?? null
+  const suggestionReason = storedReason ? reasonLine(storedReason) : null
+  const queued = (storedReason?.queued ?? []).map(q => q.skill_key ?? q).filter(Boolean)
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -46,7 +63,10 @@ export default async function GymPage() {
         skillStates={skillStates}
         practicedKeys={practicedKeys}
         completedSessionCount={completedSessionCount}
-        suggestedSkillKey={suggested?.key ?? null}
+        suggestedSkillKey={suggestedSkillKey}
+        suggestionReason={suggestionReason}
+        queuedKeys={queued}
+        needsWarmup={needsWarmup}
         portfolioCount={portfolioCount}
       />
     </div>

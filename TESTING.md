@@ -342,3 +342,47 @@ Manual checklist (run once 025 is applied, as a 13+ / consented test student):
 - Structured in-session pair/blueprint capture — P1 stores the real draft typed by
   output shape; richer capture is P2/P3.
 - Impersonation on gym pages — deferred.
+
+## Writing Gym — Phase 2 (placement + suggestion engine) (2026-07-05)
+
+**No migration** — P2 uses columns already shipped in migration 025 (`gym_progress.placement`,
+`suggested_reason`, `gym_sessions.session_type`/`skill_outcome`, `gym_skill_state.evidence_span`).
+
+Automated (green): `npm run build` passes; assertion suite now 88 checks (52 P1 + 36 P2).
+P2 covers: placement downstream over 10 grounded cohort cases from
+`placement-validation.md` (S05, S02, T02, T05, E01, B01, M02, M03 + the evidence-or-nothing
+and voice-SV edge cases) — verdicts, entry-point (curriculum-order scan), second-look
+(≥3 insufficient), and the **voice-transcript Sentence-Variety non-negotiable** (forced
+`insufficient_sample` even with evidence); and the suggestion decision table
+(cold_start, n=1, profile_gap stable/unlocked, non-stable→sequential, prereq_for_gap
+feeder with a queued locked gap, revisit_plateau, revisit_regression-outranks-plateau,
+hard/soft staleness, n=2 unanimity, 3-override softening).
+
+Manual checklist (as test students; 025 already applied on prod):
+- [ ] BRAND-NEW gym-first student (no assignments): `/gym` shows a **warm-up** card
+      (never the words test/placement/level/score). Start it → fun personal paragraph →
+      complete.
+- [ ] After the warm-up, Practiced badges appear for the markers the scorer found, each
+      with a quoted evidence span behind it (`gym_skill_state.evidence_span`); the warm-up
+      paragraph shows in `/gym/portfolio` as a placement entry.
+- [ ] A strong writer's warm-up pre-awards several T1 skills at once and opens the
+      suggestion further along; a thin one-sentence warm-up awards nothing and quietly
+      sets a second-look (no test framing, no error).
+- [ ] Voice-dictated warm-up: Sentence Variety is NEVER pre-awarded (voice transcript).
+- [ ] EXISTING assignment-mode student's first `/gym` visit: no warm-up — profile
+      strengths pre-award the capped T1 set (profile IS their placement); growth areas
+      seed the suggestion.
+- [ ] Suggestion card shows a **reason line** quoting the matched profile phrase
+      ("because your last few assignments mention '…'"); a prereq-locked gap shows a
+      "Queued for you" chip on its locked card and never unlocks early.
+- [ ] Finish a gym session or an assignment → the suggestion recomputes (reason may
+      change); overriding the suggestion 3× softens the copy, never nags.
+- [ ] Server logs a `[gym-telemetry] unmapped_growth_area` line for profile phrases that
+      map to no skill (the drift alarm gating the 40% escalation — escalation itself NOT built).
+
+### Deferred to P3 (unchanged)
+- `[SKILL_OUTCOME]` stream token (coach-ai lane) — `skill_outcome` stays null ⇒
+  'progressing'; the clicked/struggled branches are coded but dormant.
+- Express-rep Locked-In upgrades, timed mode, graduation, free-tier lockout.
+- Weekly Monday prompt-card generation (recompute-on-trigger covers the suggestion; a
+  scheduled Monday card is P3 polish).
