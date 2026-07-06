@@ -22,4 +22,4 @@ Migrations in this repo are **applied by hand** — there is no runner, no `supa
 4. **Print the manual-apply reminder — always, verbatim intent:**
    > ⚠️ This migration is NOT applied automatically. Open the Supabase SQL editor, paste `supabase/migrations/NNN_<slug>.sql`, and run it. Any code that depends on it will fail until you do.
 
-5. **Schema drift.** If the change touches objects known to exist only in the live DB — `is_admin()`, `invites.assignment_id`, `invites.expires_at` — include their definitions in this migration so the files match production.
+5. **Schema drift.** Known historical drift (`is_admin()`, `invites.assignment_id`, `invites.expires_at`) was reconciled in `018_reconcile_drift.sql` — do NOT re-include those. If you discover a NEW object that exists only in the live DB, reconcile it in its own migration with the live definition verbatim (the 018 pattern).

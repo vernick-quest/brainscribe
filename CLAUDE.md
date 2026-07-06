@@ -18,7 +18,7 @@ Invite-only AI **writing coach** for students (including under-13, behind a COPP
 - **Definition of done: run `npm run build` and confirm it passes before calling any change finished.** There is no automated test suite — the manual checklist is `TESTING.md`; update it when you ship UI changes.
 
 ## Architecture map
-- **Two model calls per writing turn**: a streaming Socratic coach (`/api/tutor`) and text cleanup/assembly (`/api/scribe`, `/api/assemble*`). Persona definitions and system prompts are in `lib/personas.js` and `lib/prompts.js` — change coaching behavior there, not inline. `/api/tutor`'s system prompt is split by `buildCoachSystemBlocks()` into a large static prefix (marked `cache_control: ephemeral` for Anthropic prompt caching) + a small dynamic tail; the stream carries an **inline control protocol** (`[SCAFFOLD:…]`, `[ACTIVE:…]`, `[NUGGET:…]`, `[DONE:…]`, `[THESIS:…]`, `[PARA_DONE:…]`, `[COMPLETE]`) the client parses and strips — don't break that token contract. Assignment text is re-read from the DB (via RLS), never trusted from the request body.
+- **Two model calls per writing turn**: a streaming Socratic coach (`/api/tutor`) and text cleanup/assembly (`/api/scribe`, `/api/assemble*`). Persona definitions and system prompts are in `lib/personas.js` and `lib/prompts.js` — change coaching behavior there, not inline. `/api/tutor`'s system prompt is split by `buildCoachSystemBlocks()` into a large static prefix (marked `cache_control: ephemeral` for Anthropic prompt caching) + a small dynamic tail; the stream carries an **inline control protocol** (`[SCAFFOLD:…]`, `[ACTIVE:…]`, `[NUGGET:…]`, `[DONE:…]`, `[THESIS:…]`, `[PARA_DONE:…]`, `[DICTATE]`, `[COMPLETE]`) the client parses and strips — don't break that token contract. Assignment text is re-read from the DB (via RLS), never trusted from the request body.
 - **Roles**: `admin`, `student`, `parent`, `teacher`. Parents/teachers are "watchers" linked to a student through the `relationships` table (read-only transcript access). Admin can **"remote in" / impersonate** (`lib/impersonation.js`) — when impersonating, greetings and data must reflect the *impersonated* user, not the admin (this has regressed before).
 - Expensive endpoints are rate-limited (`lib/ratelimit.js`); model/voice spend is logged via `lib/usage.js`.
 
@@ -38,9 +38,9 @@ Invite-only AI **writing coach** for students (including under-13, behind a COPP
 - Under-13 7-day auto-deletion is real and required: `/api/cron/coppa-cleanup` (daily Vercel Cron, guarded by `CRON_SECRET`, fails closed). Keep it functioning whenever you touch the COPPA flow.
 
 ## Database
-- **Schema changes only via new numbered migrations** in `supabase/migrations/` (currently through `016_*`). Do **not** run ad-hoc SQL against prod.
+- **Schema changes only via new numbered migrations** in `supabase/migrations/` (currently through `023_*`; don't trust this number — `ls` the directory, and get the next number from the infra lane). Do **not** run ad-hoc SQL against prod.
 - **Migrations are applied by hand.** There is no migration runner, no `supabase db push`, and no CI step — after you add a numbered file, a human pastes it into the Supabase SQL editor to run it. Code that depends on a new migration is dead until that paste happens, so **call out explicitly when a change needs a migration run** (and assume it hasn't been applied until confirmed).
-- Known drift to reconcile if you touch it: `is_admin()` and some `invites` columns (`assignment_id`, `expires_at`) exist only in the live DB, not in any migration — add the missing migration if you modify them.
+- Historical live-DB drift (`is_admin()`, `invites.assignment_id`, `invites.expires_at`) was reconciled in `018_reconcile_drift.sql` — a fresh rebuild from migrations now matches prod. If you find NEW live-only objects, reconcile them the same way (own numbered migration, verbatim definitions).
 
 ## Secrets
 - All keys live in `.env.local` (gitignored) and Vercel env vars. **Never paste live keys into chat or commit them** — reference `process.env.*`. See `SETUP.md` for the full list.

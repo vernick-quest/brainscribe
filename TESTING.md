@@ -53,6 +53,8 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] 🔧 Replay button on a message during a coach read-aloud doesn't get talked over (run-guard); two audio clips never overlap
 - [ ] 🔧 Rapid Send right after the coach's text lands (very short replies) doesn't leave a stale clip playing over the new turn
 
+> ⚠️ 2026-07-05: this section predates the hook-only FTUE (5 steps, one opening line, no practice-paragraph resume). "Step X of 7" is now "Step X of 5"; the resume/tour checks no longer map 1:1 — retest against components/OnboardingFlow.js.
+
 ## FTUE onboarding (resume + restyle)
 - [ ] ⬜ Reset a student's onboarding flag in Admin → student is routed through the FTUE
 - [ ] ⬜ "Step X of 7" indicator shows; restyled cards (cream bg, raised cards, pill dots) look right

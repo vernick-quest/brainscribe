@@ -19,6 +19,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ANTHROPIC_API_KEY=sk-ant-...
 NEXT_PUBLIC_SITE_URL=http://localhost:3000   # change for prod
+ELEVENLABS_API_KEY=...                        # TTS (/api/speak) + realtime STT token minting
+CRON_SECRET=...                               # guards /api/cron/coppa-cleanup (COPPA 7-day deletion)
+RESEND_API_KEY=...                            # COPPA consent emails
 ```
 
 ## 3. Run locally
@@ -57,4 +60,4 @@ Transcript view is at `/transcript/<session_id>`.
 - **Two Claude calls per turn**: `/api/tutor` (streaming, Socratic question) and `/api/scribe` (JSON, paragraph cleanup)
 - **RLS enforces** student isolation and parent/teacher read-only access via `relationships` table
 - **Stripe hooks**: `subscriptions` table is ready; add webhook + gating logic later
-- **ElevenLabs**: currently using browser `SpeechSynthesis` as fallback; swap `/api/tutor` response into ElevenLabs TTS call when ready
+- **ElevenLabs**: TTS is live via `/api/speak` (`eleven_turbo_v2_5`, per-persona voices) and realtime STT via `/api/scribe-token` + `components/MicButton.js`. Requires `ELEVENLABS_API_KEY`.
