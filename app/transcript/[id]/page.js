@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
 import TranscriptToolbar from '@/components/TranscriptToolbar'
 import ConversationLog from '@/components/ConversationLog'
+import RubricReviewSection from '@/components/RubricReviewSection'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
@@ -44,10 +45,11 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
+    db.from('rubrics').select('rubric_text, feedback_text').eq('session_id', id).maybeSingle(),
   ])
 
   // FTUE finale: landing on the practice transcript is the end of the tutorial.
@@ -93,6 +95,20 @@ export default async function TranscriptPage({ params, searchParams }) {
   const backLabel = profile?.role === 'parent' ? 'Parent dashboard' : profile?.role === 'teacher' ? 'Teacher dashboard' : 'Dashboard'
   const coachPersona = getPersona(session.persona)
   const subjectLabel = getSubjectLabel(session)
+
+  // Head Grader (rubric review) — student-owner-only, complete sessions only.
+  // v1 is UI-gated: the rubrics RLS also lets watchers READ the row, but the
+  // section is never rendered for them (see AUDIT / TESTING notes). The stored
+  // review is a versioned envelope in feedback_text; an unparseable one is
+  // treated as "no review yet".
+  const rubricAttached = isStudent && isComplete && !!rubricRow?.rubric_text
+  let rubricReview = null
+  if (rubricAttached && rubricRow?.feedback_text) {
+    try {
+      const env = JSON.parse(rubricRow.feedback_text)
+      if (env?.v === 1 && env.review) rubricReview = env.review
+    } catch { /* stale/legacy feedback_text — show the attach+check flow fresh */ }
+  }
 
   return (
     <div className="transcript-root min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -265,6 +281,16 @@ export default async function TranscriptPage({ params, searchParams }) {
           )}
         </section>
         </>
+        )}
+
+        {/* Head Grader — student-owner-only, complete sessions. Observe-only
+            rubric review; routes every gap to the guardrailed coach. */}
+        {isStudent && isComplete && !isEmpty && (
+          <RubricReviewSection
+            sessionId={id}
+            initialRubricAttached={rubricAttached}
+            initialReview={rubricReview}
+          />
         )}
 
         {/* Next actions — students only; this is the end of a finished piece, not
