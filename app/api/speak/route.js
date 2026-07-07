@@ -2,6 +2,7 @@ import { PERSONAS } from '@/lib/prompts'
 import { createClient } from '@/lib/supabase/server'
 import { logElevenLabsUsage } from '@/lib/usage'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 
 const MODEL_ID = 'eleven_turbo_v2_5'
 
@@ -9,6 +10,10 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const { data: gate } = await supabase
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+  if (!canUseCoach(gate)) return coachGateResponse()
 
   if (!await checkRateLimit(`speak:${user.id}`, 60, 60)) return new Response('Too many requests', { status: 429 })
   // Daily per-account backstop against runaway TTS spend (fails open).
