@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicUsage } from '@/lib/usage'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 
 const anthropic = new Anthropic()
 
@@ -22,6 +24,12 @@ export async function POST(request, { params }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: gate } = await supabase
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+  if (!canUseCoach(gate)) return coachGateResponse()
+
+  if (!await checkRateLimit(`summary:${user.id}`, 20, 60)) return rateLimited()
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',

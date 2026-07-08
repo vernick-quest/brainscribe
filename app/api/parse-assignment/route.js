@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 
 const anthropic = new Anthropic()
 
@@ -19,6 +21,12 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: gate } = await supabase
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+  if (!canUseCoach(gate)) return coachGateResponse()
+
+  if (!await checkRateLimit(`parse-assignment:${user.id}`, 10, 60)) return rateLimited()
 
   const formData = await request.formData()
   const file = formData.get('file')

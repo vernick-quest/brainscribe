@@ -4,7 +4,7 @@ import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
 import { persistRequirementsActual } from '@/lib/requirements'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 
 // Build flowing prose for any scaffold paragraph whose components are confirmed but
 // that has no paragraphs row yet — e.g. a single-paragraph session that goes
@@ -93,12 +93,13 @@ export async function PATCH(request, { params }) {
     || session.assignment_text?.slice(0, 60) + (session.assignment_text?.length > 60 ? '…' : '')
     || 'an assignment'
 
-  // Notify all teachers on this session (fire-and-forget)
-  createNotificationsForSession({
+  // Notify all teachers on this session (deferred — a bare floating promise can be
+  // killed when the serverless function returns; after() keeps it alive post-response)
+  after(() => createNotificationsForSession({
     sessionId: id,
     type: 'assignment_complete',
     message: `${studentName} finished their assignment: "${assignmentLabel}"`,
-  }).catch(e => console.error('[notifications complete]', e))
+  }).catch(e => console.error('[notifications complete]', e)))
 
   // Turn any confirmed-but-unassembled paragraphs into flowing prose before we
   // read the final draft for analysis (and hand it back to the client). Skipped for
@@ -124,12 +125,12 @@ export async function PATCH(request, { params }) {
   // onboarding warm-up: a single opening line isn't enough signal and shouldn't seed
   // the student's writing profile.
   if (!session.is_onboarding) {
-    analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
+    after(() => analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
       // Once the fresh writing profile is saved, recompute the student's gym suggestion
       // (no-op if they don't use the gym — recomputeSuggestion returns null). Provenance
       // stays one-way: the gym reads the assignment profile, never writes to it.
       .then(() => recomputeSuggestion(user.id))
-      .catch(e => console.error('[analyzeWriting complete]', e))
+      .catch(e => console.error('[analyzeWriting complete]', e)))
   }
 
   // Return the assembled paragraphs so the client can show the finished prose
