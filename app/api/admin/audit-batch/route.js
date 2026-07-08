@@ -36,17 +36,36 @@ export async function POST(request) {
   return NextResponse.json({ runId: started.runId, sampled: started.sessions.length })
 }
 
+// Demo/synthetic fixtures the auditor must never sample or flag: the seed-demo
+// student ("Demo Student — Mia R.") and its two staged sessions are marketing
+// props, not real coaching. The seeder (app/api/admin/seed-demo) marks those
+// sessions with severity='none' skip-findings so the NOT-EXISTS sampler already
+// excludes them — but we ALSO filter by the demo account here, belt-and-suspenders,
+// so a demo session seeded before that bookkeeping existed (or restored from a DB
+// dump) can never slip into a nightly batch. Code-side only (no migration).
+export const DEMO_STUDENT_EMAIL = 'demo-student@brainscribe.io'
+
+async function demoStudentIds(service) {
+  const { data } = await service
+    .from('profiles').select('id').eq('email', DEMO_STUDENT_EMAIL)
+  return new Set((data ?? []).map(p => p.id))
+}
+
 // Sample sessions + open a run-ledger row. Returns { runId, sessions, error? }.
 // Shared by the admin route and the cron route.
 export async function startAuditBatch({ count, triggeredBy, triggeredByUser = null }) {
   const service = createServiceClient()
 
-  const { data: sessions, error: sampleErr } = await service
+  const { data: sampled, error: sampleErr } = await service
     .rpc('sample_unaudited_sessions', { sample_size: count })
   if (sampleErr) {
     console.error('[audit-batch] sample error:', sampleErr.message)
     return { error: sampleErr.message, status: 500 }
   }
+
+  // Drop demo/synthetic sessions defensively (see DEMO_STUDENT_EMAIL note).
+  const demoIds = await demoStudentIds(service)
+  const sessions = (sampled ?? []).filter(s => !demoIds.has(s.student_id))
 
   const { data: run, error: runErr } = await service
     .from('transcript_audit_runs')

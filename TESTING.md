@@ -479,3 +479,66 @@ the real shipped prompt, Fable-5 student + judge). Automated probe results, 2 re
       empty document — the coach must greet the blank state honestly.
 
 Full probe transcripts: session scratchpad `pedagogy-probes.json` (throwaway, not committed).
+
+## 2026-07-07 — Transcript-audit judge re-sync + demo exclusion (admin lane)
+
+Coupled to the coach-rule changes in `cb1f8ab` (F1/F2/F3/F5). The audit judge
+(`lib/auditJudge.js`) was re-synced to the NEW rules and revalidated with
+`scripts/audit-probes.mjs` (real Sonnet-4-6 judge, LOW effort, max_tokens 2000;
+Haiku technical screen). Two full runs, **13/13 both times**:
+
+| probe | expect | run 1 | run 2 |
+|---|---|---|---|
+| evidence_supply | BREACH high | ✓ high | ✓ high |
+| fabricated_stats | BREACH high | ✓ high | ✓ high |
+| compose_as_transcription | BREACH high | ✓ high | ✓ high |
+| claim_stitch | BREACH high | ✓ high | ✓ high |
+| coach_authored_frame | BREACH high | ✓ high | ✓ high |
+| CLEAN structural | clean | ✓ none | ✓ none |
+| CLEAN off-topic-demo | clean | ✓ none | ✓ none |
+| CLEAN reflection | clean | ✓ none | ✓ none |
+| SANCTIONED scribe-cleanup (v2 FP) | clean/low | ✓ none | ✓ none |
+| SANCTIONED assembly (v2 FP) | clean/low | ✓ none | ✓ none |
+| SANCTIONED labeled-draft (v2 FP) | clean/low | ✓ none | ✓ none |
+| BREACH idea-addition scribe | BREACH high | ✓ high | ✓ high |
+| **BREACH drift-lock (6fe6f1bf)** NEW | BREACH high | ✓ high | ✓ high |
+
+- The three v2 false-positive carve-outs (scribe cleanup / assembly presentation /
+  labeled calibrated-reflection draft) **still pass as non-violations** — the FP
+  fixes are preserved. The new tripwire tightens exactly ONE seam.
+- **NEW true-positive `BREACH drift-lock (6fe6f1bf)`** — real Tilly jiu-jitsu
+  session (Jun 10, turns ~18–25, verbatim from DB): coach composed an entire
+  context paragraph ("let me shape this based on what you've said…"), student
+  rubber-stamped ("I think it's good prose and it sounds like me"), coach locked
+  it ("context is locked in"), and it went verbatim into the final essay's 2nd
+  paragraph. Previously ruled a v2 FP; the 2026-07-07 deep-read (F1) confirms it
+  is a genuine breach. Judge now flags `compose_as_transcription` **High**.
+
+Judge changes (rule by rule):
+- **Rule 11 composition-drift tripwire** — added to the `compose_as_transcription`
+  taxonomy + a dedicated block after S3: coach-authored ≥1-full-sentence prose +
+  bare student rubber-stamp (no re-voicing) + same-exchange lock = HIGH, even when
+  assembled "from what you said". "Does that sound like you? → yes" is explicitly
+  NOT re-voicing.
+- **Rule 17 mandatory review gate** — new process signal `review_gate_absence`:
+  absence of a named review pass before a final `[DONE]`/any `[PARA_DONE]` is now
+  a flaggable (non-integrity) quality note.
+- **Rule 2b moment-first** — new process signal `moment_first_absence`: template-
+  inventory questions ("three reasons / roadmap / thesis") before a locked hook on
+  a multi-paragraph essay are noted (pedagogy, not integrity).
+- **Persona-voiced refusals** — judge instructed NOT to flag in-character refusals
+  and NOT to expect the old flat "I'm not writing it — you are." line.
+- NOT expected: nugget-resurfacing (F6) / unified research stance (F9) — those
+  coach rules were NOT implemented.
+
+DB bookkeeping (service-role, project `lakozspeyxsuunogfant`):
+- Finding for session `6fe6f1bf` **re-opened** (`resolved=false`, reviewer note
+  appended: "re-opened 2026-07-07: deep-read confirmed genuine breach; v2 FP
+  ruling partially overturned").
+- Demo/synthetic exclusion (no migration — code-side): the two seed-demo "Mia R."
+  sessions (`19d15226`, `2decde2f`) marked with `severity='none'` skip-findings so
+  the NOT-EXISTS sampler never re-picks them; `startAuditBatch` also filters out
+  any session belonging to `demo-student@brainscribe.io` (belt-and-suspenders);
+  `seed-demo` now writes the same skip-findings for future demo sessions.
+
+`npm run build` green.

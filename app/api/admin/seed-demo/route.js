@@ -249,6 +249,38 @@ export async function POST() {
       if (pErr) throw new Error(`insert paragraphs: ${pErr.message}`)
     }
 
+    // 3b. Mark the demo sessions as already-audited/skipped so they NEVER enter a
+    //     transcript-audit batch. These are staged marketing fixtures, not real
+    //     coaching — auditing them would flag a coach-composed demo paragraph and
+    //     flatter completion/quality metrics. The audit sampler picks sessions
+    //     where NOT EXISTS a transcript_audit_findings row, so a severity='none'
+    //     skip-finding removes them from sampling. (Best-effort: if the audit
+    //     tables aren't present yet — migration 024 — this is a no-op; the
+    //     demo-account filter in audit-batch still excludes them.)
+    try {
+      const { data: skipRun } = await service
+        .from('transcript_audit_runs')
+        .insert({ triggered_by: 'admin', triggered_by_user: null, requested_count: 0, status: 'complete', completed_at: now.toISOString() })
+        .select('id')
+        .single()
+      if (skipRun?.id) {
+        const skipRows = insertedIds.map(sessionId => ({
+          run_id: skipRun.id,
+          session_id: sessionId,
+          student_id: studentId,
+          severity: 'none',
+          breach_types: [],
+          resolved: true,
+          resolved_at: now.toISOString(),
+          admin_notes: 'demo/synthetic fixture — auto-skipped from transcript audit (seed-demo).',
+        }))
+        await service.from('transcript_audit_findings')
+          .upsert(skipRows, { onConflict: 'session_id' })
+      }
+    } catch (skipErr) {
+      console.error('[seed-demo] audit skip-marking failed (non-fatal):', skipErr?.message ?? skipErr)
+    }
+
     // 4. Relationship: parent watches student (idempotent via unique constraint).
     const { error: relErr } = await service
       .from('relationships')
