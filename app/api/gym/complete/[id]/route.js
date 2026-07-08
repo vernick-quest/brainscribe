@@ -79,7 +79,7 @@ export async function PATCH(request, { params }) {
   }
 
   // Mark the writing session complete + assemble any unbuilt paragraphs.
-  await supabase.from('sessions').update({ status: 'complete' }).eq('id', id)
+  await supabase.from('sessions').update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', id)
   await assembleUnbuiltParagraphs(supabase, id, user.id)
 
   const { data: paragraphs } = await supabase

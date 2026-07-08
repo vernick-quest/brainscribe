@@ -14,9 +14,12 @@ export async function POST(request) {
 
   const { sessionId, scribedText, rawSpokenText, position, isThin } = await request.json()
 
+  // Upsert, not insert: paragraphs(session_id, position) is unique (migration 027),
+  // so re-saving a position replaces the row instead of erroring or duplicating.
   const { data, error } = await supabase
     .from('paragraphs')
-    .insert({ session_id: sessionId, scribed_text: scribedText, raw_spoken_text: rawSpokenText, position, is_thin: isThin ?? false })
+    .upsert({ session_id: sessionId, scribed_text: scribedText, raw_spoken_text: rawSpokenText, position, is_thin: isThin ?? false },
+      { onConflict: 'session_id,position' })
     .select()
     .single()
 

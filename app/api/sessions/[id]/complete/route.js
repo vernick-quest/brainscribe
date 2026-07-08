@@ -73,7 +73,7 @@ export async function PATCH(request, { params }) {
   // Mark complete
   const { error } = await supabase
     .from('sessions')
-    .update({ status: 'complete' })
+    .update({ status: 'complete', completed_at: new Date().toISOString() })
     .eq('id', id)
 
   if (error) {
