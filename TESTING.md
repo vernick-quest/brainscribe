@@ -386,3 +386,67 @@ Manual checklist (as test students; 025 already applied on prod):
 - Express-rep Locked-In upgrades, timed mode, graduation, free-tier lockout.
 - Weekly Monday prompt-card generation (recompute-on-trigger covers the suggestion; a
   scheduled Monday card is P3 polish).
+
+---
+
+# 2026-07-07 — coaching-session: persona-switch greeting, UI read-back, scribe recovery
+
+Fixes from the transcript deep-read (F4/F7) and the fragility audit (D2), all in
+`components/TutorSession.js` (+ read-only trace of `app/api/sessions/[id]/persona`,
+`app/api/tutor`, `app/transcript/[id]`). No migration, no schema change, no server
+route change. There is no automated suite — walk these by hand. Every path below was
+traced through the full call chain; this list is the manual verification.
+
+**Accounts:** student (`vernick@gmail.com`); admin remote-in optional.
+
+## A/B — Persona-switch handoff greeting (was model-generated → now UI-assembled)
+- [ ] Mid-session, open the coach picker and switch to a DIFFERENT coach. The greeting:
+      (a) uses the CURRENT display name (Owen/Alistair/Zoe/Tilly/Deon/Jade) — never a
+      retired name (Jordan/Isla/Verity/Marcus/Oliver);
+      (b) NAMES the handoff — "taking over from <previous coach>";
+      (c) reflects real state (see below). No `/api/tutor` (or `/api/gym/tutor`) call
+      fires for the greeting — it is delivered client-side + `/api/speak` only.
+- [ ] EMPTY session (nothing locked, no paragraphs): switch coach → greeting claims NO
+      progress ("we're right at the start, nothing locked in yet"). It must NEVER say
+      "I've had a read through what you've written…". This is the trust-corrosive line.
+- [ ] IN-PROGRESS session (≥1 component locked or ≥1 paragraph scribed): greeting states
+      the real count ("N of M parts locked in") and, if mid-component, names the stage.
+- [ ] DONE session (all parts complete): greeting acknowledges the finish, offers review.
+- [ ] NO-OP switch: tap the CURRENT coach in the picker → nothing happens (no new
+      greeting, no duplicate intro, picker just closes).
+- [ ] Session-start greeting/persona match: the opening greeting name, the header/avatar,
+      and the read-aloud voice all match `session.persona`. A legacy/retired stored key
+      resolves to its current coach (isla→Tilly, jordan→Jade, etc.) consistently across
+      greeting text + avatar + TTS (no "resolves to matilda but greets 'I'm Zoe'").
+
+## C — Full-essay read-back is UI-assembled (never model-regenerated)
+- [ ] With ≥1 paragraph written, in listening mode ask to hear the WHOLE piece ("read
+      the whole thing back", "can I see the full essay", "it got cut off, read it again").
+      The reply is the verbatim locked paragraphs joined — byte-for-byte the same text
+      the transcript page shows — and does NOT truncate mid-sentence. No `/api/tutor` call.
+- [ ] A SINGLE-paragraph "read that back" still routes to the coach (not intercepted).
+- [ ] Read-back with NOTHING written yet → falls through to the coach (it can say so).
+- [ ] Completion: on `[COMPLETE]`, the coach invites review of the essay "below"; the
+      essay panel shows the verbatim scribed paragraphs (no inline regenerated re-read).
+
+## D — Scribe failure never freezes dictation or loses the spoken paragraph
+- [ ] Force `/api/scribe` to fail (e.g. throttle to 429, or offline the tab) then dictate
+      a paragraph. The UI does NOT hang on the "scribe-thinking" three-dots. It drops back
+      to the dictation composer, the raw spoken text is RESTORED in the input (retriable),
+      and a warm notice line appears. Re-sending then works normally.
+- [ ] Successful dictation still previews the scribed paragraph as before (no regression).
+
+## E — [DICTATE] token stripping before persistence (verified, no code change)
+- [ ] `/api/tutor` `after()` insert strips both the scaffold tokens AND `[DICTATE]`
+      (`route.js:100`) before saving coach turns — confirmed present. Raw `[DICTATE]`
+      in old stored sessions (`0fec6044`) is legacy pre-fix data, not a live leak.
+
+## Cross-mode / regression (both modes share this component)
+- [ ] GYM session (`/gym/session/[id]`): streams, locks components, and completes
+      normally; a coach switch there produces the same state-aware handoff greeting; a
+      scribe failure recovers the same way. The `tutorEndpoint`/`completeEndpoint`/`gym`
+      seams are untouched.
+- [ ] Barge-in unchanged: composer stays mounted through tutor-thinking/waiting; Send is
+      held (coachBusy) while the coach writes, then interrupts only the read-aloud audio.
+- [ ] Voice pipeline unchanged: single unlocked `<audio>`, word-sync caption, replay,
+      and mic start/stop all behave as before.
