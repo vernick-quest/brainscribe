@@ -1594,7 +1594,7 @@ export default function TutorSession({
             <div className="shrink-0 flex items-center gap-3 px-4 py-2 text-xs flex-wrap"
               style={{ backgroundColor: 'var(--surface-spark)', borderBottom: '1px solid var(--border-accent)' }}>
               <span className="font-bold uppercase tracking-widest inline-flex items-center gap-1.5 shrink-0" style={{ color: 'var(--accent-text)' }}>
-                <Icon name="pencil" size={12} /> Writing Gym
+                <Icon name="pencil" size={12} /> Skill Studio
               </span>
               <span className="font-semibold shrink-0" style={{ color: 'var(--text-strong)' }}>{gym.skillLabel}</span>
               {/* Beat stepper — progress, never minutes (design: no clock in untimed sessions) */}

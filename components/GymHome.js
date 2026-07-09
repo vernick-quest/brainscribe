@@ -327,7 +327,7 @@ export default function GymHome({
       {/* Header */}
       <div className="mb-8">
         <p style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)', fontWeight: 'var(--fw-bold)', margin: 0 }}>
-          Writing Gym
+          Skill Studio
         </p>
         <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '4px 0 0' }}>
           Practice a skill

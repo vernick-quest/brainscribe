@@ -17,7 +17,7 @@ function buildChallengeText(skill, card) {
   if (card?.practiceA) opts.push(`A) ${card.practiceA}`)
   if (card?.practiceB) opts.push(`B) ${card.practiceB}`)
   return [
-    `Writing Gym — ${skill.label}`,
+    `Skill Studio — ${skill.label}`,
     skill.description ? `Today we're practicing: ${skill.description}.` : '',
     card?.warmup ? `\nWarm-up: ${card.warmup}` : '',
     opts.length ? `\nPick one to practice:\n${opts.join('\n\n')}` : '',
