@@ -122,14 +122,34 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* Writing Gym entry — a separate practice mode from assignments. */}
+        {/* Writing Gym — a distinct low-stakes practice mode, given its own weight
+            (a full-width banner) so it reads as separate from high-stakes assignments.
+            Warm --surface-spark card = soft brand color; navy button ≠ the orange
+            "New assignment" primary CTA, so it's prominent-but-secondary, not competing. */}
         {!imp && (
-          <a href="/gym" className="inline-flex items-center gap-1.5 transition hover:opacity-80"
-            style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-link)', marginBottom: 'var(--space-5)' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6.5 6.5h11M6.5 17.5h11M4 9v6M20 9v6M4 12h16"/>
-            </svg>
-            Practice a skill in the Writing Gym →
+          <a href="/gym"
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition hover:opacity-95"
+            style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)', borderRadius: 'var(--radius-md)', padding: '18px 22px', marginBottom: 'var(--space-5)', textDecoration: 'none' }}>
+            <div className="flex items-center gap-3">
+              <span className="shrink-0 flex items-center justify-center"
+                style={{ width: 40, height: 40, borderRadius: 'var(--radius-md)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-accent)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6.5 6.5h11M6.5 17.5h11M4 9v6M20 9v6M4 12h16"/>
+                </svg>
+              </span>
+              <div>
+                <p style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', margin: 0 }}>
+                  Want to sharpen your skills?
+                </p>
+                <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  Build your confidence with quick exercises in the Writing Gym.
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 inline-flex items-center justify-center gap-1.5"
+              style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--bg-page)', backgroundColor: 'var(--text-strong)', borderRadius: 'var(--radius-pill)', padding: '10px 18px' }}>
+              Enter Writing Gym →
+            </span>
           </a>
         )}
 
