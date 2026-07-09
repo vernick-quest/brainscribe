@@ -84,8 +84,11 @@ export default function InviteTeacherForm({ assignmentId }) {
 
       {!inviteLink ? (
         <form onSubmit={handleSubmit} className="space-y-2">
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Your teacher will be able to read this assignment, your essay, and the full dialogue.
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Your teacher sees this whole conversation — not just your final draft.{' '}
+            <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>That&rsquo;s the point:</span>{' '}
+            the back-and-forth shows the words and ideas came from you, with your coach guiding —
+            never writing for you.
           </p>
           <div className="flex gap-2">
             <input

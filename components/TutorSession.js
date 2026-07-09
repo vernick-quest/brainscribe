@@ -974,6 +974,31 @@ export default function TutorSession({
       }
     }
 
+    // Onboarding root-fix: store the locked opening line as a normal component lock
+    // (status:'confirmed'), not a lingering 'candidate'. The practice flow captures
+    // the line as [NUGGET:c0:words] and ends on [COMPLETE]; on LLM-variant runs the
+    // coach sometimes reaches [COMPLETE] without a cleanly parseable [DONE:c0], which
+    // would persist the item as 'candidate' with real text — experienced as locked
+    // but stored non-confirmed (why the reveal + transcript need lenient fallbacks).
+    // On [COMPLETE] in the practice flow, promote any captured-but-unconfirmed item to
+    // 'confirmed' with its text, so the hook reaches the DB exactly like a real lock.
+    // Scoped to onboarding — general (multi-component) sessions are untouched, so a
+    // stray [COMPLETE] can never mass-confirm parts a student hasn't approved.
+    if (onboarding && sc && fullText.includes('[COMPLETE]')) {
+      sc = {
+        ...sc,
+        components: sc.components.map(p => ({
+          ...p,
+          items: (p.items ?? []).map(item =>
+            item.status !== 'confirmed' && (item.text || item.nuggetText)
+              ? { ...item, status: 'confirmed', text: item.text || item.nuggetText }
+              : item
+          ),
+        })),
+      }
+      changed = true
+    }
+
     // Persist any change — including when the scaffold was created THIS turn. The
     // hook-only practice flow builds the scaffold and locks the opening line in a
     // single coach turn; the create POST above only saved the initial (unconfirmed)
