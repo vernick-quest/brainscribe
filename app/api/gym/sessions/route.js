@@ -71,7 +71,15 @@ export async function POST(request) {
       await supabase.from('gym_sessions').delete().eq('id', gymSession.id)
       return Response.json({ error: sessErr.message }, { status: 500 })
     }
-    await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+    const { error: linkErr } = await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+    if (linkErr) {
+      // Without the back-link, /gym/session/[id] redirects away (unreachable session).
+      // Roll both rows back so a retry starts clean rather than stranding the student.
+      console.error('[gym/sessions] warmup back-link failed:', linkErr.message)
+      await supabase.from('sessions').delete().eq('id', session.id)
+      await supabase.from('gym_sessions').delete().eq('id', gymSession.id)
+      return Response.json({ error: linkErr.message }, { status: 500 })
+    }
     return Response.json({ gymSessionId: gymSession.id, sessionId: session.id, warmup: true })
   }
 
@@ -130,7 +138,15 @@ export async function POST(request) {
   }
 
   // 3) close the loop: gym_sessions.session_id → the writing session.
-  await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+  const { error: linkErr } = await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
+  if (linkErr) {
+    // Back-link is load-bearing: /gym/session/[id] redirects away when session_id is
+    // null. Roll both rows back so the student's retry is clean, not a dead session.
+    console.error('[gym/sessions] back-link failed:', linkErr.message)
+    await supabase.from('sessions').delete().eq('id', session.id)
+    await supabase.from('gym_sessions').delete().eq('id', gymSession.id)
+    return Response.json({ error: linkErr.message }, { status: 500 })
+  }
 
   // Override/follow tracking for the suggestion engine (soften copy after 3 overrides).
   after(() => recordSuggestionAction(user.id, skill.key).catch(e => console.error('[gym/sessions] recordSuggestionAction:', e)))

@@ -78,8 +78,44 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ ok: true, alreadyComplete: true, paragraphs: paragraphs ?? [] })
   }
 
-  // Mark the writing session complete + assemble any unbuilt paragraphs.
-  await supabase.from('sessions').update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', id)
+  // ── Idempotency: claim the completion atomically BEFORE any award ──
+  // The status read above is only a fast path; two concurrent PATCHes (a double
+  // [COMPLETE] in one stream + a reload, or two tabs) can both pass it. Flip the
+  // idempotency marker (gym_sessions.status active→complete) with a compare-and-swap
+  // and let only the winner proceed to award. A lost CAS (0 rows back) means another
+  // request already completed this session — so portfolio/badge/streak/level never
+  // re-run and nothing double-awards. Also fixes the partial-failure case: the marker
+  // is set FIRST, so a later error can't leave gym_sessions 'active' and re-run awards
+  // on the student's next completion attempt. gym_sessions is student-writable by
+  // design (migration 025, accepted risk); the award writes below still go through the
+  // service-role client in lib/gymAwards.js.
+  const durationSeconds = gymSession?.created_at
+    ? Math.max(0, Math.round((Date.now() - new Date(gymSession.created_at).getTime()) / 1000))
+    : null
+  const { data: claimed, error: claimErr } = await supabase
+    .from('gym_sessions')
+    .update({ status: 'complete', completed_at: new Date().toISOString(), duration_seconds: durationSeconds })
+    .eq('id', gymSession.id).eq('status', 'active')
+    .select('id')
+  if (claimErr) {
+    console.error('[gym complete] completion claim failed:', claimErr.message)
+    return NextResponse.json({ error: 'Could not complete session.' }, { status: 500 })
+  }
+  if (!claimed || claimed.length === 0) {
+    // Lost the race (or the row was no longer 'active') — another request already owns
+    // the completion. Return the same idempotent shape as the fast path; award nothing.
+    const { data: paragraphs } = await supabase
+      .from('paragraphs').select('scribed_text, is_thin, position, paragraph_index')
+      .eq('session_id', id).order('position')
+    return NextResponse.json({ ok: true, alreadyComplete: true, paragraphs: paragraphs ?? [] })
+  }
+
+  // We own the completion. Mark the writing session complete + assemble any unbuilt
+  // paragraphs. (sessions.completed_at is the freshness contract the suggestion engine
+  // reads — migration 026; keep stamping it here.)
+  const { error: sessErr } = await supabase
+    .from('sessions').update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', id)
+  if (sessErr) console.error('[gym complete] sessions status update failed:', sessErr.message)
   await assembleUnbuiltParagraphs(supabase, id, user.id)
 
   const { data: paragraphs } = await supabase
@@ -120,8 +156,7 @@ export async function PATCH(request, { params }) {
         second_look_done: false,
       })
     }
-    await supabase.from('gym_sessions')
-      .update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', gymSession.id)
+    // (gym_sessions already marked complete by the compare-and-swap claim above.)
     await updateStreakOnComplete(user.id)
     const level = await recomputeLevel(user.id)
     // Reasoned suggestion now that pre-awards are in (runs off the fresh practiced set).
@@ -148,13 +183,8 @@ export async function PATCH(request, { params }) {
     source: 'session', evidenceRef: portfolio?.id ?? null,
   })
 
-  // Close the gym session record.
-  const durationSeconds = gymSession.created_at
-    ? Math.max(0, Math.round((Date.now() - new Date(gymSession.created_at).getTime()) / 1000))
-    : null
-  await supabase.from('gym_sessions')
-    .update({ status: 'complete', completed_at: new Date().toISOString(), duration_seconds: durationSeconds })
-    .eq('id', gymSession.id)
+  // (gym_sessions already closed — status/completed_at/duration_seconds stamped by the
+  // compare-and-swap claim above, which is what gates this award path.)
 
   // Streak (demoted) + level milestone. Streak before level so both land in one turn.
   await updateStreakOnComplete(user.id)

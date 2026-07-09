@@ -593,3 +593,65 @@ Manual checklist (as a 13+ / consented test student, on a COMPLETE session):
   PLACEMENT only; never aggregation).
 - In-place reopen of a completed session, rubric-attach at session creation, review
   history/versioning, teacher rubric authoring — phase 2.
+
+---
+
+## 2026-07-08 — Gym completion idempotency + partial-failure hardening (focus/gym, fragility audit A/D findings)
+
+Fixes the gym-lane findings from `docs/specs/AUDIT-2026-07-07-fragility.md`:
+D3 (awards before the idempotency marker), F5 (unchecked gym-session back-link),
+E1-gym (coach-message insert on the RLS client). A1 (suggestion engine's phantom
+`sessions.completed_at`) was already resolved by the conductor's migration 026 —
+no code change needed this pass.
+
+### What changed
+- **`app/api/gym/complete/[id]/route.js` — compare-and-swap completion (D3).** The
+  idempotency marker (`gym_sessions.status active→complete`) is now flipped **first**,
+  atomically, via `.update(...).eq('id',…).eq('status','active').select('id')`. Only the
+  request that gets a row back proceeds to portfolio/badge/streak/level; a lost CAS (0
+  rows) returns the same `{ alreadyComplete:true }` shape and awards nothing. The two
+  old post-award `gym_sessions` status updates (warmup + standard) were removed
+  (`duration_seconds` now stamped in the CAS). The `sessions` status-update error is now
+  logged (was swallowed). `sessions.completed_at` (migration 026 contract) is still
+  stamped.
+- **`app/api/gym/sessions/route.js` — back-link error handling (F5).** Both the warmup
+  and standard step-3 `gym_sessions.session_id` back-link updates now check `.error`; on
+  failure they roll back both rows and 500, so a retry is clean instead of stranding an
+  unreachable session (`/gym/session/[id]` redirects away when `session_id` is null).
+- **`app/api/gym/tutor/route.js` — service-role coach insert (E1, gym half).** The
+  assistant-turn `messages` insert now uses `createServiceClient()` instead of the
+  student's RLS client — the prerequisite for infra's future `with check (role='user')`
+  policy. Ownership is still enforced (sessionId re-read via RLS as a gym session first).
+
+### Verification
+- `npm run build` → green (Compiled successfully, 0 errors).
+- Idempotency semantics modeled in a pure CAS simulation (8/8 assertions,
+  scratchpad `gym-cas-sim.mjs`): single-complete awards once; sequential double-complete
+  awards exactly once (2nd → `alreadyComplete`); two concurrent PATCHes both pass the
+  fast-path read but exactly one wins the CAS → awards once; a retry after the marker is
+  set re-runs no awards (no half-state loop).
+
+### Manual checklist (as a 13+ / consented test student)
+- [ ] Finish a standard gym session → exactly one portfolio entry, one Practiced badge,
+      one streak/level bump. Reload the completion / re-fire `[COMPLETE]` → no second
+      portfolio entry (response says `alreadyComplete`).
+- [ ] Open the same finished session in two tabs and complete in both near-simultaneously
+      → still exactly one portfolio entry (CAS serializes).
+- [ ] Finish a placement warm-up → one `placement_warmup` portfolio entry, pre-awards
+      applied once; re-complete → no duplicate.
+- [ ] Start a new gym session → it opens normally at `/gym/session/[id]` (back-link
+      intact); no orphaned/unreachable sessions.
+- [ ] Coach turns still stream + strip tokens normally and persist to the transcript
+      (now via service role); parent/teacher transcript view unchanged.
+
+### Known-deferred / accepted
+- **Award-after-marker tradeoff (by design, per audit D3).** If a process crash lands
+  *between* the marker flip and the badge/portfolio write, the retry sees `complete` and
+  re-runs nothing — the session is marked done with a missing award rather than
+  double-awarded. Integrity (at-most-once) is the deliberate choice; a rare missing badge
+  is recoverable, a duplicate is not.
+- **E1 is only partially closed.** The restrictive `messages` RLS policy is infra's to
+  ship once the *other three* authenticated assistant/system inserts (coach-ai's
+  `/api/tutor`, `/api/sessions` greeting, `/api/sessions/[id]/persona`) also move to the
+  service client. Until then role-forgery on `messages` remains open per the audit — this
+  pass advanced the gym prerequisite only.

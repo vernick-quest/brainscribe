@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
@@ -118,7 +119,17 @@ export async function POST(request) {
     const { inputTokens, outputTokens, savedText } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
     if (savedText) {
-      const { error } = await supabase.from('messages').insert({
+      // Persist the coach turn via the SERVICE-ROLE client, not the student's RLS
+      // client. This is the gym-lane half of audit finding E1: the `messages` table
+      // grants session owners FOR ALL with no role check, so a student's own client
+      // could forge role:'assistant' rows (poisoning transcripts parents/teachers and
+      // the audit judge read). Routing every authenticated assistant/system insert
+      // through the service client is the prerequisite for the restrictive
+      // `with check (role='user')` policy infra will ship once all four inserts move
+      // (the other three live in coach-ai's routes). Ownership is already enforced
+      // above: sessionId was re-read via RLS and confirmed to be a gym session.
+      const service = createServiceClient()
+      const { error } = await service.from('messages').insert({
         session_id: sessionId,
         role: 'assistant',
         content: savedText,
