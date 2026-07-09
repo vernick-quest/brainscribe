@@ -84,7 +84,7 @@ export default function Navbar({ user, profile }) {
         {profile?.role === 'student' && (
           <a href="/gym" className="hidden sm:inline transition hover:opacity-80"
             style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-body)' }}>
-            Writing Gym
+            Skill Studio
           </a>
         )}
       </div>

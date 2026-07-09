@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   // Single profile fetch — all fields needed for routing and render in one round trip
   const { data: adminProfile, error: profileError } = await supabase
     .from('profiles')
-    .select('role, full_name, email, coppa_consent_required, coppa_consent_given, onboarding_complete, age_bracket')
+    .select('role, full_name, email, avatar_url, coppa_consent_required, coppa_consent_given, onboarding_complete, age_bracket')
     .eq('id', user.id)
     .single()
   if (profileError) console.error('[dashboard] profile fetch error:', profileError.message)
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
       <Navbar user={user} profile={adminProfile} />
 
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-2)' }}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-6)' }}>
           <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>
 
           {/* New assignment lives on its own page; hidden while impersonating. */}
@@ -129,7 +129,7 @@ export default async function DashboardPage() {
         {!imp && (
           <a href="/gym"
             className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition hover:opacity-95"
-            style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)', borderRadius: 'var(--radius-md)', padding: '18px 22px', marginBottom: 'var(--space-5)', textDecoration: 'none' }}>
+            style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)', borderRadius: 'var(--radius-md)', padding: 'var(--space-5)', marginBottom: 'var(--space-5)', textDecoration: 'none' }}>
             <div className="flex items-center gap-3">
               <span className="shrink-0 flex items-center justify-center"
                 style={{ width: 40, height: 40, borderRadius: 'var(--radius-md)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-accent)' }}>
@@ -142,13 +142,13 @@ export default async function DashboardPage() {
                   Want to sharpen your skills?
                 </p>
                 <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Build your confidence with quick exercises in the Writing Gym.
+                  Build your confidence with quick exercises in the Skill Studio.
                 </p>
               </div>
             </div>
             <span className="shrink-0 inline-flex items-center justify-center gap-1.5"
               style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--bg-page)', backgroundColor: 'var(--text-strong)', borderRadius: 'var(--radius-pill)', padding: '10px 18px' }}>
-              Enter Writing Gym →
+              Enter Skill Studio →
             </span>
           </a>
         )}

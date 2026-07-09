@@ -863,3 +863,82 @@ The reassurance copy removed from the FTUE completion screen (it introduced teac
 
 - [ ] Open an assignment → Teacher panel → "Invite a teacher": intro copy now reads "Your teacher sees this whole conversation — not just your final draft. **That's the point:** the back-and-forth shows the words and ideas came from you, with your coach guiding — never writing for you." (brand voice; navy `--text-strong` emphasis, no accent-as-text).
 - [ ] Auth-gated surface (needs a signed-in owner + an assignment) — validated by build + trace, not browser-driven.
+---
+
+## 2026-07-09 — Gym level ladder: visual badge belt (replaces the text breadcrumb)
+
+The `/gym` home level meter was a plain-text breadcrumb ("Scribe › Wordsmith › Stylist ›
+Virtuoso") + a "You're a X" line. Replaced with a **visual belt of badges** (new
+`LevelLadder`/`LevelRung` presentational components in `components/GymHome.js`) that shows
+three clear per-rung states with a connecting progress track. DISPLAY ONLY — no level
+logic changed (`LEVELS`, `levelIndex`, `getLevel` untouched; `curLevelIdx` still drives it).
+
+States (orange `--accent` reserved for the CURRENT rung only, per brand):
+- **Achieved** (index < current): navy-filled circle (`--primary`), white check glyph, `--shadow-sm`.
+- **Current** (index === current): orange-filled circle (`--accent`), white rank numeral, `--shadow-spark` glow + slight scale — "you are here".
+- **Locked** (index > current): sunken circle (`--surface-sunken`), 1.5px dashed `--border-strong`, muted lock glyph.
+Connecting track between rungs: navy (`--primary`) filled up to the current rung, muted/faded after.
+
+Verify:
+- [ ] Build green: `npm run build` (Turbopack; compiled successfully in the gym worktree).
+- [ ] All three states render distinctly (verified on a static token-faithful mock at
+      desktop AND 375px): achieved=navy+check, current=orange+numeral+spark, locked=dashed+lock.
+- [ ] Connecting track reads filled navy up to the current rung, muted after.
+- [ ] Mobile (375px): all four rungs fit with NO horizontal overflow (ladder measured 333px
+      inside the 375px card; labels "Wordsmith"/"Virtuoso" fit under their badges).
+- [ ] Context line intact: "You're a <current level> — N skills practiced so far" (count preserved).
+- [ ] Edge states: fresh Scribe (index 0, all future locked) and Virtuoso (index 3, three
+      achieved) both render correctly.
+- [ ] a11y: ladder is `role="list"` with per-rung `role="listitem"` + aria-label
+      ("<name> — achieved/you are here/locked"); glyphs are `aria-hidden`.
+
+Notes / deferred:
+- No new icon assets — check and lock are inline single-path SVGs matching the existing
+      lock glyph already used in the all-skills browser (~1.8-2px stroke, brand style).
+- The current rung shows its rank numeral (1–4); achieved shows a check, locked a lock —
+      three distinct glyphs so state never relies on color alone.
+
+---
+
+## 2026-07-09 — "Skill Studio" rename + dashboard banner spacing + dashboard avatar (focus/gym)
+
+Three related display/polish changes. DISPLAY-ONLY rename (no route/table/key/migration changes).
+
+### Rename "Writing Gym" → "Skill Studio" (user-facing strings only)
+Changed display strings (file:line at time of edit):
+- `components/Navbar.js` — nav link → "Skill Studio".
+- `components/GymHome.js` — page eyebrow label → "Skill Studio".
+- `app/dashboard/page.js` — banner button "Enter Skill Studio →" + subtext "…in the Skill Studio."
+- `components/TutorSession.js` — gym-mode banner label → "Skill Studio" (shared file; ONLY the literal display string changed, no logic/props touched).
+- `app/api/gym/sessions/route.js` — `buildChallengeText` practice-card heading → "Skill Studio — <skill>" (student-facing assignment_text).
+- `lib/gymPlacement.js` — `buildWarmupAssignmentText` heading → "Skill Studio — warm-up" (student-facing warm-up card).
+
+Left as-is (NOT user-facing display): `/gym` route + `gym_*` tables/columns + LEVELS keys; the session `title` (`Gym — <skill>` / `Gym — warm-up`); code comments; and the coach system prompt in `lib/prompts.js` (model-facing "WRITING GYM MODE/WARM-UP" — a coach-behavior change owned by the coach-ai lane, out of scope here).
+
+Verify:
+- [ ] Build green: `npm run build` (compiled successfully in the gym worktree).
+- [ ] Navbar (student, 13+): link reads "Skill Studio".
+- [ ] /gym home: eyebrow reads "SKILL STUDIO"; ladder/context copy unchanged.
+- [ ] Dashboard banner: header "Want to sharpen your skills?" unchanged; subtext ends "…in the Skill Studio."; button reads "Enter Skill Studio →".
+- [ ] Start a gym session: practice card top line reads "Skill Studio — <skill>"; in-session banner chip reads "Skill Studio".
+- [ ] First-time warm-up card top line reads "Skill Studio — warm-up".
+- [ ] `grep -rn "Writing Gym"` shows only comments + lib/prompts.js (no user-facing string).
+
+### Dashboard banner spacing (--space tokens)
+- Header row ("Your assignments" + New-assignment) margin-bottom `var(--space-2)` (8px) → `var(--space-6)` (32px).
+- Banner card internal padding `18px 22px` → `var(--space-5)` (24px all four sides).
+- Banner card margin-bottom kept at `var(--space-5)` (24px) before the filter pills (already correct).
+
+Verify:
+- [ ] Clear ~32px gap between the assignments header row and the banner (not crowded).
+- [ ] Banner has even 24px padding on all sides.
+- [ ] ~24px gap between banner and the All/In progress/Done filter pills.
+
+### Dashboard avatar fix
+- Added `avatar_url` to the dashboard profile `.select(...)`. Navbar `Avatar` needs both `age_bracket==='13plus'` AND `avatar_url` to render the Google photo; the missing column made it fall back to initials.
+
+Verify:
+- [ ] 13+ student with a Google photo: Navbar avatar shows the photo on /dashboard (not initials).
+- [ ] Under-13 student: still initials-only (COPPA fail-closed, unchanged).
+
+Note: /dashboard is auth-gated (redirects to /login without a Supabase session), so these were verified by build + code review rather than a live headless preview in this non-interactive run.

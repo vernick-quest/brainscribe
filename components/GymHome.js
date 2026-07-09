@@ -42,6 +42,105 @@ function flattenTree(nodes, depth = 0, trail = [], out = []) {
   return out
 }
 
+// ── Level ladder ──────────────────────────────────────────────────────────────
+// Visual belt of the four milestone levels (Scribe → Wordsmith → Stylist →
+// Virtuoso). DISPLAY ONLY — the rank order is LEVELS (lib/gymCurriculum); which rung
+// is current is driven by `curLevelIdx` (levelIndex(levelKey)); no level LOGIC here.
+// Three states per rung: achieved (navy-filled, check) · current (orange-filled,
+// spark glow — "you are here", the one rung that earns --accent) · locked (sunken,
+// dashed, muted lock). A connecting track runs behind: navy up to the current rung,
+// muted after — so the climb reads at a glance. Responsive belt: fixed-ish badge
+// columns + flex-1 connectors, so all four rungs fit a 375px phone with no overflow.
+
+function LockGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
+function CheckGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+const RUNG = 52 // badge diameter (px)
+
+function LevelRung({ level, index, state }) {
+  const achieved = state === 'achieved'
+  const current = state === 'current'
+  // Circle visual per state. Orange (--accent) is reserved for the current rung only.
+  const circle = current
+    ? { background: 'var(--accent)', color: 'var(--text-on-accent)', border: 'none', boxShadow: 'var(--shadow-spark)' }
+    : achieved
+      ? { background: 'var(--primary)', color: 'var(--text-on-dark)', border: 'none', boxShadow: 'var(--shadow-sm)' }
+      : { background: 'var(--surface-sunken)', color: 'var(--text-subtle)', border: '1.5px dashed var(--border-strong)', boxShadow: 'none' }
+  const label = achieved ? `${level.name} — achieved` : current ? `${level.name} — you are here` : `${level.name} — locked`
+  return (
+    <div
+      className="flex flex-col items-center"
+      style={{ width: 'clamp(56px, 17vw, 78px)', flexShrink: 0 }}
+      role="listitem"
+      aria-label={label}
+    >
+      <div
+        className="flex items-center justify-center"
+        aria-hidden="true"
+        style={{
+          width: RUNG, height: RUNG, borderRadius: '50%',
+          fontFamily: 'var(--font-display)', fontWeight: 'var(--fw-bold)', fontSize: 18,
+          transform: current ? 'scale(1.06)' : 'none',
+          transition: 'transform var(--dur-base) var(--ease-out)',
+          ...circle,
+        }}
+      >
+        {achieved ? <CheckGlyph /> : current ? index + 1 : <LockGlyph />}
+      </div>
+      <span
+        className="text-center"
+        style={{
+          font: 'var(--type-meta)', marginTop: 8, lineHeight: 1.2,
+          fontWeight: current ? 'var(--fw-bold)' : 'var(--fw-medium)',
+          color: current ? 'var(--text-strong)' : achieved ? 'var(--text-body)' : 'var(--text-subtle)',
+        }}
+      >
+        {level.name}
+      </span>
+    </div>
+  )
+}
+
+function LevelLadder({ curLevelIdx }) {
+  return (
+    <div className="flex items-start" role="list" aria-label="Level progress">
+      {LEVELS.map((level, i) => {
+        const state = i < curLevelIdx ? 'achieved' : i === curLevelIdx ? 'current' : 'locked'
+        const connectorFilled = i < curLevelIdx // track up to the current rung reads filled
+        return (
+          <div key={level.key} className="flex items-start" style={i < LEVELS.length - 1 ? { flex: 1 } : undefined}>
+            <LevelRung level={level} index={i} state={state} />
+            {i < LEVELS.length - 1 && (
+              <div
+                aria-hidden="true"
+                style={{
+                  flex: 1, height: 3, borderRadius: 2, minWidth: 12,
+                  marginTop: RUNG / 2 - 1.5,
+                  background: connectorFilled ? 'var(--primary)' : 'var(--border-strong)',
+                  opacity: connectorFilled ? 1 : 0.6,
+                }}
+              />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Badge ─────────────────────────────────────────────────────────────────────
 function SkillBadge({ skill, state }) {
   const tier = TIER_META[skill.tier]
@@ -228,7 +327,7 @@ export default function GymHome({
       {/* Header */}
       <div className="mb-8">
         <p style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)', fontWeight: 'var(--fw-bold)', margin: 0 }}>
-          Writing Gym
+          Skill Studio
         </p>
         <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '4px 0 0' }}>
           Practice a skill
@@ -238,22 +337,10 @@ export default function GymHome({
         </p>
       </div>
 
-      {/* Level meter */}
+      {/* Level ladder — visual belt of the four milestone levels */}
       <section className="mb-8 p-5" style={{ background: 'var(--surface-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            {LEVELS.map((l, i) => (
-              <div key={l.key} className="flex items-center gap-2">
-                <span style={{
-                  font: 'var(--type-ui)', fontWeight: i === curLevelIdx ? 'var(--fw-bold)' : 'var(--fw-medium)',
-                  color: i < curLevelIdx ? 'var(--text-muted)' : i === curLevelIdx ? 'var(--text-strong)' : 'var(--text-subtle)',
-                }}>
-                  {l.name}
-                </span>
-                {i < LEVELS.length - 1 && <span aria-hidden="true" style={{ color: 'var(--text-subtle)' }}>›</span>}
-              </div>
-            ))}
-          </div>
+        <div className="mb-4">
+          <LevelLadder curLevelIdx={curLevelIdx} />
         </div>
         <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>
           You're a <strong style={{ color: 'var(--text-strong)' }}>{LEVELS[curLevelIdx].name}</strong>
