@@ -6,6 +6,14 @@ import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 
 const anthropic = new Anthropic()
 
+// POST /api/assemble-essay
+// Smooths the transitions between a student's finished paragraphs into one cohesive
+// essay. The paragraphs are re-read from the DB by sessionId (RLS/owner-scoped, same
+// pattern as /api/sessions/[id]/complete and the transcript page) — NEVER trusted from
+// the request body. This closes an API-level ghostwriting side door: previously any
+// logged-in account could POST arbitrary "paragraphs" and get Haiku to write prose the
+// coach never saw and the transcript never recorded (fragility audit B2). The model is
+// still constrained to a faithful transitions-only edit of the student's own material.
 export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -17,15 +25,43 @@ export async function POST(request) {
 
   if (!await checkRateLimit(`assemble-essay:${user.id}`, 10, 60)) return rateLimited()
 
-  const { paragraphs, thesis } = await request.json()
-  // paragraphs: [{ index, type, text }, ...]
+  const { sessionId } = await request.json()
+  if (!sessionId) return Response.json({ error: 'Missing sessionId' }, { status: 400 })
 
-  if (!paragraphs?.length) return Response.json({ error: 'No paragraphs provided' }, { status: 400 })
+  // Ownership check — RLS also scopes the reads below, but this gives a clean 404 and
+  // mirrors the complete route. A student can only ever assemble their OWN session.
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('id, student_id')
+    .eq('id', sessionId)
+    .single()
+  if (!session || session.student_id !== user.id) {
+    return Response.json({ error: 'Not found.' }, { status: 404 })
+  }
+
+  // Re-read the student's saved paragraphs (their own written material) and thesis
+  // straight from the DB — the body is never a source of prose.
+  const [{ data: paraRows }, { data: scaffold }] = await Promise.all([
+    supabase
+      .from('paragraphs')
+      .select('scribed_text, position, paragraph_index, paragraph_type')
+      .eq('session_id', sessionId)
+      .order('position'),
+    supabase
+      .from('paragraph_scaffolds')
+      .select('thesis')
+      .eq('session_id', sessionId)
+      .single(),
+  ])
+
+  const paragraphs = (paraRows ?? []).filter(p => p.scribed_text?.trim())
+  if (!paragraphs.length) return Response.json({ error: 'No saved paragraphs to assemble.' }, { status: 400 })
 
   const paragraphBlock = paragraphs
-    .map((p, i) => `Paragraph ${i + 1}${p.type ? ` (${p.type})` : ''}:\n${p.text}`)
+    .map((p, i) => `Paragraph ${i + 1}${p.paragraph_type ? ` (${p.paragraph_type})` : ''}:\n${p.scribed_text}`)
     .join('\n\n')
 
+  const thesis = scaffold?.thesis?.trim()
   const thesisNote = thesis ? `\nThe student's thesis is: "${thesis}"\n` : ''
 
   const response = await anthropic.messages.create({

@@ -593,3 +593,61 @@ Manual checklist (as a 13+ / consented test student, on a COMPLETE session):
   PLACEMENT only; never aggregation).
 - In-place reopen of a completed session, rubric-attach at session creation, review
   history/versioning, teacher rubric authoring — phase 2.
+
+---
+
+## 2026-07-08 — coaching-session: D1 composer-lockout fix, assemble-essay hardening, formatting-regression audit
+
+Three queued/audit items for the live writing UI. `npm run build` green. No test suite —
+paths traced by hand. TutorSession.js also serves /gym (tutorEndpoint/completeEndpoint/gym
+props) and FTUE (onboarding) — checked all three modes.
+
+### A. Assignments-UI formatting regression — VERIFIED ALREADY RESOLVED (no code change)
+The queued "formatting regression seen in deploy smoke" was the composer duplicate-`style`-prop
+bug (React drops the first of two `style` props, so the reply textarea's border/background
+never rendered). Investigation result:
+- The fix (merge the two style objects into one) landed in `61580d1` (2026-06-13), **before**
+  the barge-in (`94aeaa0`) and FTUE merges, and is documented in-code at
+  `components/TutorSession.js:409-412`.
+- Verified present and correct at the f20d343 deploy where smoke reportedly saw it AND at HEAD:
+  both listening + dictating textareas carry a single complete style object.
+- Codebase-wide JSX-tag scan (all `components/` + `app/`): **zero** elements with duplicate
+  `style` props.
+- Diffed every assignment-UI render region (assignment bar, draft/essay panel header,
+  requirements readout in TutorSession + SessionsList, paragraph cards, ReplyComposer) between
+  the pre-FTUE baseline `e3ac4e6` and HEAD — styling intact, only legitimate feature evolution.
+- Requirements-readout data path intact: `reqActual = computeActual(paragraphs)` →
+  `chipState(t, reqActual)?.full` in the draft header; `chipState(t, session.requirements.actual)`
+  desktop-only on dashboard rows.
+- [ ] Manual: draft panel + requirements readout render correctly on a real session (static
+      verification complete; a visual pass is the only thing left and needs a logged-in session).
+
+### B. D1 composer-lockout race — FIXED (`components/TutorSession.js` greeting effect)
+Root cause: module-level `greetedSessions` Set survives a client-side re-mount but the
+per-instance `hasGreeted` ref does not; a non-onboarding greeting is never persisted, so a
+re-mount arrives with empty `initialMessages`, the effect early-returned without setting a
+phase, phase stayed `'waiting'`, and `coachBusy = phase !== 'listening'` locked Send forever.
+Fix: in the already-greeted guard, if this instance hasn't greeted, `setPhase('listening')`
+before returning. Defensive — no longer relies on full-reload `<a>` nav.
+- [ ] Fresh assignment: greeting delivers once, composer live. (unchanged)
+- [ ] Client-side re-mount of a zero-message session (simulates future `<a>`→`<Link>`): no
+      re-greeting, composer UNLOCKED (phase listening), Send works. (was: locked until reload)
+- [ ] StrictMode double-invoke (dev): greeting not doubled, phase not clobbered.
+- [ ] Onboarding revisit (persisted greeting): still lands in listening.
+
+### C. /api/assemble-essay ghostwriting hardening — FIXED (route + client caller)
+Root cause: the route smoothed `{paragraphs, thesis}` straight from the request body — any
+logged-in account could POST arbitrary prose and get Haiku to write an essay the coach never
+saw and the transcript never recorded. Fix: the route now requires `sessionId`, verifies
+`sessions.student_id === user.id` (404 otherwise), and re-reads the session's saved paragraphs
+(`paragraphs` table, owner-scoped RLS, ordered by position) + `thesis`
+(`paragraph_scaffolds`) from the DB — body prose is never a source. Client `assembleFullEssay`
+now sends only `{ sessionId }`. Existing `canUseCoach` gate + 10/min rate limit preserved.
+- [ ] Happy path: multi-paragraph session, "Assemble full essay" → cohesive essay from the
+      student's own saved paragraphs.
+- [ ] Injected body text (`curl` with `{sessionId, paragraphs:[...injected...]}`) → injected
+      text ignored; assembly reflects only DB paragraphs.
+- [ ] Other user's sessionId → 404. Session with no saved paragraphs → 400.
+- [ ] Under-13/unconsented or over rate limit → gate/429 (unchanged).
+- [ ] Gym path unaffected: the assemble button only renders for multi-paragraph scaffolds
+      (gym = single card), so gym never calls this; sessionId re-read would work regardless.

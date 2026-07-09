@@ -681,7 +681,21 @@ export default function TutorSession({
   }, [editingTitle])
 
   useEffect(() => {
-    if (hasGreeted.current || greetedSessions.has(session.id)) return
+    // Two guards, two jobs. hasGreeted.current blocks a same-mount re-run (React
+    // StrictMode double-invoke); greetedSessions (module-level) blocks re-greeting
+    // the same session after a client-side re-mount. When the module Set already
+    // holds this id but THIS instance hasn't greeted, we intentionally skip the
+    // greeting — but we must still release the composer. A non-onboarding greeting
+    // is never persisted, so a re-mount arrives with empty initialMessages and phase
+    // stuck at 'waiting' → coachBusy stays true → Send is permanently disabled until a
+    // hard reload. Set 'listening' before returning so the lock can't happen,
+    // independent of nav style (fragility audit D1 — was only unarmed by full-reload
+    // <a> nav; a routine <a>→<Link> change would otherwise arm it app-wide).
+    if (hasGreeted.current || greetedSessions.has(session.id)) {
+      if (!hasGreeted.current) setPhase('listening')
+      hasGreeted.current = true
+      return
+    }
     hasGreeted.current = true
     if (initialMessages.length > 0) {
       setPhase('listening')
@@ -1234,24 +1248,24 @@ export default function TutorSession({
   async function assembleFullEssay() {
     setIsAssemblingEssay(true)
     try {
-      const paraPayload = paragraphs
-        .filter(p => p.scribed_text)
-        .map((p, i) => ({
-          index: p.paragraph_index ?? i,
-          type: scaffold?.components[p.paragraph_index ?? i]?.type ?? null,
-          text: p.scribed_text,
-        }))
+      // Send only the sessionId — the server re-reads this session's saved paragraphs
+      // and thesis from the DB (owner-scoped) and assembles from those. Sending the
+      // draft text would be ignored anyway (the route no longer trusts body prose —
+      // fragility audit B2). Paragraphs are persisted before this button appears
+      // (assemble/dictation paths save on the way in), so the DB copy is authoritative.
       const res = await fetch('/api/assemble-essay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paragraphs: paraPayload, thesis: scaffold?.thesis ?? null }),
+        body: JSON.stringify({ sessionId: session.id }),
       })
+      if (!res.ok) { console.error('[assembleFullEssay] server rejected', res.status); return }
       const { assembled } = await res.json()
-      setAssembledEssay(assembled)
+      if (assembled) setAssembledEssay(assembled)
     } catch (err) {
       console.error('[assembleFullEssay]', err)
+    } finally {
+      setIsAssemblingEssay(false)
     }
-    setIsAssemblingEssay(false)
   }
 
   // ── Direct paragraph edit ────────────────────────────────────────────────────
