@@ -842,3 +842,38 @@ Notes / deferred:
 - Multi-prereq skills nest under their first in-tier prereq only (e.g. Essay Architecture
   under Thesis, not also Paragraph Structure) to avoid duplicating a row; the full prereq
   set still drives the unlock and the "Complete X and Y to unlock" copy.
+
+---
+
+## 2026-07-09 — Gym level ladder: visual badge belt (replaces the text breadcrumb)
+
+The `/gym` home level meter was a plain-text breadcrumb ("Scribe › Wordsmith › Stylist ›
+Virtuoso") + a "You're a X" line. Replaced with a **visual belt of badges** (new
+`LevelLadder`/`LevelRung` presentational components in `components/GymHome.js`) that shows
+three clear per-rung states with a connecting progress track. DISPLAY ONLY — no level
+logic changed (`LEVELS`, `levelIndex`, `getLevel` untouched; `curLevelIdx` still drives it).
+
+States (orange `--accent` reserved for the CURRENT rung only, per brand):
+- **Achieved** (index < current): navy-filled circle (`--primary`), white check glyph, `--shadow-sm`.
+- **Current** (index === current): orange-filled circle (`--accent`), white rank numeral, `--shadow-spark` glow + slight scale — "you are here".
+- **Locked** (index > current): sunken circle (`--surface-sunken`), 1.5px dashed `--border-strong`, muted lock glyph.
+Connecting track between rungs: navy (`--primary`) filled up to the current rung, muted/faded after.
+
+Verify:
+- [ ] Build green: `npm run build` (Turbopack; compiled successfully in the gym worktree).
+- [ ] All three states render distinctly (verified on a static token-faithful mock at
+      desktop AND 375px): achieved=navy+check, current=orange+numeral+spark, locked=dashed+lock.
+- [ ] Connecting track reads filled navy up to the current rung, muted after.
+- [ ] Mobile (375px): all four rungs fit with NO horizontal overflow (ladder measured 333px
+      inside the 375px card; labels "Wordsmith"/"Virtuoso" fit under their badges).
+- [ ] Context line intact: "You're a <current level> — N skills practiced so far" (count preserved).
+- [ ] Edge states: fresh Scribe (index 0, all future locked) and Virtuoso (index 3, three
+      achieved) both render correctly.
+- [ ] a11y: ladder is `role="list"` with per-rung `role="listitem"` + aria-label
+      ("<name> — achieved/you are here/locked"); glyphs are `aria-hidden`.
+
+Notes / deferred:
+- No new icon assets — check and lock are inline single-path SVGs matching the existing
+      lock glyph already used in the all-skills browser (~1.8-2px stroke, brand style).
+- The current rung shows its rank numeral (1–4); achieved shows a check, locked a lock —
+      three distinct glyphs so state never relies on color alone.
