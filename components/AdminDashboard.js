@@ -228,6 +228,27 @@ function OnboardingBadge({ userId, complete }) {
   )
 }
 
+// ── Authored-assignments flag (parents/teachers) ──────────────
+// Parents/teachers don't create assignments FOR kids, but the writer experience
+// is ownership-based (a `sessions` row with student_id === their profile id), so a
+// parent/teacher can author their OWN assignments as a writer. This surfaces how
+// many they've authored — an at-a-glance count, muted when none.
+function AuthoredBadge({ count }) {
+  const has = count > 0
+  return (
+    <span
+      title={has
+        ? `Authored ${count} of their own assignment${count !== 1 ? 's' : ''} as a writer`
+        : 'Has not authored any assignments of their own'}
+      className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
+      style={has
+        ? { backgroundColor: '#EEF2FF', color: '#4338CA' }
+        : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
+      {has ? `${count} authored` : 'None authored'}
+    </span>
+  )
+}
+
 // ── Age flag ───────────────────────────────────────────────────
 // At-a-glance age bracket. Under-13 shows parental-consent state (a minor can't
 // use a coach until consent is given). "Age?" = never recorded (legacy account).
@@ -647,9 +668,12 @@ function TabBar({ tabs, active, onChange }) {
 }
 
 // ── Session row ────────────────────────────────────────────────
-function SessionRow({ session, studentName, compact = false }) {
+function SessionRow({ session, studentName, compact = false, ownerRole }) {
   const [loading, setLoading] = useState(false)
   const label = session.title || session.assignment_text?.slice(0, 60) + (session.assignment_text?.length > 60 ? '…' : '')
+  // Mark assignments authored by a parent/teacher (owner is not a student) — the
+  // writer experience is ownership-based, so a non-student owner authored it.
+  const nonStudentOwner = ownerRole === 'parent' || ownerRole === 'teacher'
 
   // Opening a session ALWAYS remotes in as its owner first — so the admin is acting
   // as that user (correct name/role, ready to help) and a stale remote-in can never
@@ -689,6 +713,14 @@ function SessionRow({ session, studentName, compact = false }) {
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{studentName}</p>
         )}
       </div>
+
+      {nonStudentOwner && (
+        <span title={`Authored by a ${ownerRole} as a writer (not created for a student)`}
+          className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
+          style={{ backgroundColor: '#EEF2FF', color: '#4338CA' }}>
+          by {ownerRole}
+        </span>
+      )}
 
       <StatusBadge status={session.status} />
 
@@ -763,7 +795,7 @@ function StudentCard({ student, sessions, onRoleChanged }) {
 }
 
 // ── Person row (parents + teachers) ──────────────────────────
-function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
+function PersonRow({ person, meta, showControls = false, onRoleChanged, authoredCount = 0 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3"
       style={{ backgroundColor: 'var(--surface-card)' }}>
@@ -775,12 +807,14 @@ function PersonRow({ person, meta, showControls = false, onRoleChanged }) {
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{person.email}</p>
       </div>
       {meta && <p className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>{meta}</p>}
+      <AuthoredBadge count={authoredCount} />
       <AgeBadge ageBracket={person.age_bracket} consentGiven={person.coppa_consent_given} />
       <span className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>
         {formatDate(person.created_at)}
       </span>
       {showControls && (
         <>
+          <OnboardingBadge userId={person.id} complete={person.onboarding_complete === true} />
           <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={person.id} />
           <DeleteUserButton userId={person.id} name={person.full_name} />
@@ -1114,14 +1148,27 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               {filteredParents.map(parent => {
                 const childIds = childrenByParent[parent.id] ?? []
                 const childNames = childIds.map(id => profileById[id]?.full_name ?? id.slice(0, 6)).join(', ')
+                const ownSessions = sessionsByStudent[parent.id] ?? []
                 return (
                   <div key={parent.id} className="rounded-2xl overflow-hidden"
-                    style={{ border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
+                    style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
                     <PersonRow
                       person={parent}
                       meta={childNames ? `Watching: ${childNames}` : 'No linked students'}
+                      authoredCount={ownSessions.length}
                       showControls
                     />
+                    {ownSessions.length > 0 && (
+                      <div className="px-4 pb-4 pt-1 space-y-2"
+                        style={{ borderTop: '1px solid var(--border-default)' }}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                          Own assignments (authored as a writer)
+                        </p>
+                        {ownSessions.map(s => (
+                          <SessionRow key={s.id} session={s} ownerRole={parent.role} compact />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1136,23 +1183,43 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               )}
               {filteredTeachers.map(teacher => {
                 const sessionIds = sessionsByTeacher[teacher.id] ?? []
+                const ownSessions = sessionsByStudent[teacher.id] ?? []
                 return (
                   <div key={teacher.id} className="rounded-2xl overflow-hidden"
                     style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
                     <PersonRow
                       person={teacher}
-                      meta={`${sessionIds.length} assignment${sessionIds.length !== 1 ? 's' : ''}`}
+                      meta={`Linked to ${sessionIds.length} assignment${sessionIds.length !== 1 ? 's' : ''}`}
+                      authoredCount={ownSessions.length}
                       showControls
                     />
-                    {sessionIds.length > 0 && (
+                    {(sessionIds.length > 0 || ownSessions.length > 0) && (
                       <div className="px-4 pb-4 pt-1 space-y-2"
                         style={{ borderTop: '1px solid var(--border-default)' }}>
-                        {sessionIds.map(sid => {
-                          const s = sessions.find(x => x.id === sid)
-                          if (!s) return null
-                          const studentName = profileById[s.student_id]?.full_name
-                          return <SessionRow key={sid} session={s} studentName={studentName} />
-                        })}
+                        {sessionIds.length > 0 && (
+                          <>
+                            <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                              Linked assignments (student-owned)
+                            </p>
+                            {sessionIds.map(sid => {
+                              const s = sessions.find(x => x.id === sid)
+                              if (!s) return null
+                              const studentName = profileById[s.student_id]?.full_name
+                              const ownerRole = profileById[s.student_id]?.role
+                              return <SessionRow key={sid} session={s} studentName={studentName} ownerRole={ownerRole} />
+                            })}
+                          </>
+                        )}
+                        {ownSessions.length > 0 && (
+                          <>
+                            <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                              Own assignments (authored as a writer)
+                            </p>
+                            {ownSessions.map(s => (
+                              <SessionRow key={s.id} session={s} ownerRole={teacher.role} compact />
+                            ))}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1178,6 +1245,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
                   key={s.id}
                   session={s}
                   studentName={profileById[s.student_id]?.full_name ?? s.student_id.slice(0, 8)}
+                  ownerRole={profileById[s.student_id]?.role}
                 />
               ))}
             </div>

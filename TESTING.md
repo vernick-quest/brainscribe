@@ -593,3 +593,40 @@ Manual checklist (as a 13+ / consented test student, on a COMPLETE session):
   PLACEMENT only; never aggregation).
 - In-place reopen of a completed session, rubric-attach at session creation, review
   history/versioning, teacher rubric authoring — phase 2.
+
+---
+
+## 2026-07-08 — Admin: parent/teacher onboarding badge + own-authored assignment count (focus/admin)
+
+Admin-lane display/query changes only — NO migration, NO schema change. `AdminDashboard.js`
+(`PersonRow`, `SessionRow`, parents/teachers/all-sessions maps). Onboarding data already on
+all profiles (migration 016, selected in `app/admin/page.js`); own-assignment attribution is
+`sessions.student_id === person.id` from the already-loaded `sessions` prop
+(`sessionsByStudent[person.id]`).
+
+### Onboarding badge + toggle on parent/teacher rows
+- [ ] Parents tab: each parent row shows an onboarding badge ("Onboarded ✓" green /
+      "Not onboarded" grey) next to the role dropdown — same control as student rows.
+- [ ] Teachers tab: each teacher row shows the same onboarding badge.
+- [ ] Clicking the badge toggles it and persists (PATCH `/api/admin/set-onboarding` — not
+      student-scoped; admin-gated). Reload → state sticks. Setting to "Not onboarded"
+      routes that user through onboarding on next sign-in.
+- [ ] Toggle works for a parent AND a teacher user id (not only students).
+
+### Own-authored assignment count/marker (parents & teachers)
+- [ ] A parent/teacher who owns ≥1 session (a `sessions` row with `student_id` = their
+      profile id — created via the ownership-based writer flow) shows an indigo
+      "N authored" badge on their row, and an expandable "Own assignments (authored as a
+      writer)" list of those sessions below the row.
+- [ ] A parent/teacher who owns none shows a muted "None authored" badge and no own-list.
+- [ ] Teachers: the pre-existing linked-assignments list is now labeled "Linked assignments
+      (student-owned)"; own-authored sessions appear under a separate "Own assignments"
+      header. The two are visually distinct.
+- [ ] All Sessions tab: any session owned by a parent/teacher shows a "by parent" / "by
+      teacher" indigo marker chip; student-owned sessions show no marker.
+- [ ] Remote-in / open still works on own-authored SessionRows (fail-closed impersonate
+      then navigate — unchanged path).
+
+### Regression guard (existing admin hardening — unchanged)
+- [ ] set-role self-lockout guard, impersonation fail-closed, under-13 avatar suppression
+      all still intact (no changes to those files/paths).
