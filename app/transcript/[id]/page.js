@@ -66,11 +66,15 @@ export default async function TranscriptPage({ params, searchParams }) {
     })
   }
 
-  // Final content lives in paragraphs for prose, but in the scaffold's confirmed
-  // components for non-prose forms (e.g. a haiku's lines). Fall back to the scaffold.
+  // Final content lives in paragraphs for prose, but in the scaffold's locked-in
+  // components for non-prose forms (e.g. a haiku's lines) AND the onboarding hook.
+  // Show any item the student has produced text for — 'locked'/unreached items have
+  // null text and drop out. (The onboarding opening line is stored with a non-
+  // 'confirmed' status but real text, so a confirmed-only filter would hide it and
+  // the draft box would read "Nothing written yet" — this surfaces it.)
   const scaffoldLines = (scaffold?.components ?? [])
     .flatMap(sec => sec.items ?? [])
-    .filter(it => it.status === 'confirmed' && (it.text || it.nuggetText))
+    .filter(it => it.text || it.nuggetText)
     .map(it => it.text || it.nuggetText)
 
   const essay = paragraphs?.length
@@ -212,7 +216,7 @@ export default async function TranscriptPage({ params, searchParams }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                {isComplete ? 'Final draft' : 'Draft (in progress)'}
+                {session.is_onboarding ? 'Opening line' : isComplete ? 'Final draft' : 'Draft (in progress)'}
               </h2>
               {!isComplete && (
                 <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
