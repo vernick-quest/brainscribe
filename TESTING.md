@@ -795,3 +795,50 @@ network → next/font fails to fetch Google `Lora` in app/page.js, unrelated to 
 `npx eslint components/AdminDashboard.js` parses the file cleanly with no new errors/warnings
 in the changed regions (pre-existing warnings on lines 3/4/41 and the AuditTab setState error
 on line 545 are untouched). Re-run `npm run build` on a networked checkout to confirm green.
+
+## 2026-07-09 — Gym "All skills" browser: dependency-tree layout (indent + connectors) (focus/gym)
+
+The `/gym` home all-skills browser was a flat per-tier dump, so lock lines ("Complete
+Specific Detail to unlock") read as arbitrary. It now renders each tier as a **skill
+tree**: root/open skills stay at the top level in week order, and every dependent skill
+is nested directly beneath its prerequisite with an indented, connected layout. **No
+unlock-logic change** — `isUnlocked` / `missingPrereqs` / `prereqs` are untouched; this is
+layout only, derived from the existing prereq graph.
+
+How the tree is derived: new pure helper `getTierSkillTree(tier)` in `lib/gymCurriculum.js`
+nests each skill under its PRIMARY (first-listed) prereq that lives in the SAME tier;
+skills with no in-tier prereq (empty `prereqs`, or all prereqs in an earlier tier — e.g.
+Tier-3 Tone Control, whose only prereq `voice` is Tier 1) stay as top-level roots.
+`GymHome.js` flattens the forest depth-first (`flattenTree`) and draws connectors via
+`ConnectorGutters` — one gutter column per nesting level, a subtle vertical guide
+(`--text-subtle`) elbowing into each child row, fainter ancestor pass-through lines
+(`--border-default`), responsive column width `clamp(16px, 4vw, 24px)`.
+
+Verify:
+- [ ] Build green: `npm run build` (Turbopack; compiled successfully in the gym worktree).
+- [ ] Tier 1 nesting: **Show Don't Tell** is indented under **Specific Detail**; **Cutting
+      Ruthlessly** is indented under **Word Choice**; Hook / Closing Line / Sentence
+      Variety / Finding Your Voice remain top-level roots. (Traced via getTierSkillTree.)
+- [ ] Tier 2 deep nesting: Topic Sentence → (Counterargument, Evidence → Analysis →
+      (Thesis → Essay Architecture, Transitions, Paragraph Structure)). The Analysis-level
+      sibling guide correctly passes THROUGH the Essay Architecture (depth-4) row as a
+      faint vertical, while the darker elbow points Essay Architecture up to Thesis.
+- [ ] Tier 3: Tone Control is a root here (its prereq `voice` is Tier 1); Style Awareness
+      nests under Tone Control; Entering a Conversation / Timed Writing / Personal Statement
+      Voice / Revision / Complex Argument / Portfolio Review are all roots.
+- [ ] Connectors point child→parent (vertical drops from the parent's row, elbows right
+      into the child); continuous vertical line joins successive siblings, stops at the last.
+- [ ] Locked / unlocked / Suggested / Queued / Practiced / Locked-in states + the Practice
+      button + lock icon + "Complete X to unlock" copy all still render as before.
+- [ ] Mobile (375px): no horizontal overflow (verified docW == winW == 375 on a faithful
+      static mock of the deepest Tier-2 tree); indentation caps out gracefully, the depth-4
+      row's description wraps and its lock icon stays visible.
+
+Notes / deferred:
+- Fix A (named thematic clusters like "Vivid Imagery") was NOT done — that needs a
+  hand-authored taxonomy. Possible future enhancement: add a `cluster` field per skill in
+  `gymCurriculum.js` and group by it. Fix C (level-gate unlock logic) was explicitly NOT
+  chosen and not touched.
+- Multi-prereq skills nest under their first in-tier prereq only (e.g. Essay Architecture
+  under Thesis, not also Paragraph Structure) to avoid duplicating a row; the full prereq
+  set still drives the unlock and the "Complete X and Y to unlock" copy.
