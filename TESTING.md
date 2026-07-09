@@ -744,3 +744,54 @@ now sends only `{ sessionId }`. Existing `canUseCoach` gate + 10/min rate limit 
 - [ ] Under-13/unconsented or over rate limit → gate/429 (unchanged).
 - [ ] Gym path unaffected: the assemble button only renders for multi-paragraph scaffolds
       (gym = single card), so gym never calls this; sessionId re-read would work regardless.
+
+## 2026-07-09 — Admin dashboard: unify Students / Parents / Teachers card chrome
+
+Consolidated the two divergent user-row treatments (`StudentCard` for students +
+`PersonRow` for parents/teachers) into ONE shared `PersonCard`, so all three roles
+now render identical chrome. Role-specific CONTENT still varies via props
+(`meta`, `stat`, expandable `children`). Also added a tiny `CompletedStat` pill
+(student "N ✓") sized to match `AuthoredBadge` so the stat slot reads the same
+across roles. No API, query, migration, or control-behavior changes — this is a
+shell restyle only; every existing control is reused verbatim.
+
+### Visual consistency (all three tabs: Students / Parents / Teachers)
+- [ ] Card shell identical: rounded-2xl, `--border-default` border, `--surface-card`
+      bg, `--shadow-xs`, `overflow-hidden`.
+- [ ] Header padding identical: `px-5 py-4` on every role (was px-4 py-3 for parents/teachers).
+- [ ] Avatar size identical: 36 on every role (was 32 for parents/teachers).
+- [ ] Name treatment identical: `text-sm font-semibold` + `text-xs` truncated muted email
+      (was `font-medium` for parents/teachers).
+- [ ] Badge pills identical styling/order across roles: [meta text] · [stat pill] ·
+      AgeBadge · created_at date · OnboardingBadge · RoleEditor · RemoteInButton ·
+      DeleteUserButton · chevron. (created_at now shows on students too — previously
+      students had no date.)
+- [ ] Expand behavior identical: every role collapses by default and expands via the
+      chevron (was: students collapsible, parents/teachers always-expanded). Cards with
+      no expandable body show a dimmed, disabled chevron and are non-collapsible.
+
+### Role-specific content still renders (open each card)
+- [ ] Student: meta = "N sessions", green "N ✓" completed stat; expanded body = their
+      sessions (SessionRow compact). Empty (0 sessions) → non-expandable, no stray "No
+      sessions yet" panel.
+- [ ] Parent: meta = "Watching: <children>" / "No linked students"; AuthoredBadge stat;
+      expanded body = "Own assignments (authored as a writer)" list of their own sessions.
+- [ ] Teacher: meta = "Linked to N assignments"; AuthoredBadge stat; expanded body shows
+      BOTH "Linked assignments (student-owned)" (with student names + by-role tags) and
+      "Own assignments (authored as a writer)" lists, labels intact.
+
+### Controls + hardening preserved (unchanged behavior, new shell)
+- [ ] RoleEditor works on all three roles; self-lockout guard unchanged (can't drop own admin).
+- [ ] RemoteInButton (impersonate) works on all three; fail-closed navigation unchanged.
+- [ ] DeleteUserButton inline-confirm works on all three; self-delete still refused server-side.
+- [ ] OnboardingBadge toggle works on all three roles (parent/teacher included).
+- [ ] Under-13 avatar suppression intact: a student whose age_bracket=under13 shows initials
+      only (Avatar hard-suppresses the photo regardless of avatar_url) — verify on Students tab.
+- [ ] SessionRow "by parent/teacher" owner tags + open-as-owner remote-in still work from
+      the expanded lists.
+
+Note: `npm run build` could not be run to completion in the build environment (no outbound
+network → next/font fails to fetch Google `Lora` in app/page.js, unrelated to this change).
+`npx eslint components/AdminDashboard.js` parses the file cleanly with no new errors/warnings
+in the changed regions (pre-existing warnings on lines 3/4/41 and the AuditTab setState error
+on line 545 are untouched). Re-run `npm run build` on a networked checkout to confirm green.

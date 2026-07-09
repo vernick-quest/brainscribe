@@ -734,93 +734,78 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
   )
 }
 
-// ── Student card (expandable) ─────────────────────────────────
-function StudentCard({ student, sessions, onRoleChanged }) {
+// ── Unified user card (students, parents, teachers) ───────────
+// ONE card shell for all three roles so they look identical: same shell
+// (rounded-2xl / --border-default / --surface-card / --shadow-xs), same header
+// padding (px-5 py-4), same Avatar size (36), same name (text-sm font-semibold)
+// + email treatment, same badge-pill styling, same controls order, and the same
+// collapse-by-default expand behavior (chevron). Role-specific CONTENT is passed
+// in — `meta` (a one-line descriptor), `stat` (a leading pill/badge node), and
+// `children` (the expandable body: student sessions, or authored/linked lists).
+// `hasBody` gates the chevron + body region (a card with nothing to expand is
+// still the same chrome, just non-collapsible).
+//
+// Controls are reused verbatim (Avatar COPPA under-13 suppression, OnboardingBadge
+// toggle, AgeBadge, RoleEditor self-lockout guard, RemoteInButton impersonation,
+// DeleteUserButton) — this card only restyles the shell they sit in.
+function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, children }) {
   const [open, setOpen] = useState(false)
-  const completedCount = sessions.filter(s => s.status === 'complete').length
+  const toggle = () => { if (hasBody) setOpen(o => !o) }
 
   return (
     <div className="rounded-2xl overflow-hidden"
       style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
 
       <div className="flex items-center gap-3 px-5 py-4">
-        {/* Avatar */}
-        <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={36} />
+        {/* Avatar — under-13 accounts are hard-suppressed to initials inside Avatar (COPPA) */}
+        <Avatar name={person.full_name} avatarUrl={person.avatar_url} ageBracket={person.age_bracket} size={36} />
 
-        {/* Name + email — clickable to expand */}
-        <button className="flex-1 min-w-0 text-left" onClick={() => setOpen(o => !o)}>
+        {/* Name + email — clickable to expand when there's a body */}
+        <button className="flex-1 min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
-            {student.full_name ?? '—'}
+            {person.full_name ?? '—'}
           </p>
-          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{student.email}</p>
+          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{person.email}</p>
         </button>
 
         {/* Stats + controls */}
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-          </span>
-          {completedCount > 0 && (
-            <span className="text-xs font-semibold rounded-full px-2 py-0.5"
-              style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
-              {completedCount} ✓
-            </span>
-          )}
-          <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
-          <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true} />
-          <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
-          <RemoteInButton userId={student.id} />
-          <DeleteUserButton userId={student.id} name={student.full_name} />
-          <button onClick={() => setOpen(o => !o)}
-            className="flex items-center transition-transform"
+          {meta && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{meta}</span>}
+          {stat}
+          <AgeBadge ageBracket={person.age_bracket} consentGiven={person.coppa_consent_given} />
+          <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>{formatDate(person.created_at)}</span>
+          <OnboardingBadge userId={person.id} complete={person.onboarding_complete === true} />
+          <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
+          <RemoteInButton userId={person.id} />
+          <DeleteUserButton userId={person.id} name={person.full_name} />
+          <button onClick={toggle} disabled={!hasBody}
+            className="flex items-center transition-transform disabled:opacity-25"
             style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
-            aria-label={open ? 'Collapse' : 'Expand'}>
+            aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse' : 'Expand'}>
             <IconChevron />
           </button>
         </div>
       </div>
 
-      {open && (
+      {hasBody && open && (
         <div className="px-5 pb-4 pt-1 space-y-2"
           style={{ borderTop: '1px solid var(--border-default)' }}>
-          {sessions.length === 0 ? (
-            <p className="text-sm italic py-4 text-center" style={{ color: 'var(--text-subtle)' }}>No sessions yet</p>
-          ) : (
-            sessions.map(s => <SessionRow key={s.id} session={s} compact />)
-          )}
+          {children}
         </div>
       )}
     </div>
   )
 }
 
-// ── Person row (parents + teachers) ──────────────────────────
-function PersonRow({ person, meta, showControls = false, onRoleChanged, authoredCount = 0 }) {
+// Completed-sessions stat pill (student "N ✓") — matches the AuthoredBadge pill
+// dimensions so the stat slot reads identically across roles.
+function CompletedStat({ count }) {
+  if (count <= 0) return null
   return (
-    <div className="flex items-center gap-3 px-4 py-3"
-      style={{ backgroundColor: 'var(--surface-card)' }}>
-      <Avatar name={person.full_name} avatarUrl={person.avatar_url} ageBracket={person.age_bracket} size={32} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
-          {person.full_name ?? '—'}
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{person.email}</p>
-      </div>
-      {meta && <p className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>{meta}</p>}
-      <AuthoredBadge count={authoredCount} />
-      <AgeBadge ageBracket={person.age_bracket} consentGiven={person.coppa_consent_given} />
-      <span className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>
-        {formatDate(person.created_at)}
-      </span>
-      {showControls && (
-        <>
-          <OnboardingBadge userId={person.id} complete={person.onboarding_complete === true} />
-          <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
-          <RemoteInButton userId={person.id} />
-          <DeleteUserButton userId={person.id} name={person.full_name} />
-        </>
-      )}
-    </div>
+    <span className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
+      style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+      {count} ✓
+    </span>
   )
 }
 
@@ -1129,13 +1114,21 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               {filteredStudents.length === 0 && (
                 <p className="text-sm italic text-center py-10" style={{ color: 'var(--text-subtle)' }}>No students found</p>
               )}
-              {filteredStudents.map(student => (
-                <StudentCard
-                  key={student.id}
-                  student={student}
-                  sessions={sessionsByStudent[student.id] ?? []}
-                />
-              ))}
+              {filteredStudents.map(student => {
+                const sessions = sessionsByStudent[student.id] ?? []
+                const completedCount = sessions.filter(s => s.status === 'complete').length
+                return (
+                  <PersonCard
+                    key={student.id}
+                    person={student}
+                    meta={`${sessions.length} session${sessions.length !== 1 ? 's' : ''}`}
+                    stat={<CompletedStat count={completedCount} />}
+                    hasBody={sessions.length > 0}
+                  >
+                    {sessions.map(s => <SessionRow key={s.id} session={s} compact />)}
+                  </PersonCard>
+                )
+              })}
             </div>
           )}
 
@@ -1150,26 +1143,20 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
                 const childNames = childIds.map(id => profileById[id]?.full_name ?? id.slice(0, 6)).join(', ')
                 const ownSessions = sessionsByStudent[parent.id] ?? []
                 return (
-                  <div key={parent.id} className="rounded-2xl overflow-hidden"
-                    style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
-                    <PersonRow
-                      person={parent}
-                      meta={childNames ? `Watching: ${childNames}` : 'No linked students'}
-                      authoredCount={ownSessions.length}
-                      showControls
-                    />
-                    {ownSessions.length > 0 && (
-                      <div className="px-4 pb-4 pt-1 space-y-2"
-                        style={{ borderTop: '1px solid var(--border-default)' }}>
-                        <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
-                          Own assignments (authored as a writer)
-                        </p>
-                        {ownSessions.map(s => (
-                          <SessionRow key={s.id} session={s} ownerRole={parent.role} compact />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <PersonCard
+                    key={parent.id}
+                    person={parent}
+                    meta={childNames ? `Watching: ${childNames}` : 'No linked students'}
+                    stat={<AuthoredBadge count={ownSessions.length} />}
+                    hasBody={ownSessions.length > 0}
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                      Own assignments (authored as a writer)
+                    </p>
+                    {ownSessions.map(s => (
+                      <SessionRow key={s.id} session={s} ownerRole={parent.role} compact />
+                    ))}
+                  </PersonCard>
                 )
               })}
             </div>
@@ -1185,44 +1172,38 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
                 const sessionIds = sessionsByTeacher[teacher.id] ?? []
                 const ownSessions = sessionsByStudent[teacher.id] ?? []
                 return (
-                  <div key={teacher.id} className="rounded-2xl overflow-hidden"
-                    style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
-                    <PersonRow
-                      person={teacher}
-                      meta={`Linked to ${sessionIds.length} assignment${sessionIds.length !== 1 ? 's' : ''}`}
-                      authoredCount={ownSessions.length}
-                      showControls
-                    />
-                    {(sessionIds.length > 0 || ownSessions.length > 0) && (
-                      <div className="px-4 pb-4 pt-1 space-y-2"
-                        style={{ borderTop: '1px solid var(--border-default)' }}>
-                        {sessionIds.length > 0 && (
-                          <>
-                            <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
-                              Linked assignments (student-owned)
-                            </p>
-                            {sessionIds.map(sid => {
-                              const s = sessions.find(x => x.id === sid)
-                              if (!s) return null
-                              const studentName = profileById[s.student_id]?.full_name
-                              const ownerRole = profileById[s.student_id]?.role
-                              return <SessionRow key={sid} session={s} studentName={studentName} ownerRole={ownerRole} />
-                            })}
-                          </>
-                        )}
-                        {ownSessions.length > 0 && (
-                          <>
-                            <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
-                              Own assignments (authored as a writer)
-                            </p>
-                            {ownSessions.map(s => (
-                              <SessionRow key={s.id} session={s} ownerRole={teacher.role} compact />
-                            ))}
-                          </>
-                        )}
-                      </div>
+                  <PersonCard
+                    key={teacher.id}
+                    person={teacher}
+                    meta={`Linked to ${sessionIds.length} assignment${sessionIds.length !== 1 ? 's' : ''}`}
+                    stat={<AuthoredBadge count={ownSessions.length} />}
+                    hasBody={sessionIds.length > 0 || ownSessions.length > 0}
+                  >
+                    {sessionIds.length > 0 && (
+                      <>
+                        <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                          Linked assignments (student-owned)
+                        </p>
+                        {sessionIds.map(sid => {
+                          const s = sessions.find(x => x.id === sid)
+                          if (!s) return null
+                          const studentName = profileById[s.student_id]?.full_name
+                          const ownerRole = profileById[s.student_id]?.role
+                          return <SessionRow key={sid} session={s} studentName={studentName} ownerRole={ownerRole} />
+                        })}
+                      </>
                     )}
-                  </div>
+                    {ownSessions.length > 0 && (
+                      <>
+                        <p className="text-[10px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                          Own assignments (authored as a writer)
+                        </p>
+                        {ownSessions.map(s => (
+                          <SessionRow key={s.id} session={s} ownerRole={teacher.role} compact />
+                        ))}
+                      </>
+                    )}
+                  </PersonCard>
                 )
               })}
             </div>
