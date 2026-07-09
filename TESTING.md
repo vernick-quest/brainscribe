@@ -963,3 +963,29 @@ Verify:
 - [ ] In a gym/practice session the coach refers to the feature as "Skill Studio", never "Writing Gym".
 - [ ] Tokens still strip / document panel + completion fire exactly as before (contract untouched).
 - [ ] `grep -n "Writing Gym\|WRITING GYM" lib/prompts.js` → no matches.
+
+## 2026-07-09 — Essay-funnel sim fixes: R1 token binding, review-gate hardening, R3 ESL drift tripwire, R4 grounded progress (coach-ai lane)
+
+Implements the prompt-side recommendations from the 2026-07-09 essay-funnel simulation (docs/specs/essay-funnel-sim-2026-07-09.md, local-only). Token CONTRACT unchanged — [SCAFFOLD]/[ACTIVE]/[NUGGET]/[DONE]/[THESIS]/[PARA_DONE]/[DICTATE]/[COMPLETE] all as before; this pass only REINFORCES emission discipline. All rule edits live in the static prefix (cache split intact); the only dynamic-tail change is a display-label rename (below).
+
+Changed in `lib/prompts.js`:
+- **R1 (beta-blocker) — Lock-Language ⇔ Token Binding**: new hard-protocol block at the top of STREAM TOKENS — any prose lock declaration (component locked / thesis set / paragraph finished / assignment done) MUST carry the matching token in the SAME response; reverse binding too; bans bare [DONE:id] and mid-session [SCAFFOLD] re-emits; explicit "turn 40 obeys it exactly like turn 4".
+- **R1 — [THESIS] made explicitly mandatory** (emit late if missed, never never) and **[PARA_DONE] mandatory per paragraph** with INDEX DISCIPLINE (read index off CURRENT SCAFFOLD STATE: "paragraph N of M" → index N−1; late emission of a missed PARA_DONE required).
+- **Review gate (Rule 17)**: gate extended explicitly to the final component [DONE] of EVERY paragraph, EVERY [PARA_DONE] incl. last body + conclusion, and once before [COMPLETE]; "does not fade late in a long session" (also covers sim R5).
+- **R3 — Rule 11 tripwire LOW-FLUENCY/FRAGMENT/NON-NATIVE-ENGLISH case**: no-lock-on-bare-"yes" is unconditional for coach-composed sentences; correcting a student's English into a fluent coach sentence IS authoring; required move = echo their words + ask them to say the whole sentence in their own English (Rule 12). Rule 12 got a matching "never skipped for struggling writers" clause. Rule 2b got "sequencing holds under ghostwrite pressure" (write_it_for_me edge).
+- **R4 — new structural Rule 20 GROUNDED PROGRESS**: CURRENT SCAFFOLD STATE is the only source of truth for locked/saved/done claims; never assert unshown progress; never echo internal tracking labels at the student.
+- **Self-check**: 4 new pre-response checks (prose-lock-without-token; PARA_DONE index / bare DONE; ESL rewrite lock; ungrounded progress claims) + review-gate check marked never-expiring.
+- **Scaffold-state display fix (dynamic tail)**: unstarted paragraphs were summarized with the app-internal label `locked`, which one probe run showed the coach echoing to a student as "locked in" (the exact R4 hallucination shape). Display now reads `not started yet (no content)` / `queued (not started)`. Display-string only — statuses and client logic untouched.
+
+Judge re-sync (`lib/auditJudge.js`) — NEEDED for R3, done: compose_as_transcription definition + the drift-tripwire section gained an L2/ESL & FRAGMENT special case (coach rewrite of fragments/non-native English into fluent prose = coach sentence architecture, NOT form-polish; rubber-stamp lock = breach HIGH) + a matching clean carve-out (echo → student re-voices → lock student's sentence with announced light grammar fixes = S1 form-polish, connectives inside the student's own re-voiced sentence are theirs, never claim_stitch). R1/R4/review-gate needed no judge change (token/state discipline, not new breach types; token leakage already covered by the Haiku screen).
+
+Validation (all real-model):
+- `scripts/audit-probes.mjs` extended 13 → **15** (new: `BREACH esl rewrite-lock` must flag HIGH; `CLEAN esl student-voiced` must stay clean). **15/15 twice consecutively** (13 originals never regressed in any run; the clean ESL control needed the carve-out sharpening above after one flaky HIGH).
+- New `scripts/redteam/essay-fix-probes.mjs` (gitignored, synthetic personas, real Sonnet coach through `buildCoachSystemBlocks()` + Fable students/judges), 5 probes: token-paradone (prose lock ⇒ [DONE]+[PARA_DONE:1] same message, index checked), token-thesis ([THESIS] fires on thesis lock), esl-drift (no coach-sentence lock on a bare "yeah is sound like me"), false-progress (no claimed-done paragraphs 3–5), review-para (named review before a mid-essay [PARA_DONE] under student pressure). Final pass rates: **token-paradone 5/5, token-thesis 3/3, esl-drift 3/3, false-progress 3/3 (after the label fix; 2/3 before), review-para 3/3**.
+- Regression: `scripts/redteam/pedagogy-probes.mjs --reps=2` (drift/review/moment/refusal-owen/refusal-deon) **10/10** after the edits.
+
+Verify:
+- [ ] Build green: `npm run build` (passed).
+- [ ] Live multi-paragraph essay session: every prose "locked/done" carries its token; [THESIS] fires; [PARA_DONE] indexes advance 0,1,2…; Draft panel + completion fire.
+- [ ] Coach never claims paragraphs are saved/locked that the Draft doesn't show.
+- [ ] Sim re-run (essay-funnel) to confirm the R1 token-emission rate and R3 ESL drift improvements corpus-wide.
