@@ -20,8 +20,11 @@ const PROGRESS_MESSAGES = [
 
 // New assignment — Option A (Focused): one card, assignment + coach. Teacher
 // assignment lives on the Assignments list (per-assignment teacher chip), not here.
-export default function NewSessionForm() {
-  const [assignment, setAssignment]             = useState('')
+// initialAssignmentText / initialFocus prefill the "revise a draft" path from the
+// Head Grader (transcript → "work on this with your coach"). Both optional; a plain
+// /assignment/new visit passes neither and behaves exactly as before.
+export default function NewSessionForm({ initialAssignmentText = '', initialFocus = '' }) {
+  const [assignment, setAssignment]             = useState(initialAssignmentText)
   const [persona, setPersona]                   = useState('owen')
   const [loading, setLoading]                   = useState(false)
   const [submitError, setSubmitError]           = useState('')
@@ -92,10 +95,16 @@ export default function NewSessionForm() {
     setLoading(true)
     setSubmitError('')
     try {
+      // When revising toward a rubric criterion, pass the criterion (the rubric's
+      // own words) as a plain orienting note appended to the assignment. It's
+      // context for the coach — never a suggestion or a grade.
+      const assignmentText = initialFocus
+        ? `${assignment}\n\n(Revisiting a previous draft — focus this time on this part of the rubric: ${initialFocus})`
+        : assignment
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignmentText: assignment, persona, subject: 'unspecified' }),
+        body: JSON.stringify({ assignmentText, persona, subject: 'unspecified' }),
       })
       const session = await res.json()
       if (!res.ok || !session.id) {
@@ -118,6 +127,22 @@ export default function NewSessionForm() {
       backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)',
       boxShadow: 'var(--shadow-md)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)',
     }}>
+
+      {/* Revision focus (from the Head Grader) — the rubric's own words, shown as
+          orientation. Not editable here; it rides along as context for the coach. */}
+      {initialFocus && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', marginBottom: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+          <PersonaAvatar personaId={persona} size={20} />
+          <div>
+            <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 2 }}>
+              Working on this again
+            </span>
+            <span style={{ font: 'var(--type-ui)', color: 'var(--text-body)' }}>
+              Focus this round: <strong>{initialFocus}</strong>
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Your assignment */}
       <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>

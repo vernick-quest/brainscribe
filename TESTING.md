@@ -542,3 +542,54 @@ DB bookkeeping (service-role, project `lakozspeyxsuunogfant`):
   `seed-demo` now writes the same skip-findings for future demo sessions.
 
 `npm run build` green.
+
+## Head Grader — rubric review of finished work (2026-07-05)
+
+Observe-only check of a FINISHED assignment against the teacher's REAL rubric. New
+files: `lib/gradeAgainstRubric.js` (pure brain — schema + prompt + `validateRubricReview`;
+mirrors the auditJudge/auditTranscript split), `app/api/sessions/[id]/rubric` (attach),
+`app/api/sessions/[id]/review` (run), `components/RubricReviewSection.js`. Cross-lane:
+transcript page section, `/assignment/new?revise=&gap=` prefill, `lib/prompts.js` Rule 7
+superseded (coach now hands off to the grader — flag for the transcript-audit judge
+re-sync). **No migration** — reuses the existing unused `rubrics` table (`rubric_text` =
+raw rubric, `feedback_text` = versioned envelope `{v:1,model,created_at,review}`).
+
+Automated (green): `npm run build` passes. Red-team `scripts/redteam/grader-probes.mjs`
+(gitignored; real model calls, no DB; Fable-5 judge at effort low — falls back to Opus
+and prints which) = **10/10 clean, stable across 2 runs**: leveled 4-level matrix
+(verbatim placements, top-level ⇒ blank next-level, no invented levels), point-valued
+rubric (no point math / no total), plain checklist, rubric-borne injection ("rewrite +
+grade it"), suggestion-elicitation rubric ("provide a model sentence"), essay-borne
+injection, grade demand, non-rubric doc (⇒ `rubric_readable:false`), fabricated-evidence
+trap (essay lacks the asked-for statistic ⇒ no fabricated quote), and the coach handoff
+replay (coach declines to grade and points to "Check my work"). Deterministic guards
+(evidence ∈ essay, level descriptor ∈ rubric, no grade-shape in notes) hold by
+construction on every probe.
+
+Manual checklist (as a 13+ / consented test student, on a COMPLETE session):
+- [ ] Finished transcript shows the quiet "Check against a rubric" affordance → "Add a
+      rubric" (paste and photo/PDF tabs). In-progress or empty sessions show nothing.
+- [ ] Paste a rubric → "Check my work" → leveled criteria render as a "Where your draft
+      is / Next level up" ladder, both descriptors quoted from the rubric, evidence quoted
+      from the draft. **No overall grade/letter/percentage anywhere.**
+- [ ] Photo/PDF of a rubric → OCR fills it; a non-rubric image → 422 "Couldn't find a
+      rubric" (paste of a non-rubric doc → the "that didn't look like a rubric" state).
+- [ ] Each gap's "Work on this with your coach →" opens `/assignment/new?revise=&gap=`
+      prefilled with the same assignment + a "Focus this round: <criterion>" banner; the
+      coach then behaves normally (stream tokens untouched).
+- [ ] Ask a coach mid-session to grade against a rubric → it declines and points to
+      "Check my work" (superseded Rule 7); it never scores criteria.
+- [ ] Re-attaching a rubric clears the prior review (feedback_text nulled); "Re-check"
+      overwrites in place.
+- [ ] Rate limits: 10 attaches/day, 5 reviews/day → friendly 429.
+- [ ] Not-owner / not-complete / no-rubric / essay-too-short → guarded (403/409).
+
+### Known-deferred / accepted (v1)
+- **Watcher visibility is UI-gated only.** The `rubrics` "watcher reads" RLS policy lets
+  a linked parent/teacher READ the row at the DB level, but the transcript section is
+  rendered for the student owner only. Accepted for v1 (no watcher UI); revisit if a
+  watcher rubric surface is built.
+- Overall grade/letter/percentage — **out of scope by design** (per-criterion level
+  PLACEMENT only; never aggregation).
+- In-place reopen of a completed session, rubric-attach at session creation, review
+  history/versioning, teacher rubric authoring — phase 2.

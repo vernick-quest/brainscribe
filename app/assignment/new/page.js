@@ -9,7 +9,8 @@ import WriteAgeGate from '@/components/WriteAgeGate'
 // button points at it. Works for ANY role (parent/teacher write their own too);
 // access to the coach is granted by ownership downstream — this page only gates
 // on the 13+/consent age check. (/write is kept as an alias that redirects here.)
-export default async function NewAssignmentPage() {
+export default async function NewAssignmentPage({ searchParams }) {
+  const sp = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -26,6 +27,34 @@ export default async function NewAssignmentPage() {
   if (profile?.coppa_consent_required && !profile?.coppa_consent_given) redirect('/coppa/pending')
 
   const ageOk = profile?.age_bracket === '13plus' || profile?.coppa_consent_given === true
+
+  // Head Grader "work on this with your coach" prefill: ?revise=<sessionId>&gap=<i>
+  // opens a NEW session on the same assignment, optionally oriented toward one
+  // rubric criterion (the rubric's own words — never a suggestion). Everything is
+  // read under RLS, so a crafted id only prefills work the caller may already see;
+  // any failure falls back to a blank form.
+  let initialAssignmentText = ''
+  let initialFocus = ''
+  const reviseId = typeof sp?.revise === 'string' ? sp.revise : ''
+  if (reviseId) {
+    const { data: prior } = await supabase
+      .from('sessions').select('assignment_text, student_id').eq('id', reviseId).single()
+    if (prior?.assignment_text && prior.student_id === user.id) {
+      initialAssignmentText = prior.assignment_text
+      const gapIdx = Number.parseInt(sp?.gap, 10)
+      if (Number.isInteger(gapIdx) && gapIdx >= 0) {
+        const { data: rubricRow } = await supabase
+          .from('rubrics').select('feedback_text').eq('session_id', reviseId).single()
+        try {
+          const env = rubricRow?.feedback_text ? JSON.parse(rubricRow.feedback_text) : null
+          const crit = env?.v === 1 ? env.review?.criteria?.[gapIdx] : null
+          // Only the criterion's own text (verbatim from the rubric) — no gap
+          // note, no advice — becomes the coach's orienting focus line.
+          if (crit?.criterion) initialFocus = crit.criterion
+        } catch { /* unparseable review — no focus, just the assignment */ }
+      }
+    }
+  }
 
   // Where the back-link returns to — the role's assignments home.
   const listHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
@@ -48,7 +77,9 @@ export default async function NewAssignmentPage() {
             Add your assignment and pick the coach who fits it best — we&apos;ll take it from there.
           </p>
         </div>
-        {ageOk ? <NewSessionForm /> : <WriteAgeGate role={profile?.role} />}
+        {ageOk
+          ? <NewSessionForm initialAssignmentText={initialAssignmentText} initialFocus={initialFocus} />
+          : <WriteAgeGate role={profile?.role} />}
       </main>
     </div>
   )

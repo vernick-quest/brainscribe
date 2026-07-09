@@ -48,3 +48,6 @@ next-env.d.ts
 # local-only adversarial red-team harness — keep bypass/attack strings out of the
 # public repo (same rationale as the gitignored anti-jailbreak spec above)
 /scripts/redteam
+
+# Conductor-only local hooks (main checkout)
+.claude/settings.local.json
