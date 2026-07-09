@@ -963,3 +963,33 @@ Verify:
 - [ ] In a gym/practice session the coach refers to the feature as "Skill Studio", never "Writing Gym".
 - [ ] Tokens still strip / document panel + completion fire exactly as before (contract untouched).
 - [ ] `grep -n "Writing Gym\|WRITING GYM" lib/prompts.js` → no matches.
+
+## 2026-07-09 — Client token safety-net for dropped structural tokens (coaching-session lane)
+
+Belt-and-suspenders for the essay-funnel sim finding (docs/specs/essay-funnel-sim-2026-07-09.md §4): over a long multi-paragraph essay the coach sometimes finishes a paragraph in prose but **drops the `[PARA_DONE]` (2/10 emitted ZERO) or `[THESIS]` (3/10) token**, or emits `[PARA_DONE:idx]` with a wrong index (4/10). In the live app that loses the student's work / blanks the Draft panel / silently skips or duplicates a paragraph. coach-ai is fixing the prompt side in parallel; this is the client reconciliation.
+
+All changes are in `components/TutorSession.js` → `parseAndApplyScaffoldTokens()` only (the post-stream scaffold reconciler). No touch to streaming, audio/TTS, barge-in, the greeting/read-back/scribe helpers, or the token-strip regex. Persists via the existing `PATCH /api/scaffold/[sessionId]` (which already accepts `components`/`thesis`/`current_paragraph_index`).
+
+**The heuristic (evidence-based, cannot false-fire on in-progress work):**
+- **Net A — dropped `[PARA_DONE]`.** After the token loop, for a **multi-paragraph** scaffold only (`components.length > 1`), any paragraph whose **every** item is `status:'confirmed'` (i.e. the student individually approved each part) but whose paragraph `status !== 'complete'` is reconciled to `complete`, and `current_paragraph_index` is advanced to just past it (never regressed, capped at length). Summary left null — never fabricated. Logs `[token-safety-net] paragraph N ... no [PARA_DONE] fired — reconciling to complete`.
+- **Net B — dropped `[THESIS]`.** If a `thesis` component is `confirmed` with real text but `scaffold.thesis` is empty, thesis is restored from that locked component. Logs `[token-safety-net] thesis component confirmed but no [THESIS] fired ...`.
+- **Net C — wrong `[PARA_DONE]` index.** The handler no longer blindly sets `current = idx+1`. Ground truth is `current_paragraph_index` (the paragraph actually being worked); the emitted index is a hint. `idx > current` → complete the working paragraph, don't skip the ones between. `idx < current` → honor the re-emit (idempotent) but never regress the cursor. `idx === current` → unchanged from before (byte-identical happy path). Logs on mismatch.
+
+**Why it can't false-fire on normal flow (traced):**
+- Net A fires ONLY when EVERY component of a paragraph is `confirmed` — which, given each paragraph has a fixed component set (hook/context/thesis/roadmap, topic_sentence/evidence/analysis/transition, etc.), IS the definition of a finished paragraph. A paragraph the student is still building always has ≥1 non-confirmed item → skipped.
+- Same-turn correct `[PARA_DONE]` marks the paragraph `complete` inside the loop; Net A checks `status !== 'complete'` → does not double-fire.
+- No fuzzy text/lock-language matching anywhere — reconciliation reads only hard `status:'confirmed'` state.
+- Server-side paragraph assembly (`/api/sessions/[id]/complete`, `/api/gym/complete/[id]`) keys off `item.status === 'confirmed'`, NOT `paragraph.status` — so Net A setting `status:'complete'` cannot corrupt or fabricate a persisted paragraph; it only advances the scaffold cursor + progress/greeting display.
+
+**Scoping keeps the fragile paths untouched:**
+- Net A/B scoped to `components.length > 1`. Gym challenges are `output_type:'paragraph'` (single-paragraph) and onboarding/practice is a single custom paragraph → **both never enter Net A/B**; their existing behavior (incl. the onboarding `[COMPLETE]` promote block) is unchanged.
+- Barge-in, TTS, scribe/dictation, persona-switch greeting, full-essay read-back: not touched.
+
+Verify:
+- [ ] Build green: `npm run build` (passed — "Compiled successfully").
+- [ ] Multi-paragraph essay where the coach confirms all of a body paragraph's components but drops `[PARA_DONE]`: the paragraph shows complete, the "{done}/{total} paragraphs" count advances, and the next paragraph becomes active. Console shows one `[token-safety-net] paragraph N ...` line.
+- [ ] Thesis locked as a component but `[THESIS]` dropped: the Draft-panel thesis callout populates; `sessions.thesis_statement` set. Console shows the thesis reconcile line.
+- [ ] Wrong `[PARA_DONE:idx]` (idx ahead of the working paragraph): no paragraph is skipped/duplicated; the working paragraph completes; console logs the mismatch.
+- [ ] NORMAL essay flow (correct tokens): zero `[token-safety-net]` console lines; paragraph advancement identical to before.
+- [ ] Gym single-paragraph session: no `[token-safety-net]` lines (scoped out); completion + Practiced badge unchanged.
+- [ ] Onboarding practice (single hook): unchanged; reveal + transcript still populate.

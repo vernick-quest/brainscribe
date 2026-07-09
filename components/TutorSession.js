@@ -958,17 +958,38 @@ export default function TutorSession({
       else if (type === 'PARA_DONE' && sc) {
         const colonIdx = payload.indexOf(':')
         if (colonIdx !== -1) {
-          const paraIdx = parseInt(payload.slice(0, colonIdx))
+          const emittedIdx = parseInt(payload.slice(0, colonIdx))
           const summary = payload.slice(colonIdx + 1)
-          if (!isNaN(paraIdx)) {
-            sc = {
-              ...sc,
-              current_paragraph_index: paraIdx + 1,
-              components: sc.components.map((p, i) =>
-                i === paraIdx ? { ...p, status: 'complete', summary } : p
-              ),
+          if (!isNaN(emittedIdx)) {
+            // Safety-net (Net C — dropped/wrong PARA_DONE index, essay-funnel sim
+            // 2026-07-09, 4/10 sessions). Blindly trusting the emitted index and
+            // setting current = idx+1 silently skips or duplicates paragraphs when
+            // the coach mis-indexes. Ground truth is which paragraph is actually
+            // being worked (current_paragraph_index); the emitted index is a hint.
+            const cur = sc.current_paragraph_index ?? 0
+            let targetIdx = emittedIdx
+            if (emittedIdx > cur) {
+              // Coach ran the index ahead of the working paragraph — complete the
+              // one actually in progress, never leap over the ones between.
+              targetIdx = cur
+              console.warn(`[token-safety-net] PARA_DONE index ${emittedIdx} runs ahead of working paragraph ${cur} — completing ${targetIdx} instead (no skip)`)
+            } else if (emittedIdx < cur) {
+              // Re-emit for an already-passed paragraph — honor it (idempotent), but
+              // never move the cursor backward.
+              console.warn(`[token-safety-net] PARA_DONE re-emit for earlier paragraph ${emittedIdx} (working ${cur}) — no cursor regress`)
             }
-            changed = true
+            if (targetIdx >= 0 && targetIdx < sc.components.length) {
+              sc = {
+                ...sc,
+                // Advance past the completed paragraph, but never regress the cursor
+                // and never leap more than one past the paragraph being worked.
+                current_paragraph_index: Math.min(Math.max(cur, targetIdx + 1), sc.components.length),
+                components: sc.components.map((p, i) =>
+                  i === targetIdx ? { ...p, status: 'complete', summary: summary || p.summary } : p
+                ),
+              }
+              changed = true
+            }
           }
         }
       }
@@ -997,6 +1018,61 @@ export default function TutorSession({
         })),
       }
       changed = true
+    }
+
+    // ── Client token safety-net: reconcile dropped structural tokens ─────────────
+    // The essay-funnel sim (2026-07-09) found the coach sometimes finishes a
+    // paragraph in prose but drops the [PARA_DONE] (2/10 emitted ZERO) or [THESIS]
+    // (3/10) token — in the live app that loses the student's work and blanks the
+    // Draft panel. This reconciles from HARD scaffold evidence only: a paragraph is
+    // treated as finished solely when every one of its components is already
+    // status:'confirmed' (i.e. the student individually approved each), never from
+    // fuzzy text/lock-language matching — so it cannot false-fire on a paragraph the
+    // student is still building. Scoped to multi-paragraph essays (the sim's failure
+    // surface); single-paragraph, onboarding/practice, and custom (haiku/list) flows
+    // keep their existing behavior untouched. When the net fires it logs to console
+    // (prefix [token-safety-net]) so the fire-rate can be measured against the
+    // parallel coach-ai prompt fix.
+    if (sc && (sc.components?.length ?? 0) > 1) {
+      // Net A — dropped [PARA_DONE]: a paragraph whose every component is confirmed
+      // but that was never marked complete (no PARA_DONE fired). Mark it complete so
+      // the scaffold advances and the work is banked. Summary stays null — we never
+      // fabricate one (it's only used for resume/bridging orientation).
+      let advanceTo = sc.current_paragraph_index ?? 0
+      const reconciled = sc.components.map((p, i) => {
+        const items = p.items ?? []
+        const allConfirmed = items.length > 0 && items.every(it => it.status === 'confirmed')
+        if (allConfirmed && p.status !== 'complete') {
+          console.warn(`[token-safety-net] paragraph ${i} has every component confirmed but no [PARA_DONE] fired — reconciling to complete`)
+          if (i + 1 > advanceTo) advanceTo = i + 1
+          changed = true
+          return { ...p, status: 'complete' }
+        }
+        return p
+      })
+      sc = {
+        ...sc,
+        components: reconciled,
+        current_paragraph_index: Math.min(advanceTo, sc.components.length),
+      }
+
+      // Net B — dropped [THESIS]: the intro's thesis component is confirmed with real
+      // text but sc.thesis was never set (THESIS token dropped). Restore it from the
+      // locked component so the persistent thesis line and Rule 11 thesis-tracking
+      // have a thesis to reference.
+      if (!sc.thesis) {
+        for (const p of sc.components) {
+          const thesisItem = (p.items ?? []).find(
+            it => it.id === 'thesis' && it.status === 'confirmed' && (it.text || it.nuggetText)
+          )
+          if (thesisItem) {
+            sc = { ...sc, thesis: thesisItem.text || thesisItem.nuggetText }
+            console.warn('[token-safety-net] thesis component confirmed but no [THESIS] fired — reconciling thesis from locked component')
+            changed = true
+            break
+          }
+        }
+      }
     }
 
     // Persist any change — including when the scaffold was created THIS turn. The
