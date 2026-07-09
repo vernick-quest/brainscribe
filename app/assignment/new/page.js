@@ -17,7 +17,7 @@ export default async function NewAssignmentPage({ searchParams }) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, age_bracket, coppa_consent_required, coppa_consent_given')
+    .select('role, full_name, age_bracket, avatar_url, coppa_consent_required, coppa_consent_given')
     .eq('id', user.id)
     .single()
 

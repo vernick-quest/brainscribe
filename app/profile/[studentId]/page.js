@@ -18,7 +18,7 @@ export default async function StudentProfilePage({ params }) {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('role, full_name').eq('id', user.id).single()
+    .from('profiles').select('role, full_name, age_bracket, avatar_url').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
   const viewerId = imp?.userId ?? user.id
