@@ -83,29 +83,9 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
                 <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{part}</span>
               </div>
             ))}
-            <p className="text-xs pt-1 leading-snug" style={{ color: 'var(--text-subtle)' }}>
-              On a real assignment you&rsquo;ll build these the same way — one piece at a time, all in your own words.
-            </p>
           </div>
 
-          {/* Teacher-trust note, reinforced right after they see their own voice on the page. */}
-          {practiceSessionId && (
-            <div className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-              <p>When you add a teacher to an assignment, this is what they see — the conversation, so they know the words came from you.</p>
-              <a href={`/transcript/${practiceSessionId}`}
-                className="inline-flex items-center gap-1 mt-1.5 font-semibold hover:underline"
-                style={{ color: 'var(--accent-text)' }}>
-                See the full transcript →
-              </a>
-            </div>
-          )}
-
           <div className="space-y-3 pt-1">
-            <p className="text-sm leading-snug" style={{ color: 'var(--text-muted)' }}>
-              Ready for the real thing? BrainScribe coaches you through whatever you&rsquo;re
-              assigned — essays, poetry, lab reports, you name it. Paste one in and we&rsquo;ll
-              build it together, one piece at a time.
-            </p>
             <button onClick={() => go('/assignment/new')}
               className="w-full font-bold rounded-full py-3 transition"
               style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}>
