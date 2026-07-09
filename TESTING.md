@@ -942,3 +942,24 @@ Verify:
 - [ ] Under-13 student: still initials-only (COPPA fail-closed, unchanged).
 
 Note: /dashboard is auth-gated (redirects to /login without a Supabase session), so these were verified by build + code review rather than a live headless preview in this non-interactive run.
+
+## 2026-07-09 — Coach prompt: "Writing Gym" → "Skill Studio" (model-facing rename, coach-ai lane)
+
+Completes the display rename (2026-07-08 gym-worktree section above, which deliberately left the coach system prompt to this lane). Pure terminology swap in the coach's model-facing gym-mode instructions so the coach never says "the Writing Gym" to a student.
+
+Changed in `lib/prompts.js` (all inside `gymSection`, which is concatenated into `dynamicTail` — the UNCACHED dynamic tail, NOT the cached `staticPrefix`; zero prompt-caching impact):
+- Warm-up block heading: `WRITING GYM WARM-UP` → `SKILL STUDIO WARM-UP`.
+- Warm-up body: "This is the student's FIRST time in the Writing Gym." → "…in the Skill Studio."
+- Practice block heading: `WRITING GYM MODE` → `SKILL STUDIO MODE`.
+- Practice body: "This is a Writing Gym practice session…" → "This is a Skill Studio practice session…"
+- Code comment `// Writing Gym mode.` → `// Skill Studio mode.` (non-model-facing, cosmetic).
+
+Unchanged: every coaching rule/guardrail/pedagogy instruction; the inline token contract ([SCAFFOLD]/[ACTIVE]/[NUGGET]/[DONE]/[THESIS]/[PARA_DONE]/[DICTATE]/[COMPLETE]); the `/gym` route, `gym_*` identifiers, `opts.gym`/`gymSection` code names; the static/dynamic cache split.
+
+Audit judge: `lib/auditJudge.js` and `scripts/audit-probes.mjs` do NOT reference the feature name ("gym"/"studio"/"warm-up" absent) — NO judge re-sync needed, full probe suite not re-run (pure name swap, judge untouched).
+
+Verify:
+- [ ] Build green: `npm run build` (passed).
+- [ ] In a gym/practice session the coach refers to the feature as "Skill Studio", never "Writing Gym".
+- [ ] Tokens still strip / document panel + completion fire exactly as before (contract untouched).
+- [ ] `grep -n "Writing Gym\|WRITING GYM" lib/prompts.js` → no matches.
