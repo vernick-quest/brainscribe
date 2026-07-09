@@ -842,3 +842,24 @@ Notes / deferred:
 - Multi-prereq skills nest under their first in-tier prereq only (e.g. Essay Architecture
   under Thesis, not also Paragraph Structure) to avoid duplicating a row; the full prereq
   set still drives the unlock and the "Complete X and Y to unlock" copy.
+
+## 2026-07-09 — FTUE follow-ups: onboarding hook stored `confirmed` + teacher-transparency note relocated
+
+Two follow-ups from the 07-09 FTUE review (focus/ftue). Build green (`npm run build`, Turbopack, exit 0). No test suite — traced both paths.
+
+### Task A — onboarding hook now persists as `status:'confirmed'` (root fix)
+Write-path fix so the locked practice opening line is stored like a normal component lock, instead of lingering as `candidate` with real text (which is why the reveal + transcript needed lenient fallbacks).
+
+- [ ] Fresh practice run (reset a student to "Not onboarded" in /admin, sign in as them): pick a prompt, land one opening line, let the coach lock it. In Supabase, `paragraph_scaffolds.components[0].items[0]` for that `is_onboarding` session now has `status: "confirmed"` and `text` = the exact line (previously `candidate` + `nuggetText`).
+- [ ] Reveal screen (`/onboarding/complete`) shows the line via the **normal confirmed** branch (`items.find(it => it.status === 'confirmed' && it.text)`), not the lenient `?? items.find(it => it.text)` fallback.
+- [ ] Transcript (`/transcript/[id]?onboarding=1`) shows the line under the "Opening line" header via the normal confirmed path.
+- [ ] Regression — general (non-onboarding) session: multi-component lock behavior unchanged. A stray `[COMPLETE]` does NOT mass-confirm un-approved candidate parts (the promotion is gated on the `onboarding` prop).
+- Root cause: the practice coach captures the line as `[NUGGET:c0:words]` (→ `candidate`) and ends on `[COMPLETE]`; on LLM-variant runs it reached `[COMPLETE]` without a cleanly parseable `[DONE:c0]`, so the item stayed `candidate`.
+- Fix: (1) `components/TutorSession.js` `parseAndApplyScaffoldTokens` — on `[COMPLETE]` in the onboarding flow, promote any captured-but-unconfirmed item to `confirmed` with its text before the PATCH (scoped to `onboarding` only). (2) `lib/prompts.js` onboarding step 6 — require `[DONE:c0:exact words]` immediately before `[COMPLETE]`, never `[COMPLETE]` without it.
+- The lenient fallbacks in `app/onboarding/complete/page.js` and `app/transcript/[id]/page.js` are now belt-and-suspenders (no longer load-bearing) — intentionally left in place.
+
+### Task B — teacher-transparency note relocated to the add-teacher/share flow
+The reassurance copy removed from the FTUE completion screen (it introduced teacher-oversight anxiety at the first-run conversion moment) now lives where a student actually chooses to share — the "Invite a teacher to this assignment" form (`components/InviteTeacherForm.js`), which renders both standalone and inside the coaching session's Teacher panel.
+
+- [ ] Open an assignment → Teacher panel → "Invite a teacher": intro copy now reads "Your teacher sees this whole conversation — not just your final draft. **That's the point:** the back-and-forth shows the words and ideas came from you, with your coach guiding — never writing for you." (brand voice; navy `--text-strong` emphasis, no accent-as-text).
+- [ ] Auth-gated surface (needs a signed-in owner + an assignment) — validated by build + trace, not browser-driven.
