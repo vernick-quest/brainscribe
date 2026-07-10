@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 export async function GET() {
   const supabase = await createClient()
@@ -8,10 +9,15 @@ export async function GET() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 })
 
+  // The rollup RPCs are SECURITY DEFINER and read cross-user cost/PII. EXECUTE is
+  // revoked from anon/authenticated (migration 029) to close an anon-readable leak,
+  // so they run ONLY via the service-role client below — gated by the admin check above.
+  const svc = createServiceClient()
+
   // Anthropic — last 30 days, aggregated by day in Postgres (returns ~30 rows
   // instead of every usage row). Falls back to no data if the rollup function
   // hasn't been applied yet.
-  const { data: daily, error: rollupError } = await supabase.rpc('anthropic_usage_daily', { days: 30 })
+  const { data: daily, error: rollupError } = await svc.rpc('anthropic_usage_daily', { days: 30 })
   if (rollupError) console.error('[usage] rollup rpc failed:', rollupError.message)
 
   let totalCost = 0, totalInput = 0, totalOutput = 0, totalCalls = 0
@@ -53,7 +59,7 @@ export async function GET() {
   }
 
   // Spend by bucket — Users / Testing / Other (graceful empty if migration 028 not applied)
-  const { data: catRows, error: byCatError } = await supabase.rpc('usage_by_category', { days: 30 })
+  const { data: catRows, error: byCatError } = await svc.rpc('usage_by_category', { days: 30 })
   if (byCatError) console.error('[usage] usage_by_category rpc failed:', byCatError.message)
 
   const byCategory = (catRows ?? []).map(r => ({
@@ -64,7 +70,7 @@ export async function GET() {
   }))
 
   // Per-user cost across both services (graceful empty if migration 013 not applied)
-  const { data: userRows, error: byUserError } = await supabase.rpc('usage_by_user', { days: 30 })
+  const { data: userRows, error: byUserError } = await svc.rpc('usage_by_user', { days: 30 })
   if (byUserError) console.error('[usage] usage_by_user rpc failed:', byUserError.message)
 
   const byUser = (userRows ?? []).map(r => ({
