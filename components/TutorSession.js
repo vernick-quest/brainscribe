@@ -1270,7 +1270,7 @@ export default function TutorSession({
       const newScaffold = await parseAndApplyScaffoldTokens(full, scaffold)
       if (newScaffold !== scaffold) setScaffold(newScaffold)
 
-      if (full.includes('[COMPLETE]')) markSessionComplete()
+      if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
 
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
@@ -1405,11 +1405,28 @@ export default function TutorSession({
     await deliverTutorMessage(greeting, messages, newPersona)
   }
 
-  async function markSessionComplete() {
+  async function markSessionComplete(finalScaffold) {
     if (sessionComplete) return
     setSessionComplete(true)
+    // Send the final scaffold snapshot so the server durably persists the student's
+    // work at completion — the produced content of custom / non-prose forms (a
+    // haiku's lines, the onboarding hook) lives ONLY in the scaffold, so completion
+    // must not depend on an earlier fire-and-forget PATCH having landed. Prefer the
+    // freshly-parsed scaffold passed by the caller; fall back to state. (setScaffold
+    // is async, so the `scaffold` closure may still be one turn stale here.)
+    const snapshot = finalScaffold ?? scaffold
     try {
-      const res = await fetch(completeEndpoint ?? `/api/sessions/${session.id}/complete`, { method: 'PATCH' })
+      const res = await fetch(completeEndpoint ?? `/api/sessions/${session.id}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot ? { scaffold: {
+          assignment_type: snapshot.assignment_type,
+          total_paragraphs: snapshot.total_paragraphs,
+          current_paragraph_index: snapshot.current_paragraph_index,
+          components: snapshot.components,
+          thesis: snapshot.thesis,
+        } } : {}),
+      })
       // The server assembles any unbuilt paragraph into prose on complete and hands
       // it back — adopt it so the finished paragraph shows above its components.
       const data = await res.json().catch(() => null)

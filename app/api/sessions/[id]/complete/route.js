@@ -4,6 +4,7 @@ import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
 import { persistRequirementsActual } from '@/lib/requirements'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
+import { upsertScaffoldSnapshot } from '@/lib/scaffoldSnapshot'
 import { NextResponse, after } from 'next/server'
 
 // Build flowing prose for any scaffold paragraph whose components are confirmed but
@@ -21,6 +22,12 @@ async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
     .map((para, idx) => ({ para, idx }))
     .filter(({ para, idx }) =>
       !built.has(idx) &&
+      // Custom / non-prose forms (haiku, poem, list, …) must NOT be flowed into a
+      // single prose paragraph — that reworders the student's lines and destroys the
+      // form's structure. Their final content stays verbatim in the scaffold, which
+      // the transcript renders directly (scaffoldLines fallback). Only prose types
+      // assemble into `paragraphs`.
+      para.type !== 'custom' &&
       (para.items ?? []).some(c => c.status === 'confirmed' && (c.text || c.nuggetText))
     )
 
@@ -54,6 +61,11 @@ export async function PATCH(request, { params }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // The client sends its final scaffold snapshot so completion never depends on a
+  // prior live PATCH having landed (body is optional — tolerate an empty request).
+  let clientScaffold = null
+  try { clientScaffold = (await request.json())?.scaffold ?? null } catch {}
+
   // Verify ownership
   const { data: session } = await supabase
     .from('sessions')
@@ -69,6 +81,12 @@ export async function PATCH(request, { params }) {
   if (session.status === 'complete') {
     return NextResponse.json({ ok: true })
   }
+
+  // Durably persist the student's final scaffold BEFORE flipping the session to
+  // complete. This is the guarantee: a session is never marked complete while its
+  // produced content lives only in client state. It also feeds assembleUnbuiltParagraphs
+  // below, so prose that was never manually assembled still flows into `paragraphs`.
+  await upsertScaffoldSnapshot(supabase, id, clientScaffold)
 
   // Mark complete
   const { error } = await supabase

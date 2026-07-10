@@ -1071,3 +1071,33 @@ Verify (manual e2e — can't automate past the gesture-lock):
 - [ ] Gym session + onboarding practice: toggle still works, but the auto-mute offer NEVER fires there.
 - [ ] Persistence: set the preference, reload the session → it sticks (read from the profile).
 - [ ] Zero console errors across the above.
+
+---
+
+## 2026-07-10 — Custom / non-prose forms lose the student's work on completion (DATA LOSS) — root-cause fix [focus/coaching-session]
+
+**Bug:** Completed haiku / poem / list sessions AND onboarding hooks showed "Nothing written yet" on the transcript — the student's locked-in lines were gone. Prose essays were unaffected.
+
+**Root cause (schema):** `paragraph_scaffolds.assignment_type` carried a CHECK constraint from migration `008` that only permitted `narrative | essay | personal_statement | other`. Every non-prose form (haiku, poem, list, letter, speech, story) AND the onboarding hook is created with `assignment_type = 'custom'` (coach emits `[SCAFFOLD:custom:…]`, see `lib/prompts.js`). So Postgres **rejected every `custom` scaffold INSERT**. The client fires the scaffold-create POST fire-and-forget (`components/TutorSession.js` ~L1007) and never surfaces the 500; subsequent PATCHes do `.update().eq('session_id')` which match **zero rows** (no error, silent no-op). The locked lines therefore lived only in React state and were LOST when `[COMPLETE]` flipped the session to `complete`. The scaffold is the ONLY durable home for custom-form content (prose additionally assembles into `paragraphs`), so a single missed write = total loss. **Confirmed empirically:** all 18 live scaffold rows are prose types; ZERO `custom` rows despite completed haiku/onboarding sessions (e.g. `b93f02f7`: complete, 0 paragraphs, 0 scaffold rows, lines only survive in `messages`).
+
+**Secondary fragility (architecture):** even with the constraint fixed, completion trusted that prior client PATCHes had landed — the complete endpoints only READ the scaffold from the DB. A dropped PATCH (superseded turn, network blip, resume race) would still lose custom content. Fixed by moving the durable guarantee to completion.
+
+**Fix:**
+- **Migration `031_scaffold_assignment_type_custom.sql`** (NEEDS MANUAL APPLY to Supabase project `lakozspeyxsuunogfant`): drops the old CHECK and re-adds it widened to include `'custom'`. Until applied, the completion upsert of a custom scaffold logs a non-fatal error and custom content still won't persist — **apply before/with the deploy.**
+- **`lib/scaffoldSnapshot.js`** (NEW): `upsertScaffoldSnapshot(supabase, sessionId, scaffold)` — upserts the client's final scaffold snapshot (onConflict `session_id`); no-ops on an absent/empty scaffold so it can never blank an existing row. Non-fatal on error.
+- **`components/TutorSession.js`**: `markSessionComplete(finalScaffold)` now sends `{ scaffold: {...} }` in the complete PATCH body; call site passes the freshly-parsed `newScaffold` (setScaffold is async, so the state closure can be a turn stale). Completion no longer depends on any earlier PATCH having landed.
+- **`app/api/sessions/[id]/complete/route.js`** + **`app/api/gym/complete/[id]/route.js`**: parse the optional `scaffold` from the request body (tolerate an empty body) and `upsertScaffoldSnapshot(...)` **before** flipping the session to `complete` — the persistence guarantee: *a session is never marked complete while its produced content is only in client state.* Both routes' `assembleUnbuiltParagraphs` now **skips `para.type === 'custom'`** so haiku/poem lines stay verbatim in the scaffold (the transcript renders them via its `scaffoldLines` fallback) instead of being reworded into a single prose blob by the assembler.
+
+**Prose path unchanged:** essays still assemble into `paragraphs` via `assembleUnbuiltParagraphs` (now guaranteed a scaffold to read). Token safety-net (Nets A/B/C), barge-in, and the voice pipeline are untouched.
+
+**Existing lost sessions (e.g. `b93f02f7`):** the locked lines survive only in the `messages` conversation (the coach quoted them / the student dictated them) — NOT recoverable from any structured column. A backfill would have to parse `messages`; **do NOT run one here — the conductor handles recovery separately.** New sessions after migration 031 + this deploy persist correctly.
+
+Verify (manual e2e):
+- [ ] Build green: `npm run build` (passed).
+- [ ] **Apply migration 031 first.** Then complete a **haiku** ("Write a haiku about an inanimate object"): lock all 3 lines → coach emits `[COMPLETE]` → open `/transcript/[id]` → the 3 lines show verbatim (NOT "Nothing written yet", NOT reworded into one paragraph). Confirm a `paragraph_scaffolds` row now exists with `assignment_type='custom'` and 0 `paragraphs` rows.
+- [ ] Complete a **single custom paragraph** (e.g. a short letter/opening) → transcript shows the locked content.
+- [ ] **Onboarding hook:** run the practice flow to `[COMPLETE]` → `/onboarding/complete` reveal + transcript show the opening line (scaffold row persisted, `is_onboarding` still skips prose assembly so the line stays verbatim).
+- [ ] **Prose essay still works:** complete a multi-paragraph essay → `paragraphs` assemble into flowing prose on the transcript as before.
+- [ ] **Gym session still works:** complete a gym haiku/skill via `/api/gym/complete` → draft persists, Practiced badge/level/streak still award exactly once (idempotency CAS intact).
+- [ ] Resume robustness: start a custom session, hard-reload mid-way (so live PATCHes may not have landed), finish → content still persists (completion upsert carries it).
+- [ ] Zero console errors across the above.
