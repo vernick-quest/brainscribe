@@ -27,7 +27,7 @@ export default async function GymSessionPage({ params }) {
 
   const [{ data: session }, { data: profile }] = await Promise.all([
     supabase.from('sessions').select('*').eq('id', gymSession.session_id).single(),
-    supabase.from('profiles').select('full_name, role, age_bracket').eq('id', user.id).single(),
+    supabase.from('profiles').select('full_name, role, age_bracket, coach_read_aloud, voice_prompt_dismissed_at').eq('id', user.id).single(),
   ])
   if (!session) redirect('/gym')
 

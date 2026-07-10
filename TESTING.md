@@ -1041,3 +1041,33 @@ Verify (after migration apply + backfill run):
 - [ ] Buckets are ordered by cost desc; proportion bars sum visually to ~100%; percentages add to 100%.
 - [ ] Run a fresh instrumented sim (`node scripts/audit-probes.mjs`) → an EXACT (non-estimate) testing row appears; Testing bucket cost ticks up.
 - [ ] Before the migration is applied, the tab still loads (bucket card shows the graceful "requires migration 028" empty state; other cards unaffected).
+
+---
+
+## 2026-07-10 — Coach read-aloud toggle + conservative auto-mute offer (focus/coaching-session)
+
+**Why:** ElevenLabs TTS (coach read-aloud) is ~83% of production spend and auto-plays every coach turn whether the student listens or not. This adds (1) an explicit "mute coach voice" toggle and (2) a conservative auto-mute OFFER that fires only when the student keeps skipping/interrupting the read-aloud. Voice-first default preserved (everyone starts voice-ON); no price-gating; the input axis (type vs dictate / mic) is untouched. Spec: `docs/specs/brainscribe-coach-voice-toggle-spec.md`.
+
+**Changes:**
+- **Migration `030_coach_read_aloud.sql`** (needs manual apply to Supabase project `lakozspeyxsuunogfant`): adds `profiles.coach_read_aloud boolean not null default true` + `profiles.voice_prompt_dismissed_at timestamptz`, and `grant update (coach_read_aloud, voice_prompt_dismissed_at) on profiles to authenticated`. NO new RLS policy — the owner self-update policy "profiles: own" (migration 001, `for all using (auth.uid() = id)`) already covers the row check; migration 020 made profiles UPDATE deny-by-default per-column, so the column GRANT is what a NEW user-writable column needs. Owner-scoped, NOT service-role.
+- **`lib/voiceDeduce.js`** (NEW): pure, side-effect-free `deduceVoiceSuggestion(events, state) -> { suggest }`. Suggests muting only when voice is on, not already offered, not permanently dismissed, AND the student skipped/interrupted the audio on ≥3 of the last 4 coach turns that HAD audio (`audio_absent` never counts; requires a full 4-turn window). Keyed off explicit audio-outcome events only — can't false-fire on a real listener.
+- **`app/api/profile/voice/route.js`** (NEW): owner-scoped authed POST (user's server client, `.eq('id', user.id)`, runs as `authenticated` — NOT service-role). Body `{ readAloud }` sets `coach_read_aloud`; `{ dismissed: true }` stamps `voice_prompt_dismissed_at = now()`.
+- **`components/TutorSession.js`**: header speaker toggle (orange `--accent` when on, muted grey slashed icon when off; 44×36 target, `aria-pressed`, aria-label); reads `profile.coach_read_aloud`/`voice_prompt_dismissed_at` on load (undefined ⇒ voice ON). Voice OFF skips ALL TTS paths (`askTutor` first-sentence + remainder + whole-reply, `replayAudioOnly`, `playWithSync`) so a muted session makes ZERO `/api/speak` calls; text still commits, phase still flips to `listening`/`dictating` (coachBusy not stuck). Emits `audio_completed`/`audio_skipped`/`audio_interrupted`/`audio_absent` from the existing lifecycle spots (natural completion, send-while-reading in `handleConversation`/`handleDictation`, coach-switch barge-in) and feeds the heuristic; the one-time inline offer ("Noticed you're reading ahead…") persists `coach_read_aloud=false` (Turn off voice) or `voice_prompt_dismissed_at=now()` (Keep it). Offer excluded during onboarding + gym. Per-message Replay button hidden when muted. Barge-in / single gesture-unlocked `<audio>` / `playSeqRef`+`tutorRunRef` race guards / greeting / read-back / scribe-recovery all preserved.
+- **`components/Icon.jsx`**: added `speaker` + `speaker-off` line icons.
+- **`app/assignment/[id]/page.js`** + **`app/gym/session/[id]/page.js`**: added `coach_read_aloud, voice_prompt_dismissed_at` to the profile selects passed to TutorSession.
+- **`scripts/validate-voice-deduce.mjs`** (NEW, committed — pure logic, no API, no user content): the in-loop heuristic harness. Fixtures `voice_loyal`→never, `reader`→suggest, `occasional_skip`→don't, `already_dismissed`→don't, `already_offered`→don't, plus 3 extra guards. `node scripts/validate-voice-deduce.mjs` → 8/8 pass, exit 0.
+
+**Rollout order:** (1) conductor security-reviews migration 030 → Robert pastes the SQL into project `lakozspeyxsuunogfant`; (2) deploy from main. Until the migration is applied, `coach_read_aloud` reads as undefined ⇒ voice stays ON for everyone (safe default) and toggle writes 500 silently (best-effort fetch, no UX break).
+
+Verify (manual e2e — can't automate past the gesture-lock):
+- [ ] Build green: `npm run build` (passed — "Compiled successfully in 2.7s").
+- [ ] `node scripts/validate-voice-deduce.mjs` prints 8/8 passed, exit 0 (passed).
+- [ ] Header speaker toggle: ON reads aloud as before; tapping it mutes — coach replies render text-only, no audio; tapping again restores voice on the next turn. Focus-visible ring shows on keyboard focus; target ≥44px.
+- [ ] **Cost oracle:** a fully muted session produces ZERO `service='elevenlabs'` rows in `api_usage` for that `session_id` (query `api_usage` by session_id → no elevenlabs rows). A voiced session still logs them.
+- [ ] Toggling OFF mid-read stops the in-flight read-aloud cleanly (text stays); coachBusy is not left stuck (Send re-enables).
+- [ ] Barge-in still works with voice ON: typing + sending while the coach reads interrupts only the audio; the coach's full text stays committed (never truncated). Greeting audio, single-paragraph read-back, and scribe-failure recovery all intact.
+- [ ] Auto-mute offer fires only on a reader pattern: skip/interrupt the read-aloud (send before it finishes) on ≥3 of the last 4 voiced coach turns → the inline offer appears ABOVE the composer, at most once. A genuine listener (lets audio finish) never sees it.
+- [ ] "Keep it" ⇒ offer never returns this session or future sessions (persists `voice_prompt_dismissed_at`); "Turn off voice" ⇒ voice mutes + persists `coach_read_aloud=false`; both never re-nag.
+- [ ] Gym session + onboarding practice: toggle still works, but the auto-mute offer NEVER fires there.
+- [ ] Persistence: set the preference, reload the session → it sticks (read from the profile).
+- [ ] Zero console errors across the above.
