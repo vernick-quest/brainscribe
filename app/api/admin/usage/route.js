@@ -52,6 +52,17 @@ export async function GET() {
     console.error('[usage] ElevenLabs fetch failed:', e)
   }
 
+  // Spend by bucket — Users / Testing / Other (graceful empty if migration 028 not applied)
+  const { data: catRows, error: byCatError } = await supabase.rpc('usage_by_category', { days: 30 })
+  if (byCatError) console.error('[usage] usage_by_category rpc failed:', byCatError.message)
+
+  const byCategory = (catRows ?? []).map(r => ({
+    category: r.category,
+    cost: Number(r.cost) || 0,
+    calls: Number(r.calls) || 0,
+    isEstimate: !!r.is_estimate_any,
+  }))
+
   // Per-user cost across both services (graceful empty if migration 013 not applied)
   const { data: userRows, error: byUserError } = await supabase.rpc('usage_by_user', { days: 30 })
   if (byUserError) console.error('[usage] usage_by_user rpc failed:', byUserError.message)
@@ -79,6 +90,7 @@ export async function GET() {
         .map(([day, s]) => ({ day, ...s })),
     },
     elevenlabs,
+    byCategory,
     byUser,
   })
 }

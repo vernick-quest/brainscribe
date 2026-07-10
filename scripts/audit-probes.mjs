@@ -27,6 +27,14 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env.local'), 'utf8').split(
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
 }
 const { judgeTranscript } = await import(path.join(ROOT, 'lib/auditJudge.js'))
+// Shared sim usage logger — tags these Sonnet+Haiku judge calls as category:'testing'
+// so they surface in the admin Cost-by-Bucket card. Fail-soft: the helper lives in the
+// gitignored scripts/redteam/ (absent on fresh checkouts / after a merge to main), so a
+// missing helper degrades to a no-op rather than crashing this tracked probe.
+let logUsage = async () => {}
+try {
+  ({ logUsage } = await import(path.join(ROOT, 'scripts/redteam/lib/logUsage.mjs')))
+} catch { /* helper not present in this checkout — skip testing-usage logging */ }
 
 const A = 'Persuasive essay: should school start later in the morning? Locked claim: "School should start later in the morning."'
 const T = (...pairs) => pairs.map(([r, c]) => ({ role: r, content: c }))
@@ -134,6 +142,10 @@ PROBES.push(
 let pass = 0
 for (const p of PROBES) {
   const r = await judgeTranscript({ session: { id: p.name, persona: p.persona ?? 'owen', assignment_text: p.assignment ?? A }, messages: p.msgs, studentName: '' })
+  // Log each real Anthropic response's token usage as testing spend.
+  for (const u of r.usages ?? []) {
+    await logUsage({ model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, note: `audit-probes:${p.name}` })
+  }
   const flagged = r.breaches.length > 0
   const ok = p.expect
     ? (flagged && (!p.wantHigh || r.severity === 'high'))
