@@ -407,11 +407,38 @@ const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref)
 // ── Reply composer ────────────────────────────────────────────────────────────
 // Owns the text-input state and textarea, so per-keystroke typing and live
 // speech-interim updates re-render only the footer — not the whole TutorSession.
+// Coach read-aloud (voice) mute toggle — lives next to the mic so the two voice
+// controls (coach output ↔ student input) sit together. Orange = voice/action per
+// brand; ON tints the speaker accent, OFF is muted grey with a slashed icon.
+function VoiceToggleButton({ readAloud, onToggle, saving = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={readAloud}
+      aria-label={readAloud ? 'Coach voice on — tap to mute read-aloud' : 'Coach voice muted — tap to turn read-aloud on'}
+      title={readAloud ? 'Coach reads answers aloud' : 'Coach voice muted'}
+      className="flex items-center justify-center rounded-full transition shrink-0"
+      style={{
+        width: 44, height: 44,
+        backgroundColor: readAloud ? 'var(--surface-spark)' : 'var(--surface-muted)',
+        color: readAloud ? 'var(--accent)' : 'var(--text-subtle)',
+        border: `1px solid ${readAloud ? 'var(--border-accent)' : 'var(--border-default)'}`,
+        opacity: saving ? 0.7 : 1,
+      }}
+      onMouseEnter={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-strong)' }}
+      onMouseLeave={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-default)' }}
+    >
+      <Icon name={readAloud ? 'speaker' : 'speaker-off'} size={18} />
+    </button>
+  )
+}
+
 // Renders the 'listening' or 'dictating' footer and calls onSubmit with the
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, coachBusy = false, recoveredText = null, noticeLine = null }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -500,6 +527,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
             onInterim={handleInterim}
             onFinal={(t) => { if (t && !justSubmittedRef.current) { editingRef.current = false; setText(''); resetHeight(); onSubmit(t) } }}
           />
+          {onToggleReadAloud && <VoiceToggleButton readAloud={readAloud} onToggle={onToggleReadAloud} saving={savingVoicePref} />}
           <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
             <textarea
               ref={textareaRef}
@@ -541,6 +569,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
           onInterim={handleInterim}
           onFinal={(t) => { if (t && !editingRef.current && !justSubmittedRef.current) setText(t) }}
         />
+        {onToggleReadAloud && <VoiceToggleButton readAloud={readAloud} onToggle={onToggleReadAloud} saving={savingVoicePref} />}
         <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -1955,31 +1984,9 @@ export default function TutorSession({
             {/* Divider */}
             <div className="hidden sm:block mx-3 shrink-0 self-stretch" style={{ width: 1, backgroundColor: 'var(--border-default)' }} />
 
-            {/* RIGHT: Voice toggle + Subject + Teacher chips */}
+            {/* RIGHT: Subject + Teacher chips (the coach-voice toggle now lives next
+                to the mic in the composer, not here). */}
             <div className="flex items-center gap-1.5 shrink-0 ml-2 sm:ml-0">
-
-              {/* Coach read-aloud (voice) toggle. Orange = voice/action per brand;
-                  ON tints the speaker accent, OFF is muted grey with a slashed icon.
-                  A user preference — shown in every mode (assignment/gym/onboarding). */}
-              <button
-                type="button"
-                onClick={toggleReadAloud}
-                aria-pressed={readAloud}
-                aria-label={readAloud ? 'Coach voice on — tap to mute read-aloud' : 'Coach voice muted — tap to turn read-aloud on'}
-                title={readAloud ? 'Coach reads answers aloud' : 'Coach voice muted'}
-                className="flex items-center justify-center rounded-lg transition"
-                style={{
-                  width: 44, height: 36,
-                  backgroundColor: readAloud ? 'var(--surface-spark)' : 'var(--surface-muted)',
-                  color: readAloud ? 'var(--accent)' : 'var(--text-subtle)',
-                  border: `1px solid ${readAloud ? 'var(--border-accent)' : 'var(--border-default)'}`,
-                  opacity: savingVoicePref ? 0.7 : 1,
-                }}
-                onMouseEnter={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-strong)' }}
-                onMouseLeave={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-default)' }}
-              >
-                <Icon name={readAloud ? 'speaker' : 'speaker-off'} size={16} />
-              </button>
 
               {/* Subject chip */}
               <button
@@ -2289,7 +2296,7 @@ export default function TutorSession({
               coach's text is committed, after which a send interrupts the read-aloud.
               Keeping the same instance mounted across phases preserves typed text. */}
           {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
-            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} coachBusy={phase !== 'listening'} />
+            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
           )}
 
           {phase === 'dictating' && (
@@ -2299,6 +2306,9 @@ export default function TutorSession({
               onSubmit={handleDictation}
               recoveredText={recoveredDictation}
               noticeLine={scribeNotice}
+              readAloud={readAloud}
+              onToggleReadAloud={toggleReadAloud}
+              savingVoicePref={savingVoicePref}
             />
           )}
 
