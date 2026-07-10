@@ -851,7 +851,27 @@ function UsageTab() {
     <p className="text-sm text-center py-12" style={{ color: 'var(--status-error, #dc2626)' }}>Failed to load: {error}</p>
   )
 
-  const { anthropic, elevenlabs, byUser } = data ?? {}
+  const { anthropic, elevenlabs, byCategory, byUser } = data ?? {}
+
+  // Cost buckets — collapse the api_usage categories into 3 display rows.
+  // user → Users · testing → Testing · internal+other → Other / Internal.
+  const bucketDefs = [
+    { key: 'users',   label: 'Users',            cats: ['user'] },
+    { key: 'testing', label: 'Testing',          cats: ['testing'] },
+    { key: 'other',   label: 'Other / Internal', cats: ['internal', 'other'] },
+  ]
+  const buckets = bucketDefs.map(b => {
+    const rows = (byCategory ?? []).filter(r => b.cats.includes(r.category))
+    return {
+      ...b,
+      cost: rows.reduce((s, r) => s + r.cost, 0),
+      calls: rows.reduce((s, r) => s + r.calls, 0),
+      isEstimate: rows.some(r => r.isEstimate),
+    }
+  })
+  const bucketTotal = buckets.reduce((s, b) => s + b.cost, 0)
+  const bucketsSorted = [...buckets].sort((a, b) => b.cost - a.cost)
+  const anyEstimate = buckets.some(b => b.isEstimate)
 
   // ElevenLabs: characters remaining
   const elPct = elevenlabs ? Math.min(100, (elevenlabs.characterCount / elevenlabs.characterLimit) * 100) : 0
@@ -911,10 +931,56 @@ function UsageTab() {
         )}
       </div>
 
-      {/* Anthropic */}
+      {/* Cost by bucket — Users / Testing / Other, last 30 days */}
       <div className="rounded-2xl p-5 space-y-4"
         style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
-        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Anthropic — Last 30 Days</p>
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Cost by Bucket — Last 30 Days</p>
+          <span className="text-[10px]" style={{ color: 'var(--text-subtle)' }}>Anthropic spend</span>
+        </div>
+
+        {bucketTotal === 0 ? (
+          <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No bucketed usage yet. Requires migration 028 and at least one categorized call.</p>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {bucketsSorted.map(b => {
+                const pct = bucketTotal > 0 ? (b.cost / bucketTotal) * 100 : 0
+                return (
+                  <div key={b.key} className="space-y-1.5">
+                    <div className="flex items-baseline gap-2 text-xs">
+                      <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>{b.label}</span>
+                      {b.isEstimate && (
+                        <span className="text-[10px] rounded-full px-1.5 py-px"
+                          style={{ backgroundColor: 'var(--surface-spark)', color: 'var(--accent-text)' }}>est.</span>
+                      )}
+                      <span className="ml-auto font-bold tabular-nums" style={{ color: 'var(--text-strong)' }}>${b.cost.toFixed(2)}</span>
+                      <span className="w-12 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{pct.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--surface-muted)' }}>
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, backgroundColor: 'var(--accent)' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {anyEstimate && (
+              <p className="text-[11px] leading-snug pt-1" style={{ color: 'var(--text-subtle)' }}>
+                Testing before 2026-07-09 is estimated; instrumented runs after are exact. Source of truth: Anthropic Console.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Anthropic — production / users only */}
+      <div className="rounded-2xl p-5 space-y-4"
+        style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Anthropic — Last 30 Days</p>
+          <span className="text-[10px]" style={{ color: 'var(--text-subtle)' }}>Users / production</span>
+        </div>
 
         {anthropic?.totalCalls === 0 ? (
           <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No usage logged yet. Usage will appear here after the next session.</p>

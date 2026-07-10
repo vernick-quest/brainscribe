@@ -1019,3 +1019,25 @@ Verify:
 - [ ] NORMAL essay flow (correct tokens): zero `[token-safety-net]` console lines; paragraph advancement identical to before.
 - [ ] Gym single-paragraph session: no `[token-safety-net]` lines (scoped out); completion + Practiced badge unchanged.
 - [ ] Onboarding practice (single hook): unchanged; reveal + transcript still populate.
+
+## 2026-07-09 — Admin Usage & Cost: category buckets (Users / Testing / Other) + sim instrumentation (focus/admin lane)
+
+The Usage & Cost tab only showed a few dollars because `api_usage` captures ONLY app-originated calls (real students, Sonnet+Haiku). Red-team SIMS run as local node scripts hitting the Anthropic API directly and were never logged, and there was no category dimension — so ~$100 of testing spend was invisible. This adds a `category` dimension, a bucket rollup + card, exact capture of future sim spend, and a one-time backfill of historical testing as flagged estimates.
+
+**Changes:**
+- **Migration `028_usage_categories.sql`** (needs manual apply to Supabase project `lakozspeyxsuunogfant`): adds `api_usage.category` (`user`/`testing`/`internal`/`other`, default `user`) + `note` + `is_estimate` columns and `api_usage_category_idx`; new `usage_by_category(days)` RPC; re-scopes `anthropic_usage_daily` to `category='user'` so testing rows never inflate the per-day production card. SECURITY DEFINER, no anon EXECUTE grants.
+- **`scripts/redteam/lib/logUsage.mjs`** (NEW, gitignored dir): fail-soft service-role logger that inserts a `category:'testing'` row after each sim Anthropic response. Own pricing map incl. Fable ($10/$50) + Opus ($5/$25); loose model-id match (strips date suffix). A logging error never crashes a sim (try/catch + console.warn). Wired into `scripts/audit-probes.mjs` (logs each `judgeTranscript` usage with `note: audit-probes:<probe>`); coach-ai wires it into `essay-funnel.mjs` in its lane (that file lives in the gitignored `scripts/redteam/`, not present in this worktree).
+- **`scripts/redteam/seed-testing-costs.mjs`** (NEW, gitignored): DB-only backfill (ZERO Anthropic calls) of 5 historical testing line items as `is_estimate:true` `category:'testing'` rows, `note` prefixed `backfill:`. Idempotent (deletes prior `is_estimate AND note like 'backfill:%'` first). `--total=<X>` proportionally scales the 5 estimates to anchor the sum to the Console's exact Fable figure.
+- **`app/api/admin/usage/route.js`**: calls `usage_by_category` (graceful empty if migration not applied) → returns `byCategory: [{category, cost, calls, isEstimate}]`.
+- **`components/AdminDashboard.js` → `UsageTab`**: new "Cost by Bucket — Last 30 Days" card ABOVE the Anthropic card — Users / Testing / Other-Internal rows, each `$X.XX` + % + orange proportion bar, ordered by cost desc, `est.` pill + footnote when any bucket is an estimate. Existing per-day Anthropic card relabeled "Users / production". Cost-Per-User table unchanged.
+
+**Rollout order:** (1) conductor security-reviews migration 028 → Robert pastes the SQL into project `lakozspeyxsuunogfant`; (2) conductor runs `node scripts/redteam/seed-testing-costs.mjs` (optionally `--total=<Console Fable $>`); (3) deploy from main.
+
+Verify (after migration apply + backfill run):
+- [ ] Build green: `npm run build` (passed — "Compiled successfully").
+- [ ] Admin → Usage & Cost shows the "Cost by Bucket — Last 30 Days" card above the Anthropic card.
+- [ ] Testing bucket ≈ $97 (or the scaled `--total`) and shows an `est.` pill; footnote about pre-2026-07-09 estimates is visible.
+- [ ] Users bucket equals real app spend (exact, no `est.` pill); Anthropic per-day card reads "Users / production" and its total is unchanged (testing rows excluded).
+- [ ] Buckets are ordered by cost desc; proportion bars sum visually to ~100%; percentages add to 100%.
+- [ ] Run a fresh instrumented sim (`node scripts/audit-probes.mjs`) → an EXACT (non-estimate) testing row appears; Testing bucket cost ticks up.
+- [ ] Before the migration is applied, the tab still loads (bucket card shows the graceful "requires migration 028" empty state; other cards unaffected).
