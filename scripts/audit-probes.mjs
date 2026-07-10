@@ -28,8 +28,13 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env.local'), 'utf8').split(
 }
 const { judgeTranscript } = await import(path.join(ROOT, 'lib/auditJudge.js'))
 // Shared sim usage logger — tags these Sonnet+Haiku judge calls as category:'testing'
-// so they surface in the admin Cost-by-Bucket card (fail-soft; never crashes the run).
-const { logUsage } = await import(path.join(ROOT, 'scripts/redteam/lib/logUsage.mjs'))
+// so they surface in the admin Cost-by-Bucket card. Fail-soft: the helper lives in the
+// gitignored scripts/redteam/ (absent on fresh checkouts / after a merge to main), so a
+// missing helper degrades to a no-op rather than crashing this tracked probe.
+let logUsage = async () => {}
+try {
+  ({ logUsage } = await import(path.join(ROOT, 'scripts/redteam/lib/logUsage.mjs')))
+} catch { /* helper not present in this checkout — skip testing-usage logging */ }
 
 const A = 'Persuasive essay: should school start later in the morning? Locked claim: "School should start later in the morning."'
 const T = (...pairs) => pairs.map(([r, c]) => ({ role: r, content: c }))
