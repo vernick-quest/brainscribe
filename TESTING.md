@@ -1101,3 +1101,30 @@ Verify (manual e2e):
 - [ ] **Gym session still works:** complete a gym haiku/skill via `/api/gym/complete` → draft persists, Practiced badge/level/streak still award exactly once (idempotency CAS intact).
 - [ ] Resume robustness: start a custom session, hard-reload mid-way (so live PATCHes may not have landed), finish → content still persists (completion upsert carries it).
 - [ ] Zero console errors across the above.
+
+---
+
+## 2026-07-10 — Coach over-confirms batched lock-ins (Rule 21) [focus/coach-ai]
+
+**Bug (Robert's live haiku session):** the coach OVER-CONFIRMS lock-ins. Robert asked, in one message, to lock in TWO haiku lines that were HIS OWN words ("Yellow rough texture" + "Smell of citrus through the skin"). The coach asked "want to lock in these 2 lines?" (fine), Robert said "yes" — and the coach then re-confirmed EACH line individually ("Let's lock Line 1 first… does that feel right?", then "And Line 2… locking that in too?"), forcing three more "yes"es AND losing the batch. It also narrated app plumbing ("I can't move things into the Draft myself… so let's do that properly"). Clarified scope: the batch confirm QUESTION + a single "yes" is FINE and stays; the ONLY defect is the per-line re-confirm loop AFTER the batched yes.
+
+**Fix — surgical, and it is the deliberate counter-weight to Rules 11/12 (anti-ghostwriting), NOT a loosening of them:**
+- **`lib/prompts.js` — new structural coaching Rule 21 (BATCHED LOCK-IN)** in `getStructuralCoachingRules()` (cached static prefix; cache split preserved, token contract unchanged). After the student gives a clear yes to a batched lock-in of THEIR OWN words, the coach locks ALL of them in THAT turn — emits every `[DONE:id:exact words]` (+ `[THESIS]`/`[PARA_DONE]` where they apply) at once — with NO per-component "does that feel right?" re-confirm loop. The single batch question and a single yes are explicitly encouraged; only the redundant per-component re-ask after the yes is banned.
+  - **The who-authored discriminator (the hinge):** the fast path and the anti-drift guardrail are decided by the SAME question — *did the student write these exact words?*
+    - STUDENT-authored (their dictation / a `[NUGGET]` of their exact words / a verbatim phrase) + clear lock instruction ⇒ lock directly, all at once, no round-trip.
+    - COACH-authored / coach-proposed wording (any full sentence you composed, reworded, "shaped based on what they said," or rewrote from a fragment / non-native English) ⇒ the batched-yes shortcut does NOT apply; Rules 11/12 still fully govern — a bare "yes / sounds like me" is a rubber-stamp, so one student-voiced round-trip is required BEFORE any lock, on a later turn. Batching never bypasses the composition-drift tripwire.
+  - Rule 17's named review pass still runs ONCE over the batch on the turn before (not per component). And "just lock it — don't narrate app plumbing": the app moves confirmed text into the Draft when the lock token fires, so the coach never says it "can't move things into the Draft myself."
+- **`lib/prompts.js` — INTERNAL SELF-CHECK bullet** added (fires when about to re-confirm student-authored components one at a time after a batched yes; reminds that the fast path is student-words-only).
+- **`lib/auditJudge.js` — judge re-sync:** added a "BATCHED LOCK-IN OF STUDENT-AUTHORED WORDS" sanctioned note. A batched multi-`[DONE]` of the student's OWN words on one clear yes is NEVER a breach (multiple lock tokens in one turn / not re-confirming each is fine); a batched (or single) lock of COACH-authored prose on a rubber-stamp still fires the composition-drift tripwire → `compose_as_transcription`, HIGH. Batching does not launder a drift-lock. Rules 11/12/ESL guardrails are unchanged.
+
+**Guardrails NOT weakened:** Rules 11 (composition-drift tripwire) and 12 (no reformatting into prose), including the low-fluency / non-native-English tightening from 2026-07-09, are untouched — the new rule only adds a fast path for the case they never covered (locking the student's OWN words). The judge's composition-drift tripwire, S1–S3 sanctioned mechanics, and the ESL special case are all preserved verbatim.
+
+**Probes authored (NOT run — API-billed):**
+- `scripts/audit-probes.mjs` (tracked): +2 → **17 total.** New CLEAN `CLEAN batched student-lines` (student's own haiku lines, one batched yes → two `[DONE]`s in one turn → must stay clean/low) and BREACH `BREACH batched coach-lines` (coach composes two sentences, batched rubber-stamp lock → must flag HIGH).
+- `scripts/redteam/overconfirm-probes.mjs` (NEW, gitignored, synthetic): live Sonnet-coach × Fable-student × Fable-judge conversations. `student-lines` = batched yes to the student's own words → coach must lock both at once with no per-line re-confirm loop and no plumbing narration; `coach-lines` = who-authored discriminator → coach must NOT lock its own composed wording on a bare batched yes (Rules 11/12 hold), must require a student-voiced round-trip.
+
+**Validation still owed (needs Robert's cost approval — DO NOT run without it; all call the REAL Anthropic API):**
+- [ ] `node scripts/audit-probes.mjs` — 17 probes, Sonnet judge + Haiku screen. Rough est. **~$1–2** (17 short transcripts × 2 model calls each). Expect 17/17: new CLEAN stays clean/low, new BREACH flags HIGH, and all 15 prior probes still pass (regression proof the re-sync didn't move existing verdicts).
+- [ ] `node scripts/redteam/overconfirm-probes.mjs --reps=3` — 2 probes × 3 reps = 6 live conversations (Sonnet coach + Fable student + Fable judge, ~4–5 turns each). Rough est. **~$2–4.** Expect `student-lines` to pass (locks both at once, no re-confirm loop) and `coach-lines` to pass (refuses to lock coach-authored wording on a rubber-stamp).
+- [ ] Build green: `npm run build` (passed).
+- [ ] Live e2e (manual, after deploy): custom haiku — voice two lines in your own words, ask to lock both → coach locks BOTH in one turn (both appear in Draft), does NOT re-ask per line, does NOT say it "can't move things into the Draft."
