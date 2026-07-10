@@ -12,6 +12,7 @@ import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
+import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -628,6 +629,88 @@ export default function TutorSession({
   const barPanelRef       = useRef(null)
   const router           = useRouter()
 
+  // ── Coach read-aloud (TTS) preference + conservative auto-mute offer ──────────
+  // Voice-first DEFAULT: everyone starts voice-ON. `coach_read_aloud` is an opt-OUT
+  // persisted per-user (migration 030). Undefined (pre-migration) reads as ON. The
+  // ref mirrors the state so the async audio pipeline reads the CURRENT value, not a
+  // stale closure. See docs/specs/brainscribe-coach-voice-toggle-spec.md.
+  const [readAloud, setReadAloud] = useState(profile?.coach_read_aloud !== false)
+  const readAloudRef              = useRef(profile?.coach_read_aloud !== false)
+  const [savingVoicePref, setSavingVoicePref] = useState(false)
+  // Auto-mute offer: fires at most once per session, never during onboarding/gym,
+  // and never again once the student has permanently dismissed it.
+  const [showVoiceOffer, setShowVoiceOffer]   = useState(false)
+  const audioEventsRef        = useRef([])                  // ordered per-turn audio outcomes
+  const pendingAudioTurnRef   = useRef(false)               // a voiced coach turn is in flight, unsettled
+  const offeredThisSessionRef = useRef(false)
+  const dismissedForeverRef   = useRef(Boolean(profile?.voice_prompt_dismissed_at))
+
+  // Persist the read-aloud flip via the owner-scoped authed endpoint (NOT service
+  // role). Local state flips immediately; the network write is best-effort.
+  function persistVoicePref(body) {
+    fetch('/api/profile/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => {})
+  }
+
+  function applyReadAloud(next) {
+    readAloudRef.current = next
+    setReadAloud(next)
+  }
+
+  // Header speaker toggle. Flipping to OFF stops any in-flight read-aloud cleanly
+  // (existing stopCurrentAudio) — the text stays committed. Clears any pending
+  // turn WITHOUT recording a skip (an explicit mute isn't a "reading-ahead" signal).
+  function toggleReadAloud() {
+    const next = !readAloudRef.current
+    applyReadAloud(next)
+    if (!next) { pendingAudioTurnRef.current = false; stopCurrentAudio() }
+    setSavingVoicePref(true)
+    persistVoicePref({ readAloud: next })
+    setTimeout(() => setSavingVoicePref(false), 400)
+  }
+
+  // Record one audio outcome for the just-finished coach turn, then re-evaluate the
+  // auto-mute heuristic (pure — lib/voiceDeduce). Excluded during onboarding + gym.
+  function recordAudioOutcome(kind) {
+    audioEventsRef.current = [...audioEventsRef.current, kind]
+    if (onboarding || gym) return
+    if (offeredThisSessionRef.current) return
+    const { suggest } = deduceVoiceSuggestion(audioEventsRef.current, {
+      voiceCurrentlyOn:   readAloudRef.current,
+      offeredThisSession: offeredThisSessionRef.current,
+      dismissedForever:   dismissedForeverRef.current,
+    })
+    if (suggest) {
+      offeredThisSessionRef.current = true
+      setShowVoiceOffer(true)
+    }
+  }
+
+  // Settle the pending voiced turn exactly once (completion, or the student cutting
+  // it short by advancing). No-op if there's no pending turn (dedupes double-fires).
+  function settleAudioTurn(kind) {
+    if (!pendingAudioTurnRef.current) return
+    pendingAudioTurnRef.current = false
+    recordAudioOutcome(kind)
+  }
+
+  // Auto-mute offer actions.
+  function acceptVoiceMute() {
+    setShowVoiceOffer(false)
+    applyReadAloud(false)
+    pendingAudioTurnRef.current = false
+    stopCurrentAudio()
+    persistVoicePref({ readAloud: false })
+  }
+  function declineVoiceMute() {
+    setShowVoiceOffer(false)
+    dismissedForeverRef.current = true      // never re-ask, this session or future ones
+    persistVoicePref({ dismissed: true })
+  }
+
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -771,6 +854,9 @@ export default function TutorSession({
   }
 
   async function playWithSync(text, activePersona = persona) {
+    // Read-aloud OFF ⇒ skip the scribe-confirm read-back audio entirely (no
+    // /api/speak, no word-sync caption). The caller commits the confirm message text.
+    if (!readAloudRef.current) { stopCurrentAudio(); captionRef.current?.clear(); return }
     stopCurrentAudio()
     const cleanText = stripMarkdown(text)
     const words = cleanText.split(' ')
@@ -840,6 +926,9 @@ export default function TutorSession({
   }
 
   async function replayAudioOnly(text, activePersona = persona) {
+    // Read-aloud OFF ⇒ never invoke the TTS path (no /api/speak). The coach's text
+    // is already committed by the caller; there's simply nothing to play.
+    if (!readAloudRef.current) { stopCurrentAudio(); return }
     stopCurrentAudio()
     try {
       const res = await fetch('/api/speak', {
@@ -1138,18 +1227,23 @@ export default function TutorSession({
         full += decoder.decode(value, { stream: true })
         captionRef.current?.set(liveDisplay(full) || '…')
 
-        if (!firstSentence) {
+        // Read-aloud OFF ⇒ never split off / fetch the first-sentence clip. The
+        // whole TTS path stays unreached; the text still streams into the caption.
+        if (!firstSentence && readAloudRef.current) {
           const clean = liveDisplay(full)
           const m = clean.match(/^\s*(.+?[.!?])(\s|$)/s)
           // Only split off a first sentence if there's clearly more coming after it
           if (m && m[1].trim().length >= 8 && clean.length > m[1].length + 1) {
             firstSentence = m[1].trim()
+            // Voiced turn now has audio in flight — mark it pending so a send that
+            // lands before the phase flip still settles it as skipped.
+            pendingAudioTurnRef.current = true
             firstPlay = (async () => {
               try {
                 const url = await fetchTts(firstSentence, activePersona)
-                // If the student already interrupted (newer turn), don't grab the
-                // shared <audio> element out from under the new turn's playback.
-                if (tutorRunRef.current !== myRun) { try { URL.revokeObjectURL(url) } catch {} ; return }
+                // If the student already interrupted (newer turn) or muted the coach
+                // mid-turn, don't grab the shared <audio> element / start a new clip.
+                if (tutorRunRef.current !== myRun || !readAloudRef.current) { try { URL.revokeObjectURL(url) } catch {} ; return }
                 await playTtsUrl(url)
               } catch {}
             })()
@@ -1178,7 +1272,11 @@ export default function TutorSession({
       // Audio plays out unless a newer turn supersedes this one (the student sent
       // again, interrupting). Each audio step bails if this run is no longer current
       // so a leftover remainder clip can't hijack the shared <audio> element.
+      // A voiced turn is marked "pending" so the auto-mute heuristic can settle it as
+      // either audio_completed (played to the end) or audio_skipped/interrupted (the
+      // student advanced — settled by the send handlers before they supersede).
       if (firstSentence) {
+        // (pendingAudioTurnRef already set when the first clip started, above.)
         // Remainder after the first sentence; fetch its audio now (overlaps the
         // first sentence still playing), then play once the first finishes.
         const remainder = displayText.slice(firstSentence.length).trim()
@@ -1187,13 +1285,22 @@ export default function TutorSession({
         if (tutorRunRef.current !== myRun) return
         if (remainderUrl) {
           const url = await remainderUrl
-          if (tutorRunRef.current !== myRun) { try { URL.revokeObjectURL(url) } catch {} ; return }
+          // Bail if superseded OR the student muted the coach mid-read.
+          if (tutorRunRef.current !== myRun || !readAloudRef.current) { try { URL.revokeObjectURL(url) } catch {} ; return }
           if (url) await playTtsUrl(url)
         }
-      } else {
+        if (tutorRunRef.current === myRun) settleAudioTurn('audio_completed')
+      } else if (readAloudRef.current) {
         if (tutorRunRef.current !== myRun) return
+        pendingAudioTurnRef.current = true
         // Single short reply (no mid-stream sentence boundary) — speak it whole.
         await replayAudioOnly(displayText, activePersona)
+        if (tutorRunRef.current === myRun) settleAudioTurn('audio_completed')
+      } else {
+        // Read-aloud OFF: this coach turn produced no audio. Record audio_absent —
+        // it does NOT count as a skip, and voice-off already precludes an offer.
+        pendingAudioTurnRef.current = false
+        recordAudioOutcome('audio_absent')
       }
     } catch (err) {
       console.error('askTutor failed:', err)
@@ -1254,6 +1361,8 @@ export default function TutorSession({
     // greeting, so an isla→isla tap spoke the same intro twice (deep-read F4).
     if (newPersona === persona) { setShowPersonaPicker(false); return }
 
+    // Switching coaches mid-read is a barge-in — settle the prior voiced turn.
+    settleAudioTurn('audio_interrupted')
     stopCurrentAudio()
     setShowPersonaPicker(false)
 
@@ -1429,6 +1538,9 @@ export default function TutorSession({
   // ── Conversation handler (regular back-and-forth) ────────────────────────────
 
   async function handleConversation(spokenText) {
+    // Sending while the coach is still reading aloud = the "reading ahead" signal.
+    // Settle the prior voiced turn as skipped BEFORE we cut its audio.
+    settleAudioTurn('audio_skipped')
     stopCurrentAudio()
     const userMessage = { role: 'user', content: spokenText }
     const newHistory = [...messages, userMessage]
@@ -1460,6 +1572,9 @@ export default function TutorSession({
   // ── Dictation handler (student speaks their paragraph → scribe) ──────────────
 
   async function handleDictation(spokenText) {
+    // Advancing to dictate while the coach reads aloud is the same "reading ahead"
+    // signal — settle the prior voiced turn as skipped before cutting its audio.
+    settleAudioTurn('audio_skipped')
     stopCurrentAudio()
     // A fresh dictation attempt clears any prior scribe-failure recovery state.
     setRecoveredDictation(null)
@@ -1808,8 +1923,31 @@ export default function TutorSession({
             {/* Divider */}
             <div className="hidden sm:block mx-3 shrink-0 self-stretch" style={{ width: 1, backgroundColor: 'var(--border-default)' }} />
 
-            {/* RIGHT: Subject + Teacher chips */}
+            {/* RIGHT: Voice toggle + Subject + Teacher chips */}
             <div className="flex items-center gap-1.5 shrink-0 ml-2 sm:ml-0">
+
+              {/* Coach read-aloud (voice) toggle. Orange = voice/action per brand;
+                  ON tints the speaker accent, OFF is muted grey with a slashed icon.
+                  A user preference — shown in every mode (assignment/gym/onboarding). */}
+              <button
+                type="button"
+                onClick={toggleReadAloud}
+                aria-pressed={readAloud}
+                aria-label={readAloud ? 'Coach voice on — tap to mute read-aloud' : 'Coach voice muted — tap to turn read-aloud on'}
+                title={readAloud ? 'Coach reads answers aloud' : 'Coach voice muted'}
+                className="flex items-center justify-center rounded-lg transition"
+                style={{
+                  width: 44, height: 36,
+                  backgroundColor: readAloud ? 'var(--surface-spark)' : 'var(--surface-muted)',
+                  color: readAloud ? 'var(--accent)' : 'var(--text-subtle)',
+                  border: `1px solid ${readAloud ? 'var(--border-accent)' : 'var(--border-default)'}`,
+                  opacity: savingVoicePref ? 0.7 : 1,
+                }}
+                onMouseEnter={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-strong)' }}
+                onMouseLeave={e => { if (!readAloud) e.currentTarget.style.borderColor = 'var(--border-default)' }}
+              >
+                <Icon name={readAloud ? 'speaker' : 'speaker-off'} size={16} />
+              </button>
 
               {/* Subject chip */}
               <button
@@ -2037,7 +2175,9 @@ export default function TutorSession({
                       }>
                       {renderMarkdown(m.content)}
                     </div>
-                    {m.role === 'assistant' && (
+                    {/* Replay reads a past message aloud — hidden when the coach voice
+                        is muted (it would produce no sound and no /api/speak call). */}
+                    {m.role === 'assistant' && readAloud && (
                       <button
                         onClick={() => replayMessage(m.content, i)}
                         title={replayingIndex === i ? 'Stop' : 'Replay'}
@@ -2079,6 +2219,37 @@ export default function TutorSession({
             )}
             <div ref={chatBottomRef} />
           </div>
+
+          {/* Auto-mute offer — fires at most once per session, only on a genuine
+              "reading ahead" pattern (deduceVoiceSuggestion), never during
+              onboarding/gym, and never again once dismissed. Sits above the composer. */}
+          {showVoiceOffer && (
+            <div className="mx-4 mb-2 rounded-2xl px-4 py-3 flex flex-col gap-2.5"
+              style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+              <div className="flex items-start gap-2.5">
+                <Icon name="speaker-off" size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--accent)' }} />
+                <p className="text-sm leading-snug" style={{ color: 'var(--text-body)' }}>
+                  Noticed you&rsquo;re reading ahead — want me to stop reading answers aloud? You can turn it back on anytime.
+                </p>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={declineVoiceMute}
+                  className="text-sm font-semibold rounded-xl px-3 py-2 transition"
+                  style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)' }}>
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  onClick={acceptVoiceMute}
+                  className="text-sm text-white font-semibold rounded-xl px-3 py-2 transition"
+                  style={{ backgroundColor: 'var(--accent)' }}>
+                  Turn off voice
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Input area — changes based on phase. The listening composer also stays
               mounted while the coach is thinking/reading ('tutor-thinking'/'waiting')
