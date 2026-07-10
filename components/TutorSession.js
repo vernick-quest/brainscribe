@@ -416,6 +416,9 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   const textareaRef = useRef(null)
   const micRef = useRef(null)
   const editingRef = useRef(false)
+  // Briefly true right after Send so a trailing STT final can't repopulate the box
+  // we just cleared (dictate-then-Send used to leave the spoken words behind).
+  const justSubmittedRef = useRef(false)
 
   useEffect(() => {
     const el = textareaRef.current
@@ -441,6 +444,14 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     if (coachBusy) return
     const t = text.trim()
     if (!t) return
+    // Stop the mic (continuous during dictation) and shut the door on a trailing STT
+    // final for a beat, so the box we're about to clear can't be refilled by the tail
+    // of the utterance we just sent. Reset editingRef so the NEXT dictation isn't
+    // blocked by a stale "editing" flag from prior typing.
+    micRef.current?.stop()
+    editingRef.current = false
+    justSubmittedRef.current = true
+    setTimeout(() => { justSubmittedRef.current = false }, 600)
     setText('')
     resetHeight()
     onSubmit(t)
@@ -483,7 +494,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
             disabled={false}
             assignmentKeyterms={assignmentKeyterms}
             onInterim={handleInterim}
-            onFinal={(t) => { if (t) { editingRef.current = false; setText(''); resetHeight(); onSubmit(t) } }}
+            onFinal={(t) => { if (t && !justSubmittedRef.current) { editingRef.current = false; setText(''); resetHeight(); onSubmit(t) } }}
           />
           <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
             <textarea
@@ -524,7 +535,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
           disabled={false}
           assignmentKeyterms={assignmentKeyterms}
           onInterim={handleInterim}
-          onFinal={(t) => { if (t && !editingRef.current) setText(t) }}
+          onFinal={(t) => { if (t && !editingRef.current && !justSubmittedRef.current) setText(t) }}
         />
         <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
           <textarea
