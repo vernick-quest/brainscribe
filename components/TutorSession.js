@@ -2686,8 +2686,8 @@ export default function TutorSession({
                                     ) : (
                                       <button
                                         onClick={() => { setLockDraft(item.nuggetText || lastUserMessage || ''); setLockingComponent({ paraIdx, componentId: item.id }) }}
-                                        className="mt-1.5 text-[10px] font-semibold rounded-lg px-2.5 py-1 transition inline-flex items-center gap-1.5"
-                                        style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                        className="mt-1.5 text-[10px] font-semibold rounded-lg px-2.5 py-1 transition inline-flex items-center gap-1.5 text-white"
+                                        style={{ backgroundColor: 'var(--status-success)' }}
                                       >
                                         <Icon name="pencil" size={13} /> Lock in this part
                                       </button>
