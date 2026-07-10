@@ -444,11 +444,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     if (coachBusy) return
     const t = text.trim()
     if (!t) return
-    // Stop the mic (continuous during dictation) and shut the door on a trailing STT
-    // final for a beat, so the box we're about to clear can't be refilled by the tail
-    // of the utterance we just sent. Reset editingRef so the NEXT dictation isn't
-    // blocked by a stale "editing" flag from prior typing.
-    micRef.current?.stop()
+    // Keep the mic LIVE after Send (continuous dictation is intended) but shut the
+    // door on the trailing STT interim/final for a beat, so the box we're about to
+    // clear can't be refilled by the tail of the utterance we just sent. Reset
+    // editingRef so live dictation resumes cleanly for the next message.
     editingRef.current = false
     justSubmittedRef.current = true
     setTimeout(() => { justSubmittedRef.current = false }, 600)
@@ -461,14 +460,19 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // ignore further interim updates so we don't clobber their changes. A mic
   // (re)start fires onInterim('') which re-enables transcription.
   function handleInterim(t) {
+    if (justSubmittedRef.current) return   // ignore the tail of the just-sent utterance
     if (t === '') { editingRef.current = false; setText(''); return }
     if (!editingRef.current) setText(t)
   }
   // Any manual edit (typing or paste) silently stops the mic so it can't keep
   // overwriting, and flags that we're now editing.
   function handleEdit(value) {
-    micRef.current?.stop()
-    editingRef.current = true
+    // Deleting/clearing must NOT kill the mic (you're clearing to re-dictate). Only
+    // ADDING characters (manual typing) pauses the mic so live interims can't fight
+    // your keystrokes; emptying the box re-arms live dictation.
+    const adding = value.length > text.length
+    if (adding) { micRef.current?.stop(); editingRef.current = true }
+    else if (value === '') editingRef.current = false
     setText(value)
   }
 
