@@ -10,6 +10,7 @@ import {
   scorePlacement, applyPlacementAwards, savePlacement, createPlacementPortfolioEntry,
 } from '@/lib/gymPlacement'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
+import { upsertScaffoldSnapshot } from '@/lib/scaffoldSnapshot'
 import { NextResponse } from 'next/server'
 
 // Turn any confirmed-but-unassembled scaffold paragraphs into flowing prose before we
@@ -26,6 +27,9 @@ async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
     .map((para, idx) => ({ para, idx }))
     .filter(({ para, idx }) =>
       !built.has(idx) &&
+      // Never flow a custom / non-prose form (haiku, poem, …) into prose — keep its
+      // lines verbatim in the scaffold (the transcript renders them directly).
+      para.type !== 'custom' &&
       (para.items ?? []).some(c => c.status === 'confirmed' && (c.text || c.nuggetText)))
 
   await Promise.all(toBuild.map(async ({ para, idx }) => {
@@ -58,6 +62,11 @@ export async function PATCH(request, { params }) {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Client sends its final scaffold snapshot so completion doesn't depend on a prior
+  // live PATCH having landed (body optional — tolerate an empty request).
+  let clientScaffold = null
+  try { clientScaffold = (await request.json())?.scaffold ?? null } catch {}
 
   const { data: session } = await supabase
     .from('sessions').select('id, student_id, status, gym_session_id').eq('id', id).single()
@@ -110,9 +119,14 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ ok: true, alreadyComplete: true, paragraphs: paragraphs ?? [] })
   }
 
-  // We own the completion. Mark the writing session complete + assemble any unbuilt
-  // paragraphs. (sessions.completed_at is the freshness contract the suggestion engine
-  // reads — migration 026; keep stamping it here.)
+  // We own the completion. Durably persist the student's final scaffold BEFORE
+  // flipping the session to complete — a session is never marked complete while its
+  // produced content (a gym haiku/poem's lines) lives only in client state.
+  await upsertScaffoldSnapshot(supabase, id, clientScaffold)
+
+  // Mark the writing session complete + assemble any unbuilt paragraphs.
+  // (sessions.completed_at is the freshness contract the suggestion engine reads —
+  // migration 026; keep stamping it here.)
   const { error: sessErr } = await supabase
     .from('sessions').update({ status: 'complete', completed_at: new Date().toISOString() }).eq('id', id)
   if (sessErr) console.error('[gym complete] sessions status update failed:', sessErr.message)
