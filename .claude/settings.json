@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(vercel logs *)"
+      "Bash(vercel logs *)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(vercel inspect *)",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__visualize__read_me",
+      "mcp__Claude_in_Chrome__read_console_messages",
+      "mcp__Claude_in_Chrome__read_network_requests",
+      "mcp__ccd_session_mgmt__list_sessions"
     ]
   }
 }
