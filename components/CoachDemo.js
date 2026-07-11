@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Lora } from 'next/font/google'
 
 // Animated "watch the coach work" demo for the landing hero. The coach draws the
 // student out over a few turns; the student answers out loud in messy, natural
@@ -13,9 +12,6 @@ import { Lora } from 'next/font/google'
 // Progressive enhancement: initial state is the FULL, revealed demo (so SSR and
 // no-JS show everything, and prefers-reduced-motion stays there). On mount, if
 // motion is allowed, it resets to step 0 and autoplays; manual controls pause it.
-
-const lora = Lora({ subsets: ['latin'], weight: ['500', '600'], style: ['normal'], display: 'swap' })
-const serif = lora.style.fontFamily
 
 // Student speech as segments so filler words can be struck through on cleanup.
 const STUDENT_1 = [
@@ -47,7 +43,9 @@ const MicIcon = () => (
   </svg>
 )
 
-export default function CoachDemo() {
+// `serif` is the page's already-loaded Lora family, passed down so this client
+// component doesn't pull in its own next/font subset (keeps the landing light).
+export default function CoachDemo({ serif = 'Georgia, "Times New Roman", serif' }) {
   const [step, setStep] = useState(LAST) // SSR / no-JS / reduced-motion = fully revealed
   const [animate, setAnimate] = useState(false)
   const [paused, setPaused] = useState(false)

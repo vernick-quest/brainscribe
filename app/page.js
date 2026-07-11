@@ -101,7 +101,7 @@ function Landing() {
 
         {/* Right: animated coach demo */}
         <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-          <CoachDemo />
+          <CoachDemo serif={serif} />
         </div>
       </header>
 
