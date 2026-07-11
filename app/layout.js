@@ -1,15 +1,15 @@
 import './globals.css'
 import SiteFooter from '@/components/SiteFooter'
-import { SITE_URL } from '@/lib/site'
+import { CANONICAL_URL } from '@/lib/site'
 
-const DESCRIPTION = 'The Socratic Writing Coach for Middle & High Schoolers'
+const DESCRIPTION = 'Voice-first writing coach for kids with ADHD, grades 4–12.'
 
 export const metadata = {
   // Resolves relative metadata URLs (incl. the file-convention OG images) and
   // pins them to the canonical www host. Child pages can override openGraph /
   // twitter / canonical; the root opengraph-image.js supplies the default
   // share card for any page without its own.
-  metadataBase: new URL(SITE_URL),
+  metadataBase: new URL(CANONICAL_URL),
   title: 'BrainScribe',
   description: DESCRIPTION,
   openGraph: {
@@ -17,7 +17,7 @@ export const metadata = {
     siteName: 'BrainScribe',
     title: 'BrainScribe',
     description: DESCRIPTION,
-    url: SITE_URL,
+    url: CANONICAL_URL,
   },
   twitter: {
     card: 'summary_large_image',

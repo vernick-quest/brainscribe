@@ -1,7 +1,7 @@
 import { Lora } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import { getAllPosts, getPostBySlug } from '@/lib/blog'
-import { SITE_URL } from '@/lib/site'
+import { CANONICAL_URL } from '@/lib/site'
 import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }) {
   const { slug } = await params
   const post = getPostBySlug(slug)
   if (!post) return { title: 'Not found — BrainScribe' }
-  const url = `${SITE_URL}/blog/${post.slug}`
+  const url = `${CANONICAL_URL}/blog/${post.slug}`
   const description = post.summary || undefined
   // The per-post opengraph-image.js auto-injects the og:image / twitter:image
   // tags for this route — no need to set `images` here.
@@ -51,7 +51,7 @@ export default async function BlogPostPage({ params }) {
   const post = getPostBySlug(slug)
   if (!post) notFound()
 
-  const url = `${SITE_URL}/blog/${post.slug}`
+  const url = `${CANONICAL_URL}/blog/${post.slug}`
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -62,11 +62,11 @@ export default async function BlogPostPage({ params }) {
     url,
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     image: `${url}/opengraph-image`,
-    author: { '@type': 'Organization', name: 'BrainScribe', url: SITE_URL },
+    author: { '@type': 'Organization', name: 'BrainScribe', url: CANONICAL_URL },
     publisher: {
       '@type': 'Organization',
       name: 'BrainScribe',
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/brainscribe-logo.png` },
+      logo: { '@type': 'ImageObject', url: `${CANONICAL_URL}/brainscribe-logo.png` },
     },
   }
 
