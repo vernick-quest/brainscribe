@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PERSONAS as PERSONA_DATA, PersonaAvatar } from '@/lib/personas'
+import WritingFormChooser from '@/components/WritingFormChooser'
+import { getForm } from '@/lib/sampleLibrary'
 
 const PERSONAS = Object.entries(PERSONA_DATA).map(([id, p]) => ({ id, ...p }))
 
 const ACCEPTED = '.jpg,.jpeg,.png,.webp,.gif,.pdf'
 const MAX_MB = 5
-const SAMPLE = 'Write a 5-paragraph essay arguing whether the main character in "The Outsiders" changes by the end of the novel. Use specific evidence from the text.'
 
 // Shown one at a time while the session is being created.
 const PROGRESS_MESSAGES = [
@@ -32,8 +33,30 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
   const [uploadError, setUploadError]           = useState('')
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [progressStep, setProgressStep]         = useState(0)
+  const [chooserOpen, setChooserOpen]           = useState(false)
+  // The writing form the student picked in the chooser (e.g. 'poetry'). The
+  // load-bearing form hint travels in the assignment text itself (each prompt
+  // names its form, so the coach scaffolds custom-vs-prose from the wording —
+  // see lib/sampleLibrary.js); this is kept for potential future use/telemetry.
+  const [chosenForm, setChosenForm]             = useState(null)
   const fileInputRef = useRef(null)
+  const textareaRef = useRef(null)
   const router = useRouter()
+
+  // Fill the assignment box from a chooser selection and capture the form. For
+  // "write my own" the prompt is a scaffold line ending in a blank, so drop the
+  // cursor at the end and focus the box so the student keeps typing their topic.
+  function handleFormSample(promptText, form) {
+    setAssignment(promptText)
+    setChosenForm(form?.id ?? null)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      const end = promptText.length
+      try { el.setSelectionRange(end, end) } catch {}
+    })
+  }
 
   useEffect(() => {
     if (!loading) { setProgressStep(0); return }
@@ -149,13 +172,24 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         Your assignment
       </span>
       <textarea
+        ref={textareaRef}
         value={assignment}
-        onChange={e => setAssignment(e.target.value)}
+        onChange={e => { setAssignment(e.target.value); if (chosenForm) setChosenForm(null) }}
         placeholder="Paste or type your writing assignment here…"
         rows={4}
         className="w-full resize-none focus:outline-none focus:ring-2 transition"
         style={{ font: 'var(--type-body)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '12px 14px', '--tw-ring-color': 'var(--ring)', color: 'var(--text-strong)' }}
       />
+
+      {/* Reflects the form picked in the chooser. The coach still infers the form
+          from the assignment wording — this is just confirmation for the student. */}
+      {chosenForm && getForm(chosenForm) && (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 'var(--space-2)', padding: '4px 12px', borderRadius: 'var(--radius-pill)', background: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+          <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--accent-text)' }}>
+            Writing {getForm(chosenForm).name.toLowerCase()}
+          </span>
+        </div>
+      )}
 
       {/* Upload box (real OCR) */}
       <div
@@ -190,7 +224,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
               <path d="M5 10l4 4 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span className="flex-1 truncate" style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--status-success)' }}>{uploadedFileName}</span>
-            <button type="button" onClick={e => { e.stopPropagation(); setUploadedFileName(''); setAssignment('') }}
+            <button type="button" onClick={e => { e.stopPropagation(); setUploadedFileName(''); setAssignment(''); setChosenForm(null) }}
               className="text-base shrink-0 leading-none" style={{ color: 'var(--text-subtle)' }} title="Remove" aria-label="Remove uploaded file">×</button>
           </>
         ) : (
@@ -267,11 +301,21 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
             </svg>
           )}
         </button>
-        <button onClick={() => setAssignment(SAMPLE)} type="button"
-          style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer' }}>
-          Use a sample assignment
+        <button onClick={() => setChooserOpen(true)} type="button"
+          className="inline-flex items-center gap-1.5"
+          style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+          </svg>
+          Need an idea? Browse writing forms →
         </button>
       </div>
+
+      <WritingFormChooser
+        open={chooserOpen}
+        onClose={() => setChooserOpen(false)}
+        onSelect={handleFormSample}
+      />
     </div>
   )
 }

@@ -1128,3 +1128,33 @@ Verify (manual e2e):
 - [ ] `node scripts/redteam/overconfirm-probes.mjs --reps=3` — 2 probes × 3 reps = 6 live conversations (Sonnet coach + Fable student + Fable judge, ~4–5 turns each). Rough est. **~$2–4.** Expect `student-lines` to pass (locks both at once, no re-confirm loop) and `coach-lines` to pass (refuses to lock coach-authored wording on a rubber-stamp).
 - [ ] Build green: `npm run build` (passed).
 - [ ] Live e2e (manual, after deploy): custom haiku — voice two lines in your own words, ask to lock both → coach locks BOTH in one turn (both appear in Draft), does NOT re-ask per line, does NOT say it "can't move things into the Draft."
+
+---
+
+## Writing-form chooser modal (new 2026-07-10 — branch `focus/assignment-intake`, NOT yet deployed)
+
+Replaces the single hardcoded "Use a sample assignment" essay link in
+`components/NewSessionForm.js` with an FTUE-style two-step chooser
+(`components/WritingFormChooser.js` + `lib/sampleLibrary.js`). Additive — the
+manual paste box and photo/PDF upload are unchanged. **No migration** — the form
+hint travels inside the assignment text (each prompt names its form, e.g. "Write
+a haiku…"), which the coach already reads to scaffold custom-vs-prose.
+
+Test on `/assignment/new` (or `/write`) as the student account.
+
+- [ ] ⬜ New-assignment page shows **"Need an idea? Browse writing forms →"** (sparkle icon) where the old "Use a sample assignment" link was
+- [ ] ⬜ Click it → modal opens: title **"What do you want to write?"**, a 2-col grid of 6 form cards (Poetry, A paragraph, A letter, An essay, A short story, A speech), each with a tinted line-icon glyph + blurb
+- [ ] ⬜ **Poetry → haiku prompt:** pick Poetry → pick "Haiku about an everyday object" → modal closes, textarea fills with the haiku prompt, an orange **"Writing poetry"** chip shows under the box
+- [ ] ⬜ **Custom form scaffolds as custom (live):** start that haiku with a coach → coach lays out the haiku as 3 lines (5/7/5), NOT hook/context/body/closing (`[SCAFFOLD:custom:…]`)
+- [ ] ⬜ **Haiku persists to transcript:** lock in all three lines, complete the session → `/transcript/[id]` shows the haiku text, NOT "Nothing written yet" (the migration-031 data-loss fix is live)
+- [ ] ⬜ **Write my own:** open modal → Poetry → "Write my own poetry →" → box fills with "Write a poem about " and the cursor is at the end, focused, ready to type a topic
+- [ ] ⬜ **Back + close:** on step 2, the ← Back arrow returns to the form grid; the ✕ and a backdrop click both close the modal
+- [ ] ⬜ **Essay (prose) path unchanged:** pick An essay → a sample → box fills; starting it scaffolds as a normal multi-paragraph essay (prose), exactly as before
+- [ ] ⬜ **Manual paste still works:** type/paste any assignment directly → Start writing → session behaves as before (no form chip)
+- [ ] ⬜ **Upload still works:** photo/PDF upload → OCR fills the box → Start writing works; removing the file clears the box (and any form chip)
+- [ ] ⬜ **Keyboard/a11y:** Tab is trapped inside the open modal; Esc closes it and focus returns to the trigger; focus rings visible; cards/rows are ≥44px tall
+- [ ] ⬜ **Mobile (~393px):** modal is a full-width bottom sheet; form grid stays 2-col and readable; targets tappable
+- [ ] ⬜ **Reduced motion:** with "Reduce motion" on, the modal appears without the fade/rise animation
+
+**Not in scope (v1):** per-form coach-persona tuning, saving user-authored custom
+samples, images in the modal, teacher-authored sample sets, forms beyond the six.
