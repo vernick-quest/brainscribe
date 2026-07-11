@@ -15,5 +15,16 @@ export async function POST(request) {
     .single()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Touch last-activity so the multi-session resume time-gate can distinguish a real
+  // return (welcome-back greeting) from a same-sitting refresh. Owner-scoped via RLS
+  // ("sessions: student owns"); non-fatal — a failed touch just falls back to the
+  // newest-message timestamp gate.
+  const { error: touchErr } = await supabase
+    .from('sessions')
+    .update({ last_active_at: new Date().toISOString() })
+    .eq('id', sessionId)
+  if (touchErr) console.error('[messages] last_active_at touch failed:', touchErr.message)
+
   return Response.json(data)
 }

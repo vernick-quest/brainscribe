@@ -113,6 +113,13 @@ export async function POST(request) {
         content: savedText,
       })
       if (error) console.error('[tutor] message insert failed:', error.message)
+      // Touch last-activity for the resume time-gate (mirrors /api/messages). A coach
+      // turn is activity too. Owner-scoped via RLS; non-fatal.
+      const { error: touchErr } = await supabase
+        .from('sessions')
+        .update({ last_active_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      if (touchErr) console.error('[tutor] last_active_at touch failed:', touchErr.message)
     }
   })
 
