@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AttributionCapture from '@/components/AttributionCapture'
 import SiteHeader from '@/components/SiteHeader'
+import CoachDemo from '@/components/CoachDemo'
 
 const lora = Lora({
   subsets: ['latin'],
@@ -98,9 +99,9 @@ function Landing() {
           </div>
         </div>
 
-        {/* Right: session preview mock */}
+        {/* Right: animated coach demo */}
         <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-          <SessionPreview />
+          <CoachDemo />
         </div>
       </header>
 
@@ -292,87 +293,6 @@ function Landing() {
           </a>
         </div>
       </section>
-    </div>
-  )
-}
-
-// A static, on-brand mock of a coaching session — coach question, student answer
-// spoken aloud, and the student's own words tidied into a paragraph (filler
-// removed, nothing added). Phase 2 replaces this with an animated, multi-turn
-// version; keep the "after" text visibly the kid's own words, never rewritten.
-function SessionPreview() {
-  return (
-    <div style={{
-      backgroundColor: 'var(--surface-card)',
-      border: '1px solid var(--border-default)',
-      borderRadius: 20,
-      boxShadow: 'var(--shadow-md)',
-      padding: 22,
-      maxWidth: 440,
-      marginInline: 'auto',
-    }}>
-      {/* Coach header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-        <span style={{
-          width: 30, height: 30, borderRadius: '50%',
-          backgroundColor: 'var(--surface-spark)', color: 'var(--accent-text)',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, fontSize: '0.8rem',
-        }}>O</span>
-        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-strong)' }}>
-          Owen <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>&middot; your coach</span>
-        </span>
-      </div>
-
-      {/* Coach bubble */}
-      <div style={{
-        backgroundColor: 'var(--brand-cream)',
-        border: '1px solid var(--border-default)',
-        borderRadius: '14px 14px 14px 4px',
-        padding: '12px 15px',
-        fontSize: '0.92rem',
-        lineHeight: 1.55,
-        color: 'var(--brand-navy)',
-        marginBottom: 12,
-      }}>
-        Nice start. What&rsquo;s one moment your character starts to see things differently?
-      </div>
-
-      {/* Student bubble — spoken aloud */}
-      <div style={{
-        backgroundColor: 'var(--brand-navy)',
-        color: 'var(--brand-cream)',
-        borderRadius: '14px 14px 4px 14px',
-        padding: '12px 15px',
-        fontSize: '0.92rem',
-        lineHeight: 1.55,
-        marginLeft: 'auto',
-        marginBottom: 18,
-        maxWidth: '86%',
-      }}>
-        When his friend moves away and he&rsquo;s alone at lunch, he starts noticing things he never noticed before.
-      </div>
-
-      {/* Their paragraph — their words, tidied */}
-      <div style={{
-        backgroundColor: 'var(--surface-spark)',
-        border: '1px solid var(--border-accent)',
-        borderRadius: 14,
-        padding: '14px 16px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Your paragraph
-          </span>
-          <span style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--status-success)' }}>
-            In your words
-          </span>
-        </div>
-        <p style={{ fontSize: '0.9rem', lineHeight: 1.65, color: 'var(--brand-navy)', margin: 0 }}>
-          When his friend moves away, he&rsquo;s alone at lunch and starts noticing things he&rsquo;d never
-          noticed before.
-        </p>
-      </div>
     </div>
   )
 }
