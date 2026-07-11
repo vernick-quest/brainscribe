@@ -27,7 +27,7 @@ export async function POST(request) {
     .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
   if (!canUseCoach(gate)) return coachGateResponse()
 
-  const { sessionId, messages, assignment, persona = 'owen', scaffold = null } = await request.json()
+  const { sessionId, messages, assignment, persona = 'owen', scaffold = null, resume = false } = await request.json()
 
   if (!sessionId || !messages || !assignment) {
     return Response.json({ error: 'Missing fields' }, { status: 400 })
@@ -57,7 +57,12 @@ export async function POST(request) {
   // Split the system prompt: the large static prefix (persona + rules + guardrails,
   // ~5.7k tokens, identical every turn) is marked for Anthropic prompt caching so it
   // bills at ~10% on cache hits. Only the small assignment/scaffold tail varies.
-  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements })
+  // `resume` is a client-supplied signal set by the coaching-session lane on the
+  // FIRST turn of a genuinely resumed session (a real gap elapsed, banked progress
+  // exists). It only steers the coach's uncached tail (don't re-greet, read progress
+  // from scaffold state) — it grants no data access, so trusting the client here is
+  // safe; the scaffold itself is still the source of truth for what's actually locked.
+  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements, resume: resume === true })
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
