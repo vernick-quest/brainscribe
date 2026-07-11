@@ -10,7 +10,7 @@ const lora = Lora({
 
 export const metadata = {
   title: 'About — BrainScribe',
-  description: 'How a late-night Chromebook moment became a voice-first writing tutor for kids with ADHD.',
+  description: 'How a late-night Chromebook moment became a voice-first writing coach for kids with ADHD.',
 }
 
 const serif = lora.style.fontFamily
@@ -177,7 +177,7 @@ export default function AboutPage() {
         {/* Prose continued */}
         <div style={{ fontSize: '1rem', lineHeight: 1.8, color: 'var(--brand-navy)' }}>
           <p style={{ marginBottom: 28 }}>
-            That was the lightbulb moment. What my son needed wasn't an AI that would write for him — he needed one that would ask him the right questions until he figured out what he already knew. A Socratic tutor that holds the door open instead of walking through it for you.
+            That was the lightbulb moment. What my son needed wasn't an AI that would write for him — he needed one that would ask him the right questions until he figured out what he already knew. A Socratic coach that holds the door open instead of walking through it for you.
           </p>
           <p style={{ marginBottom: 28 }}>
             That's what BrainScribe is. A voice-first writing coach that asks questions, listens to your answers, and turns what you say into clean paragraphs — in your words, with your ideas. It doesn't write your essay. It helps you write it.

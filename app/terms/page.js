@@ -15,7 +15,7 @@ const sections = [
   {
     id: 'what', label: 'What BrainScribe is', title: 'What BrainScribe is',
     body: (
-      <p>BrainScribe is a voice-first writing tutor built to help middle and high school students — especially those with ADHD — get their ideas out of their heads and onto the page. The Service asks Socratic coaching questions; the student speaks or types their answers; and those answers become the student&apos;s own writing. BrainScribe does not write essays for students and is not a substitute for a student&apos;s own work.</p>
+      <p>BrainScribe is a voice-first writing coach built to help middle and high school students — especially those with ADHD — get their ideas out of their heads and onto the page. The Service asks Socratic coaching questions; the student speaks or types their answers; and those answers become the student&apos;s own writing. BrainScribe does not write essays for students and is not a substitute for a student&apos;s own work.</p>
     ),
   },
   {
