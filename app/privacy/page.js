@@ -10,7 +10,7 @@ const sections = [
     id: 'who-we-are', label: 'Who we are', title: 'Who we are',
     body: (
       <>
-        <p>BrainScribe is a voice-first writing tutor built to help middle and high school students — especially those with ADHD — get their ideas out of their heads and onto the page. We operate at brainscribe.io and are based in the United States.</p>
+        <p>BrainScribe is a voice-first writing coach built to help middle and high school students — especially those with ADHD — get their ideas out of their heads and onto the page. We operate at brainscribe.io and are based in the United States.</p>
         <p>Questions about this policy? Email us at <strong>brainscribe.io@gmail.com</strong>. We respond to all privacy inquiries within 5 business days.</p>
       </>
     ),
@@ -22,10 +22,10 @@ const sections = [
         <p>We collect only what we need to provide the service:</p>
         <ul>
           <li><strong>Account information</strong> — name and email address, provided when you sign in with Google. This information is used solely to identify your account and send service-related messages. It is not used for advertising, sold to third parties, or combined with data from other services.</li>
-          <li><strong>Assignment content</strong> — the text of writing assignments students enter. Used to generate the tutoring session and outline.</li>
+          <li><strong>Assignment content</strong> — the text of writing assignments students enter. Used to generate the coaching session and outline.</li>
           <li><strong>Voice and spoken text</strong> — when a student speaks, their audio is transcribed. We store the transcription, not the audio. Audio is processed in real time and not retained.</li>
-          <li><strong>Session transcripts</strong> — the full dialogue between the student and the AI tutor. Stored so students, parents, and teachers can review the session. We also run automated AI reviews of transcripts for internal quality and safety monitoring.</li>
-          <li><strong>Written paragraphs</strong> — the scribed essay sections that result from each tutoring session.</li>
+          <li><strong>Session transcripts</strong> — the full dialogue between the student and the AI coach. Stored so students, parents, and teachers can review the session. We also run automated AI reviews of transcripts for internal quality and safety monitoring.</li>
+          <li><strong>Written paragraphs</strong> — the scribed essay sections that result from each coaching session.</li>
           <li><strong>Relationship data</strong> — which parents are linked to which students, and which teachers are connected to which assignments. Used only to provide dashboard access.</li>
         </ul>
         <p>We do <strong>not</strong> collect Social Security numbers, payment card numbers (payments are handled by Stripe), school records beyond what you provide, or any biometric data.</p>
@@ -57,7 +57,7 @@ const sections = [
       <>
         <p>BrainScribe acts as a <strong>school official</strong> or <strong>service provider</strong> when used in an educational setting, consistent with FERPA. Student education records are:</p>
         <ul>
-          <li>Used only to provide and improve the tutoring service.</li>
+          <li>Used only to provide and improve the coaching service.</li>
           <li>Not disclosed to third parties without consent, except as permitted by FERPA.</li>
           <li>Not used for behavioral advertising.</li>
           <li>Accessible to the student and their connected parents and teachers within the platform.</li>
@@ -71,8 +71,8 @@ const sections = [
       <>
         <p>We share data in the following limited circumstances only:</p>
         <ul>
-          <li><strong>Anthropic (Claude AI)</strong> — Assignment text and session history are sent to Anthropic&apos;s API to generate tutoring responses. Anthropic does not train on API inputs by default. See <a className="inline" href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener noreferrer">Anthropic&apos;s privacy policy</a>.</li>
-          <li><strong>ElevenLabs</strong> — Tutor response text is sent to ElevenLabs to generate voice audio. See <a className="inline" href="https://elevenlabs.io/privacy" target="_blank" rel="noopener noreferrer">ElevenLabs&apos; privacy policy</a>.</li>
+          <li><strong>Anthropic (Claude AI)</strong> — Assignment text and session history are sent to Anthropic&apos;s API to generate coaching responses. Anthropic does not train on API inputs by default. See <a className="inline" href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener noreferrer">Anthropic&apos;s privacy policy</a>.</li>
+          <li><strong>ElevenLabs</strong> — Coach response text is sent to ElevenLabs to generate voice audio. See <a className="inline" href="https://elevenlabs.io/privacy" target="_blank" rel="noopener noreferrer">ElevenLabs&apos; privacy policy</a>.</li>
           <li><strong>Supabase</strong> — Our database and authentication provider. Data is stored in Supabase&apos;s infrastructure. See <a className="inline" href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">Supabase&apos;s privacy policy</a>.</li>
           <li><strong>Resend</strong> — Used to send notification emails to teachers and parents. No student content is included in these emails.</li>
           <li><strong>Legal requirements</strong> — We may disclose information if required by law, court order, or to protect the rights and safety of our users.</li>

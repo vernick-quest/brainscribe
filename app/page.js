@@ -213,7 +213,7 @@ function Landing() {
           A private writing coach can cost $500+ a month.
         </h2>
         <p style={{ fontSize: '1.02rem', lineHeight: 1.7, color: 'var(--text-muted)', margin: '0 auto', maxWidth: 520 }}>
-          A one-on-one executive-function or writing tutor often runs well over $100 a session. BrainScribe gives
+          A one-on-one executive-function or writing coach often runs well over $100 a session. BrainScribe gives
           your kid an ADHD-aware coach on demand &mdash; for a fraction of that. Free to start.
         </p>
       </section>
