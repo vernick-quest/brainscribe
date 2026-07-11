@@ -318,6 +318,80 @@ function deriveSwitchState(scaffold, paragraphs) {
   return { locked: paraCount, total: 0, allDone: false, atStage: null }
 }
 
+// ── Multi-session resume greeting ───────────────────────────────────────────────
+// A student who stopped mid-essay yesterday reloads into a wall of old transcript
+// with no re-orientation. The essay-funnel sim (2026-07-09) showed a 5-paragraph
+// essay is ~40–50 coach turns — too long for one sitting — so returning mid-essay
+// is the norm, not the exception. This assembles a momentum-aware "welcome back"
+// from LIVE scaffold state, deterministically (no model call — same F4 discipline as
+// buildSwitchGreeting, so it can NEVER hallucinate progress the student didn't make).
+//
+// It reads: the count ("2 of 5 locked in"), an orientation from the most-recently-
+// completed paragraph's [PARA_DONE] `summary` (degrading gracefully to generic when
+// the summary is null — Job A sometimes leaves it null), a forward invite tied to the
+// cursor's paragraph type, and an optional one-line thesis anchor. Persona voice lives
+// in the opener; the shared tail (orientation/thesis/forward) is a plain question so
+// it can't drift from the actual state.
+function paraFriendlyLabel(type) {
+  switch (type) {
+    case 'introduction':       return 'introduction'
+    case 'body':               return 'body paragraph'
+    case 'conclusion':         return 'conclusion'
+    case 'narrative':          return 'section'
+    case 'personal_statement': return 'section'
+    default:                   return 'paragraph'
+  }
+}
+
+function buildResumeGreeting(persona, name, scaffold) {
+  const trim = (t, n) => { const s = String(t ?? '').trim(); return s.length > n ? s.slice(0, n).trimEnd() + '…' : s }
+  const components = scaffold?.components ?? []
+  const total = scaffold?.total_paragraphs || components.length || 0
+  const done = components.filter(p => p.status === 'complete').length
+  const countN = `${done} of ${total}`
+
+  // Orientation — from the most-recently-completed paragraph (highest complete index).
+  let orient = ''
+  const lastComplete = [...components].reverse().find(p => p.status === 'complete')
+  if (lastComplete) {
+    const label = paraFriendlyLabel(lastComplete.type)
+    const summary = trim(lastComplete.summary, 90)
+    orient = summary
+      ? `Last time you wrapped up your ${label}: "${summary}".`
+      : `Last time you finished your ${label}.`
+  }
+
+  // Forward invite — tied to the cursor's paragraph type.
+  const cursor = scaffold?.current_paragraph_index ?? done
+  const nextType = components[cursor]?.type
+  const remaining = total - done
+  let forward
+  if (nextType === 'conclusion' || (remaining === 1 && nextType)) {
+    forward = 'Just the conclusion left — want to finish it off?'
+  } else if (nextType === 'body') {
+    forward = 'Ready to start the next body paragraph?'
+  } else if (nextType) {
+    forward = `Ready to pick up with your ${paraFriendlyLabel(nextType)}?`
+  } else {
+    forward = 'Ready to pick up where you left off?'
+  }
+
+  // Optional thesis anchor (grounds Rule 11 tracking for the student too).
+  const thesisText = typeof scaffold?.thesis === 'string' ? trim(scaffold.thesis, 120) : ''
+  const thesisLine = thesisText ? `Your thesis is still: "${thesisText}".` : ''
+
+  const tail = [orient, thesisLine, forward].filter(Boolean).join(' ')
+  const opener = {
+    deon:     `Hey ${name}, welcome back. ${countN} paragraphs locked in.`,
+    zoe:      `Welcome back, ${name}! You've already got ${countN} paragraphs locked in — nice momentum!`,
+    alistair: `Hello ${name}. Alistair here, welcome back. You've got ${countN} paragraphs locked in.`,
+    matilda:  `Hi ${name} — Tilly here, welcome back. You've got ${countN} paragraphs locked in.`,
+    owen:     `Hi ${name}. Owen here, welcome back. You've got ${countN} paragraphs locked in — that's real progress.`,
+    jade:     `hey ${name}! welcome back — you've got ${countN} paragraphs locked in already.`,
+  }
+  return `${opener[persona] ?? opener.owen} ${tail}`.trim()
+}
+
 // ── Scribe confirmation message ────────────────────────────────────────────────
 
 function buildConfirmMessage(persona, paragraph, isThin, thinNote) {
@@ -597,6 +671,12 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
 // otherwise reset the per-instance hasGreeted ref and deliver the greeting twice.
 const greetedSessions = new Set()
 
+// A resumed session earns a fresh "welcome back" only after a real gap — without a
+// time gate every StrictMode remount or accidental refresh would inject one, which
+// reads as broken. 45 min: long enough that a same-sitting refresh stays silent,
+// short enough that a lunch-break return gets re-oriented. (spec Q1)
+const RESUME_GAP_MS = 45 * 60 * 1000
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TutorSession({
@@ -625,6 +705,10 @@ export default function TutorSession({
   const [paragraphs, setParagraphs]       = useState(initialParagraphs)
   const [scaffold, setScaffold]           = useState(initialScaffold)
   const captionRef                        = useRef(null)
+  // True only on the FIRST coach turn of a genuinely resumed session (set when the
+  // resume greeting fires); sent to /api/tutor so the coach's dynamic-tail RESUMING
+  // orientation fires once and it doesn't re-greet. Cleared after that first turn.
+  const resumePendingRef                  = useRef(false)
   const [pendingScribe, setPendingScribe] = useState(null)
   const [phase, setPhase]                 = useState('waiting')
   const [persona, setPersona]             = useState(resolvePersona(session.persona))
@@ -833,6 +917,45 @@ export default function TutorSession({
       if (onboarding && initialMessages.length === 1 && initialMessages[0]?.role === 'assistant') {
         greetedSessions.add(session.id)
         replayAudioOnly(initialMessages[0].content, resolvePersona(session.persona))
+      }
+
+      // ── Resume greeting (the core gap) ──────────────────────────────────────
+      // Until now this early-return meant any returning session skipped greeting
+      // delivery, so buildGreeting's momentum branch was DEAD CODE on resume: a
+      // student who stopped mid-essay reloaded into a wall of old transcript with no
+      // re-orientation. Fire a fresh (non-persisted) "welcome back" when this is a
+      // GENUINE resume — real banked progress AND a real gap since last activity —
+      // scoped to multi-paragraph assignment sessions. Never onboarding (single hook,
+      // same sitting) or gym (single-paragraph skill reps): both are always one
+      // sitting, mirroring Job A's scoping. Reaching here means greetedSessions does
+      // NOT hold this id (the guard above already returned otherwise), so this can't
+      // double-greet; we add the id before delivering to keep it that way.
+      const sc = initialScaffold
+      const isMultiPara = (sc?.total_paragraphs ?? 0) > 1 || (sc?.components?.length ?? 0) > 1
+      const bankedProgress = !!sc && (
+        (sc.components ?? []).some(p => p.status === 'complete') ||
+        (sc.components ?? []).some(p => (p.items ?? []).some(it => it.status === 'confirmed'))
+      )
+      // Gap since last activity: prefer sessions.last_active_at; fall back to the
+      // newest message timestamp when the column is null (pre-backfill / untouched).
+      let lastActiveMs = session?.last_active_at ? Date.parse(session.last_active_at) : NaN
+      if (Number.isNaN(lastActiveMs)) {
+        for (const m of initialMessages) {
+          const t = m?.created_at ? Date.parse(m.created_at) : NaN
+          if (!Number.isNaN(t) && (Number.isNaN(lastActiveMs) || t > lastActiveMs)) lastActiveMs = t
+        }
+      }
+      const gapElapsed = !Number.isNaN(lastActiveMs) && (Date.now() - lastActiveMs > RESUME_GAP_MS)
+
+      if (!onboarding && !gym && session.status !== 'complete' && isMultiPara && bankedProgress && gapElapsed) {
+        greetedSessions.add(session.id)
+        resumePendingRef.current = true   // the first coach turn signals resume to /api/tutor
+        const activePersona = resolvePersona(session.persona)
+        const greeting = buildResumeGreeting(activePersona, studentName, sc)
+        // Same delivery path buildSwitchGreeting uses: append after the existing
+        // transcript (history = current messages), speak it, keep the composer open.
+        // Deterministic → can't hallucinate progress; never persisted.
+        deliverTutorMessage(greeting, messages, activePersona)
       }
       return
     }
@@ -1236,6 +1359,8 @@ export default function TutorSession({
     captionRef.current?.set('…')
 
     try {
+      const wasResume = resumePendingRef.current
+      resumePendingRef.current = false   // the resume signal is first-turn-only
       const res = await fetch(tutorEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1245,6 +1370,7 @@ export default function TutorSession({
           messages: history,
           persona: activePersona,
           scaffold,
+          resume: wasResume,
         }),
       })
 
@@ -1825,6 +1951,28 @@ export default function TutorSession({
   const fullEssay    = paragraphs.map(p => p.scribed_text).filter(Boolean).join('\n\n')
   const reqActual    = computeActual(paragraphs)
   const currentMeta  = PERSONA_META[persona]
+
+  // ── "You can stop here" affordance ──────────────────────────────────────────
+  // The mirror of resume: make it safe and INVITING to stop, so a fatiguing student
+  // banks and leaves instead of abandoning. Show a quiet permission line when there's
+  // real banked progress but the essay isn't done (0 < done < total) AND we're at a
+  // clean paragraph boundary — i.e. the last event was a paragraph completion, not
+  // mid-paragraph. "Mid-paragraph" = the current section has any started item; at a
+  // boundary the freshly-advanced cursor points at an untouched section. Reads as
+  // permission, not a nag. Keeps the promise consistent with the coach's stop-offer.
+  const stopAffordance = (() => {
+    if (sessionComplete) return null
+    const comps = scaffold?.components ?? []
+    const total = scaffold?.total_paragraphs || comps.length || 0
+    if (total <= 1) return null
+    const done = comps.filter(p => p.status === 'complete').length
+    if (!(done > 0 && done < total)) return null
+    const cursor = scaffold?.current_paragraph_index ?? done
+    const current = comps[cursor]
+    const midParagraph = (current?.items ?? []).some(it => it.status === 'working' || it.status === 'candidate' || it.status === 'confirmed')
+    if (midParagraph) return null
+    return { done }
+  })()
   // Student's most recent reply — prefilled into the manual lock-in fallback.
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
   const assignmentKeyterms = []
@@ -2364,6 +2512,20 @@ export default function TutorSession({
               </button>
             )}
           </div>
+
+          {/* "You can stop here" — quiet permission to bank progress and return.
+              Shows only at a clean paragraph boundary (0 < done < total, not
+              mid-paragraph). Muted, not orange — this is reassurance, not an action.
+              Keeps the promise consistent with the coach's "it'll all be here" offer. */}
+          {stopAffordance && (
+            <div className="mx-4 mt-3 shrink-0 rounded-xl px-4 py-2.5 flex items-start gap-2"
+              style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+              <Icon name="check" size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--text-subtle)' }} />
+              <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                You've got {stopAffordance.done} strong {stopAffordance.done === 1 ? 'paragraph' : 'paragraphs'} saved — you can stop here and pick up anytime.
+              </p>
+            </div>
+          )}
 
           {/* Celebration toast */}
           {sectionJustCompleted && !sessionComplete && (

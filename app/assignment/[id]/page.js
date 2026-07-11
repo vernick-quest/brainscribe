@@ -99,7 +99,9 @@ export default async function AssignmentPage({ params }) {
   ] = await Promise.all([
     service
       .from('messages')
-      .select('role, content')
+      // created_at feeds the resume time-gate's fallback when sessions.last_active_at
+      // is null (pre-backfill / never-touched sessions). See TutorSession mount effect.
+      .select('role, content, created_at')
       .eq('session_id', id)
       .order('created_at'),
     service

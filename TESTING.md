@@ -1201,3 +1201,50 @@ before running (rough ~$4-6 per run at the default 2 reps × 7 scenarios).
 - [ ] ⬜ Live spot-check: start a session, give the coach broken English ("my brother
   he go work all the week very tired"); confirm it echoes your words, asks you to say
   the whole sentence yourself, and locks YOUR imperfect version — not a fluent rewrite.
+
+## Multi-session essay resume — UI/state half (2026-07-11, branch `focus/coaching-session`, NOT yet deployed)
+
+Adds a momentum-aware "welcome back" resume greeting, a quiet "you can stop here"
+affordance, and `sessions.last_active_at` (migration 032). All additive; scoped to
+non-onboarding, non-gym, multi-paragraph assignment sessions.
+
+**Migration 032 must be applied first** (paste `supabase/migrations/032_sessions_last_active_at.sql`
+into the Supabase SQL editor, project `lakozspeyxsuunogfant`) — until then
+`last_active_at` is null and the time-gate falls back to the newest message timestamp
+(the resume greeting still works, just off message times).
+
+- [ ] ⬜ **Resume greeting fires after a real gap.** Start a multi-paragraph essay,
+  lock in ≥1 paragraph, then simulate a gap (set that session's `last_active_at` to
+  >45 min ago, or wait). Reload the writing page → a fresh coach "welcome back" message
+  appears at the bottom with the correct count ("2 of 5 paragraphs locked in"), an
+  orientation from the last completed paragraph, and a forward invite naming the next
+  paragraph type (body / "just the conclusion left"). It is NOT persisted (not in the
+  DB transcript; gone from history on a later same-sitting reload once greeted).
+- [ ] ⬜ **Same-sitting refresh does NOT greet.** Immediately reload (gap < 45 min) →
+  no "welcome back"; drops straight into the live composer.
+- [ ] ⬜ **No banked progress → no greeting.** Reload a returning session that has
+  conversation but zero confirmed items / complete paragraphs → no resume greeting.
+- [ ] ⬜ **Graceful summary degrade.** If the last completed paragraph's scaffold
+  `summary` is null (Job A reconcile), the greeting still fires with a generic
+  orientation ("Last time you finished your body paragraph.") — no "undefined".
+- [ ] ⬜ **Onboarding never greets.** Re-enter a practice (onboarding) session → no
+  resume greeting (single-hook, same-sitting).
+- [ ] ⬜ **Gym never greets.** Re-enter a gym session → no resume greeting.
+- [ ] ⬜ **Per-persona voice.** Switch coaches across resumes → the greeting opener
+  matches the active persona (Zoe upbeat, Alistair formal, Jade lowercase, etc.).
+- [ ] ⬜ **Thesis anchor.** If the scaffold has a locked thesis, the greeting includes
+  a one-line "Your thesis is still: …" reminder.
+- [ ] ⬜ **Stop affordance shows at a boundary.** After a paragraph completes (cursor
+  advances, next section untouched) with 0 < done < total → the muted "You've got N
+  strong paragraphs saved — you can stop here and pick up anytime." line shows in the
+  Draft panel header area. It is quiet/grey, not orange.
+- [ ] ⬜ **Stop affordance hides mid-paragraph.** Once the student starts the next
+  paragraph (any item working/candidate/confirmed) → the line disappears (not a nag).
+  Also hidden at 0 done and when the essay is complete.
+- [ ] ⬜ **last_active_at is touched on activity.** Send a student turn and let the
+  coach reply → that session's `last_active_at` bumps to ~now (touched in
+  `/api/messages` and `/api/tutor`; owner-scoped via RLS, non-fatal on error).
+- [ ] ⬜ **No regression to the live flow.** Barge-in, the voice/TTS pipeline, the
+  token safety-net, and paragraph completion all behave exactly as before — the resume
+  greeting rides the existing `buildSwitchGreeting` delivery path and adds no new state
+  machine.
