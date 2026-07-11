@@ -705,6 +705,10 @@ export default function TutorSession({
   const [paragraphs, setParagraphs]       = useState(initialParagraphs)
   const [scaffold, setScaffold]           = useState(initialScaffold)
   const captionRef                        = useRef(null)
+  // True only on the FIRST coach turn of a genuinely resumed session (set when the
+  // resume greeting fires); sent to /api/tutor so the coach's dynamic-tail RESUMING
+  // orientation fires once and it doesn't re-greet. Cleared after that first turn.
+  const resumePendingRef                  = useRef(false)
   const [pendingScribe, setPendingScribe] = useState(null)
   const [phase, setPhase]                 = useState('waiting')
   const [persona, setPersona]             = useState(resolvePersona(session.persona))
@@ -945,6 +949,7 @@ export default function TutorSession({
 
       if (!onboarding && !gym && session.status !== 'complete' && isMultiPara && bankedProgress && gapElapsed) {
         greetedSessions.add(session.id)
+        resumePendingRef.current = true   // the first coach turn signals resume to /api/tutor
         const activePersona = resolvePersona(session.persona)
         const greeting = buildResumeGreeting(activePersona, studentName, sc)
         // Same delivery path buildSwitchGreeting uses: append after the existing
@@ -1354,6 +1359,8 @@ export default function TutorSession({
     captionRef.current?.set('…')
 
     try {
+      const wasResume = resumePendingRef.current
+      resumePendingRef.current = false   // the resume signal is first-turn-only
       const res = await fetch(tutorEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1363,6 +1370,7 @@ export default function TutorSession({
           messages: history,
           persona: activePersona,
           scaffold,
+          resume: wasResume,
         }),
       })
 
