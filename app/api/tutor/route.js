@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
+import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { canUseCoach, coachGateResponse } from '@/lib/coppa'
@@ -62,6 +63,18 @@ export async function POST(request) {
   // exists). It only steers the coach's uncached tail (don't re-greet, read progress
   // from scaffold state) — it grants no data access, so trusting the client here is
   // safe; the scaffold itself is still the source of truth for what's actually locked.
+  // Lever B integration bridge (conductor, 2026-07-12): coaching-session annotates
+  // per-component provenance into the scaffold JSON at lock time; derive the
+  // session-level coach-contribution ratio here so buildCoachSystemBlocks can surface
+  // it (it reads scaffold.coachContribRatio, which no lane populated — the seam).
+  // Only set once a lock has been scored, so a fresh session never surfaces "0%".
+  // Phase-1 display nudge computed from the client-echoed annotated scaffold; the
+  // Phase-2 hard gate must recompute from the DB scaffold, not the request body.
+  if (scaffold && !Number.isFinite(scaffold.coachContribRatio)) {
+    const agg = sessionCoachContribution(scaffold.components ?? [])
+    if (agg.checkedCount > 0) scaffold.coachContribRatio = agg.coachContribRatio
+  }
+
   const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements, resume: resume === true })
 
   const stream = await anthropic.messages.stream({
