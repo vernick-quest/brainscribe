@@ -16,7 +16,7 @@ const serif = lora.style.fontFamily
 export const metadata = {
   title: 'BrainScribe — voice-first writing coach for kids with ADHD',
   description:
-    'Your kid talks; their own words become the writing — tidied up, never made up, on a transcript you can read. A voice-first writing coach for students with ADHD, grades 4–12. Free to try.',
+    'Your kid talks; their own words become the writing — tidied up, never made up, on a transcript you can read. A voice-first writing coach for students with ADHD, grades 6–12. Free to try.',
 }
 
 // The marketing landing page. `/` is public (see lib/supabase/middleware.js) so
@@ -129,7 +129,7 @@ function Landing() {
               tag: 'Who it’s for',
               tagColor: 'var(--navy-700)',
               title: 'Built for the freeze.',
-              body: 'Made for kids who know what they mean but stall at the blank page — grades 4–12, especially ADHD. Parents and teachers can follow along.',
+              body: 'Made for kids who know what they mean but stall at the blank page — grades 6–12, especially ADHD. Parents and teachers can follow along.',
             },
           ].map(({ tag, tagColor, title, body }) => (
             <div key={tag} style={featureCard}>

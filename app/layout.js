@@ -2,7 +2,7 @@ import './globals.css'
 import SiteFooter from '@/components/SiteFooter'
 import { CANONICAL_URL } from '@/lib/site'
 
-const DESCRIPTION = 'Voice-first writing coach for kids with ADHD, grades 4–12.'
+const DESCRIPTION = 'Voice-first writing coach for kids with ADHD, grades 6–12.'
 
 export const metadata = {
   // Resolves relative metadata URLs (incl. the file-convention OG images) and
