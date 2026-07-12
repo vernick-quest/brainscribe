@@ -1286,3 +1286,46 @@ into the Supabase SQL editor, project `lakozspeyxsuunogfant`) — until then
   token safety-net, and paragraph completion all behave exactly as before — the resume
   greeting rides the existing `buildSwitchGreeting` delivery path and adds no new state
   machine.
+
+## Head Grader — validator field-coverage hardening, Tier 1 (2026-07-11)
+
+Hardens `validateRubricReview()` (+ `buildUserContent`) per the conductor handoff
+`docs/specs/brainscribe-grader-hardening-handoff.md`. Root cause: the safety checks
+ran on only 4 of ~9 model-controlled string fields; the rest were copied from the
+attacker-controlled rubric straight to the student. **Coach path untouched. No
+schema change. Validator-layer enforcement (not prompt-rule changes).**
+
+Landed (Tier 1 only):
+- **F1 field-coverage sweep** — `hasGradeShape`/`looksLikeAdvice` now also run on
+  `location` and `matched/next_level_up.name` (bad → blank the field, keep a valid
+  descriptor). The `criterion` field is NOT advice/grade-filtered — a criterion is
+  definitionally the rubric's own words, so an imperatively-phrased teacher label
+  ("Provide Context") or a per-criterion point value ("Thesis (10 points)") quoted
+  verbatim is faithful reporting, not grader-authored advice (Gate-3 over-blank fix).
+  A `criterion` row is dropped only for the two things it can never legitimately be:
+  smuggled model-sentence prose (>120-char cap) or an aggregate grade masquerading as
+  a criterion (named `total|overall|final|aggregate|combined|sum` AND grade-shaped —
+  kills "TOTAL SCORE: 34/40" / "Overall Grade: A", keeps "Use of Evidence").
+- **F3 empty-descriptor/name rule** — a NAMED level with an empty `descriptor_quote`
+  (which `isVerbatim('')` used to whitelist) is blanked; `leveled:true` with BOTH
+  descriptors empty is forced to `leveled:false`. No invented level renders.
+- **F6 delimiter escaping** — `buildUserContent` strips the angle brackets off any
+  `</rubric_document>` / `<student_essay>` / `<assignment_context>` tag inside the
+  untrusted rubric/essay so a forged tag can't appear to break out of its container.
+
+Gate 1 (automated, **$0** — pure function, dummy key, NO API call):
+`scripts/verify/grader-validator.mjs` (gitignored) = **15/15 fixtures pass**. Covers
+the F1/F3/F6 malicious cases above AND SOLID regressions (real leveled rubric still
+renders leveled; top-level match keeps leveled + blank next; genuine verbatim
+evidence survives; fabricated evidence still blanked→unclear; non-empty fabricated
+descriptor still → leveled:false; plain checklist preserved). Run:
+`ANTHROPIC_API_KEY=dummy node scripts/verify/grader-validator.mjs`. `npm run build` green.
+
+### Known residual → NEXT (deferred, NOT in this handback)
+- **F2 (Tier 2)** — per-criterion level scoping. `isVerbatim` still matches a
+  descriptor anywhere in the WHOLE rubric (no per-criterion block scoping, no
+  matched↔next adjacency), so a descriptor lifted from the wrong level/criterion
+  passes as "verbatim". Needs rubric parsing into `criterion→[levels]` blocks.
+- **F4/F5 (Tier 3)** — structured `gap_note`/`overall_note` rendering + evidence
+  offset-mapping; includes the **bare letter grade** gap (e.g. a level name `3 (B+)`
+  is NOT caught by `GRADE_RE`). Prefer structural rendering over broadening regexes.
