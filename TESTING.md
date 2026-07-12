@@ -1329,3 +1329,44 @@ descriptor still → leveled:false; plain checklist preserved). Run:
 - **F4/F5 (Tier 3)** — structured `gap_note`/`overall_note` rendering + evidence
   offset-mapping; includes the **bare letter grade** gap (e.g. a level name `3 (B+)`
   is NOT caught by `GRADE_RE`). Prefer structural rendering over broadening regexes.
+
+## 2026-07-12 — Lever B provenance wired at lock hooks (SHADOW MODE) — focus/coaching-session
+
+Server-side wiring of `lib/provenance.js` (calibrated 12/12 on main) at the two
+lock-persist hooks. **Phase 1 = shadow/log only: NO lock is ever blocked**; a
+below-threshold lock persists exactly as before and logs a `[provenance-shadow]`
+warn. Hard-block is Phase 2, gated on coach-ai's full esl-drift-probes calibration.
+
+- **`/api/scaffold/[sessionId]` PATCH** (component/nugget locks): newly-confirmed
+  items and newly-completed paragraphs are scored against the student's own words
+  (all `paragraphs.raw_spoken_text` + the session's `role:'user'` messages) and
+  annotated in the components JSON (NO migration): `items[j].provenance` /
+  `components[i].provenance` = `{studentSimilarity, novelFraction, contentCount,
+  pass, mode:'shadow', v:1, novelWords?(≤8, only on fail)}`. Annotations are
+  STICKY — a later wholesale client PATCH (which carries no provenance keys)
+  cannot wipe them. Persisting in the scaffold JSON is what survives resume.
+  Top-level `[THESIS]` (text column, no JSON slot) = log-only.
+- **`/api/paragraphs` POST/PATCH** (dictation saves): deferred `after()` shadow
+  check (zero latency on the student's save path), log-only from this route —
+  the durable paragraph annotation happens at paragraph-complete in the scaffold
+  PATCH, the SINGLE writer of `components` (no cross-route write race).
+- **Session aggregate**: derived on read via `sessionCoachContribution(components)`
+  (exported from `lib/scaffoldProvenance.js`) → `{checkedCount, flaggedCount,
+  coachContribRatio}`. This is the contract for coach-ai's
+  `buildCoachSystemBlocks` read — pending coach-ai's confirmation via conductor.
+- **Fail-safe**: all provenance code is try/caught; on any error the lock persists
+  unmodified (voice/scaffold pipeline behavior unchanged). Barge-in, scribe, STT
+  lifecycle, and lock UI untouched (no client-side changes at all).
+
+Gate 1 (automated, **$0**, no API): `node scripts/verify/provenance.mjs`
+(gitignored, synthetic fixtures only) = **28/28 green**. Part A recreates the
+calibration set (ESL re-voicing/scribe-cleanup PASS 0.00–0.33 novelFraction;
+coach substitution/haiku/thesis-composition FAIL 0.75–1.00; threshold 0.34 —
+margin holds). Part B integration: coach-authored lock WOULD-flag but persists
+(shadow contract); student-voiced ESL lock clean; sticky merge survives echo
+PATCH; paragraph-complete scoring; hasNewLocks gating; weighted aggregate
+(paragraph record supersedes its items); degenerate inputs never crash a lock.
+
+Manual watch (live, once deployed): grep Vercel logs for `[provenance-shadow]` —
+expect ~zero flags on honest sessions; any flag on a real student session before
+Phase 2 = calibration evidence, not a bug.
