@@ -49,5 +49,8 @@ next-env.d.ts
 # public repo (same rationale as the gitignored anti-jailbreak spec above)
 /scripts/redteam
 
+# local-only verification harnesses (per-lane Gate-1 fixture loops; see handoff contracts)
+/scripts/verify
+
 # Conductor-only local hooks (main checkout)
 .claude/settings.local.json

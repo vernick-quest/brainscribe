@@ -87,6 +87,15 @@ plus a parent + teacher (or remote-in from admin).
 - [ ] ⬜ A claimed invite is actually burned: opening the link from a different account says "already been used"
 - [ ] ⬜ Cron sweep: an under-13 account that never submitted a parent email is deleted after 7 days (`swept` counter in `/api/cron/coppa-cleanup` response)
 
+### Signup attribution capture (new 2026-07-11 — bs_attribution → profiles.signup_attribution, Gate 2)
+Requires migration 033 applied. Gate 1 (automated fixture loop, local): `node scripts/verify/attribution-parse.mjs` — 23 checks, must print ALL GREEN.
+- [ ] ⬜ Fresh campaign-link signup: visit `/?utm_source=test&utm_campaign=verify` logged out → sign up with a new Google account → `profiles.signup_attribution` = `{"utm_source":"test","utm_campaign":"verify"}` (check in Supabase)
+- [ ] ⬜ **Re-login of that same account (even via a different campaign link) → value UNCHANGED** (set-once proven live)
+- [ ] ⬜ Signup with **no** `bs_attribution` cookie → column stays NULL, no error, and every redirect branch still routes correctly (admin → /admin, new user → /welcome, parent → /parent; `/invite` and `/coppa/` next-paths untouched)
+- [ ] ⬜ After a successful capture the `bs_attribution` cookie is **cleared** (DevTools → Application → Cookies)
+- [ ] ⬜ COPPA/PKCE regression spot-check: a normal Google sign-in and the under-13 consent flow (`/coppa/consent` link → parent approves) both still complete unbroken
+- [ ] ⬜ Channel query returns rows: `select signup_attribution->>'utm_source', count(*) from profiles where signup_attribution is not null group by 1`
+
 ### Parent teacher management (new 2026-06-27)
 - [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
 - [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears
