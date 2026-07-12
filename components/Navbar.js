@@ -100,7 +100,12 @@ export default function Navbar({ user, profile }) {
           <Avatar
             name={name}
             avatarUrl={profile?.avatar_url}
-            ageBracket={profile?.age_bracket}
+            // Own-avatar COPPA gate: only a `student` can be under-13, so adults
+            // (admin/parent/teacher — inherently 13+) pass '13plus' to show their
+            // photo; students keep the fail-closed real bracket so a child's photo
+            // is never surfaced. Matches ParentSettings' own-card pattern + Avatar's
+            // documented contract ("for an adult's OWN avatar pass ageBracket='13plus'").
+            ageBracket={profile?.role === 'student' ? profile?.age_bracket : '13plus'}
             size={36}
             style={{ border: '2px solid var(--border-default)' }}
           />
