@@ -1329,3 +1329,30 @@ descriptor still → leveled:false; plain checklist preserved). Run:
 - **F4/F5 (Tier 3)** — structured `gap_note`/`overall_note` rendering + evidence
   offset-mapping; includes the **bare letter grade** gap (e.g. a level name `3 (B+)`
   is NOT caught by `GRADE_RE`). Prefer structural rendering over broadening regexes.
+
+---
+
+## Lever B — coach-lane integration (2026-07-12, coach-ai lead)
+
+Spec: `docs/specs/brainscribe-lever-b-provenance-spec.md`. This lane shipped the coach-facing half; the server-side lock-hook wiring is coaching-session's (see "Not done" below). Deterministic Gate-1 is $0; nothing here is merged/deployed — handed back for Gate 3.
+
+**1. Provenance calibration (`scripts/verify/provenance.mjs`, gitignored, $0).** Extended from 12 hand cases to **26**, adding all 5 ESL personas (Luisa/Danylo/Mei/Amina/Jun) from the fixture library — each with a PASS case (their own broken English / re-voice / legit scribe cleanup) and a FAIL case (the coach's fluent substitution / register-elevation) — plus short-form (slogan/caption) PASS+FAIL.
+- **False-block rate 0.0%** (0/14 legit ESL/student), **catch rate 100%** (12/12 coach-authored).
+- Wide separation: legit student words top out at **novelFraction 0.29** (Danylo, *including* the one sanctioned coach-supplied vocab word); coach-authored bottoms at **0.70**. Threshold **0.34** sits in the gap with margin both sides → **one universal threshold, no ESL flag** (the spec's target outcome). ESL-safe by design confirmed on the real fixtures.
+- Known v1 limitation (documented, not scored): the incremental-PARROT vector (student repeats the coach's assembled line so it traces to a student turn) needs a v2 turn-ordering/echo signal — content-overlap alone can't catch it.
+
+**2. Prompt patches (`lib/prompts.js`, coach-prompt skill run first).** Token contract + cached-prefix split preserved (all 8 tokens intact; build green).
+- Rule 11 **short-form carve-out** (poems/slogans/captions <~12 words: the line IS the deliverable, elicit the student's own) + **per-component-TOTAL cumulative** clarification (short-option allowance is a whole-component budget, not per-turn; a supplied connective still counts per Rule 6).
+- New guardrail **Rule 17 — named authority/IEP/accommodation refusal** (+ per-persona lines): accommodations change HOW a student produces words, never WHO authors them.
+- New structural **Rule 22 — DICTATE names the task, not the words** (no pre-loading the sentence before `[DICTATE]`).
+
+**3. auditJudge.js (coupled — ADMIN/AUDIT LANE, see flag below).** Added the `short_form_authored` breach; added a pure, exported, **ratio-gated** `applyProvenancePromotion` that raises `composition_drift`/`phrasing_enhancement_drift` from toothless process-notes to severity-bearing breaches (medium ≥0.34, high ≥0.5) when the deterministic session ratio is present. Feeds the ratio into the judge prompt as corroboration.
+- **No-regression PROOF ($0):** with no provenance (today's prod + the audit-probes set), `short_form_authored` is filtered out of the model-facing taxonomy and the ratio line is empty, so the judge prompt is **byte-identical to the original** (verified: `taxonomyText === original`, `PROCESS_TAXONOMY unchanged`, promotion no-ops, git diff purely additive). Baseline audit-probes on the original judge = **17/17**; my no-ratio path is provably equivalent, so audit-probes stays green by construction. (The pre-filter version transiently showed 14/17 stochastic over-flag on 3 boundary controls — the filter removes my change entirely from that path.) `applyProvenancePromotion` covered by **15/15** unit assertions (`scripts/verify/promotion.mjs`, $0).
+
+**4. Scaffold surfacing (`buildCoachSystemBlocks`).** Reads optional `scaffold.coachContribRatio` (0..1) and surfaces the running footprint in CURRENT SCAFFOLD STATE ("Coach-supplied phrasing this session: N%…"), with a ⚠ climbing nudge ≥34%. Harmless when absent (same pattern as `opts.resume`); verified all four modes. **CONTRACT for coaching-session:** at each lock, run `checkProvenance(lockedText, studentSources)` server-side and store the session-level fraction as `scaffold.coachContribRatio` (and per the spec, `provenance:{studentSimilarity,coachContribRatio}` per component + persist across resume).
+
+**⚠ ADMIN/AUDIT LANE FLAG (standing rule):** `lib/auditJudge.js` taxonomy/semantics changed (new `short_form_authored`; drift promotion). Their nightly Transcript Guardrail Audit judge mirrors these semantics — re-sync judge v2 + re-run `scripts/audit-probes.mjs` on their side. Change is additive + no-provenance-byte-identical, so existing behavior is unchanged.
+
+**Not done (route/next):** server-side lock-hook wiring of `checkProvenance` at `/api/paragraphs` + `/api/scaffold/[sessionId]` and the per-component/session-ratio/resume-persist storage → **coaching-session** (most-fragile voice pipeline; they populate the `scaffold.coachContribRatio` contract above). Production ESL calibration against the FULL live esl-drift-probes = behavioral (Gate-2).
+
+**Gate 2 (optional, API-billed ~$25–35, NOT run — needs Robert's cost go-ahead):** a Fable behavioral sim of the coach *with* Lever B (RG1/esl-drift-probes style) to confirm the prompt patches end-to-end + no live ESL false-blocks. Recommended before broad rollout; the deterministic Gate-1 covers the core.
