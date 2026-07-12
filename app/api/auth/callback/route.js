@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { attributionToCapture } from '@/lib/attribution'
 
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url)
@@ -53,11 +55,43 @@ export async function GET(request) {
   // Use the user from the session directly — avoids stale cookie reads after exchange
   const user = session?.user
   if (user) {
-    const { data: profile } = await supabase
+    // signup_attribution is folded into the existing select (no extra round-trip).
+    // Until migration 033 is applied the column doesn't exist and this select
+    // ERRORS — degrade to the legacy column set so login routing NEVER breaks on
+    // deploy ordering (attribution capture is simply dead until 033 lands).
+    let { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('role, role_confirmed, age_bracket')
+      .select('role, role_confirmed, age_bracket, signup_attribution')
       .eq('id', user.id)
       .single()
+    if (profileErr?.code === '42703') {
+      ;({ data: profile } = await supabase
+        .from('profiles')
+        .select('role, role_confirmed, age_bracket')
+        .eq('id', user.id)
+        .single())
+    }
+
+    // First-touch attribution capture (set-once, service-role, channel/UTM only —
+    // lib/attribution.js is the whitelist privacy rail). Placed before every
+    // routing branch below so admin/welcome/dashboard signups all capture it.
+    // Service-role on purpose: profiles is deny-by-default for `authenticated`
+    // (migration 020), so the column stays non-client-writable (anti-spoofing).
+    const capture = attributionToCapture(profile, cookieStore.get('bs_attribution')?.value)
+    if (capture) {
+      const { error: captureErr } = await createServiceClient()
+        .from('profiles')
+        .update({ signup_attribution: capture })
+        .eq('id', user.id)
+        .is('signup_attribution', null) // belt-and-suspenders set-once
+      if (captureErr) {
+        console.error('[auth callback] attribution capture failed:', captureErr.message)
+      } else {
+        // First touch is recorded — the cookie has done its job. Clear it on the
+        // single shared response object (same rule as the session cookies above).
+        response.cookies.set('bs_attribution', '', { path: '/', maxAge: 0 })
+      }
+    }
 
     // Persist the Google avatar — but NEVER for an under-13 account (COPPA
     // data-minimization). Migration 019 nulls existing under-13 avatars; this
