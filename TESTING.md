@@ -1297,9 +1297,15 @@ schema change. Validator-layer enforcement (not prompt-rule changes).**
 
 Landed (Tier 1 only):
 - **F1 field-coverage sweep** — `hasGradeShape`/`looksLikeAdvice` now also run on
-  `criterion` (bad → drop the row), `location` and `matched/next_level_up.name`
-  (bad → blank the field, keep a valid descriptor), plus a `criterion` length cap
-  (>120 chars = smuggled prose → drop).
+  `location` and `matched/next_level_up.name` (bad → blank the field, keep a valid
+  descriptor). The `criterion` field is NOT advice/grade-filtered — a criterion is
+  definitionally the rubric's own words, so an imperatively-phrased teacher label
+  ("Provide Context") or a per-criterion point value ("Thesis (10 points)") quoted
+  verbatim is faithful reporting, not grader-authored advice (Gate-3 over-blank fix).
+  A `criterion` row is dropped only for the two things it can never legitimately be:
+  smuggled model-sentence prose (>120-char cap) or an aggregate grade masquerading as
+  a criterion (named `total|overall|final|aggregate|combined|sum` AND grade-shaped —
+  kills "TOTAL SCORE: 34/40" / "Overall Grade: A", keeps "Use of Evidence").
 - **F3 empty-descriptor/name rule** — a NAMED level with an empty `descriptor_quote`
   (which `isVerbatim('')` used to whitelist) is blanked; `leveled:true` with BOTH
   descriptors empty is forced to `leveled:false`. No invented level renders.
