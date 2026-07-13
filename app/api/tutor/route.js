@@ -88,7 +88,14 @@ export async function POST(request) {
   })
 
   const encoder = new TextEncoder()
-  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]/g
+  // [CARE] is the out-of-band child-safety signal (see child-safety-redteam-spec).
+  // It MUST be stripped here before the coach turn is persisted to `messages`: a
+  // linked watcher (who may be the very adult a child needs help from) can read
+  // that table, so the disclosure signal can never land in it. The card it drives
+  // is rendered client-side only, from local state (components/CrisisResourceCard).
+  // NOTE: the emitter (coach Guardrail 18 / deterministic screen) is the coach-ai
+  // lane's to build — this strip is the safety backstop regardless of when it lands.
+  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[CARE\]/g
 
   // The stream's text tokens are enqueued to the client as they arrive, then the
   // stream closes immediately. The usage log + message insert run in after(), so the
@@ -115,7 +122,7 @@ export async function POST(request) {
       } catch (err) {
         controller.error(err)
       } finally {
-        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').replace(/\[CARE\]/g, '').trim()
+        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
         resolveResult({ inputTokens, outputTokens, savedText })
       }
     },

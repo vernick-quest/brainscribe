@@ -96,6 +96,7 @@ export default async function AssignmentPage({ params }) {
     { data: assignmentTeachers },
     { data: scaffoldData },
     { data: ownerProfile },
+    { count: parentLinkCount },
   ] = await Promise.all([
     service
       .from('messages')
@@ -125,9 +126,18 @@ export default async function AssignmentPage({ params }) {
       .select('full_name')
       .eq('id', session.student_id)
       .single(),
+    // Linked parents/guardians (watchers) of the session owner — for the ambient
+    // "linked adults can read this" note. Head-count only; no PII.
+    service
+      .from('relationships')
+      .select('watcher_id', { count: 'exact', head: true })
+      .eq('student_id', session.student_id),
   ])
 
   const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
+  // Adults who can read THIS session: linked parents (all the owner's sessions) +
+  // teachers granted this specific assignment. Drives the ambient visibility note.
+  const watcherCount = (parentLinkCount ?? 0) + (assignmentTeachers?.length ?? 0)
 
   // A practice session is ALWAYS the hook-only onboarding experience (banner, exit
   // control, fixed-Owen, reveal handoff). The server (/api/tutor) keys the hook-only
@@ -154,6 +164,7 @@ export default async function AssignmentPage({ params }) {
       initialScaffold={scaffoldData ?? null}
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
+      watcherCount={watcherCount}
       user={user}
       profile={profile}
       onboarding={onboardingMode}
