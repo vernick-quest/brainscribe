@@ -1398,3 +1398,31 @@ PATCH; paragraph-complete scoring; hasNewLocks gating; weighted aggregate
 Manual watch (live, once deployed): grep Vercel logs for `[provenance-shadow]` —
 expect ~zero flags on honest sessions; any flag on a real student session before
 Phase 2 = calibration evidence, not a bug.
+
+---
+
+## Child-safety hardening — Guardrails 18/19 (2026-07-12, coach-ai lane)
+
+Spec: `docs/specs/brainscribe-child-safety-redteam-spec.md` (Round-1 VERIFIED: no content-safety layer existed anywhere in coach/scribe; Guardrail 16 was academic-distress-only and routed crisis signals back to homework). **Pre-launch safety blocker.** Built the coach-ai half; handed back for the conductor's Fable re-probe loop + Gate 3. NOT merged/deployed. **This is a safety gate (bar = zero unsafe), not a quality metric.**
+
+**Built (`lib/prompts.js`, coach-prompt skill first; token contract + cache split preserved):**
+- **Guardrail 18 — SAFETY, BIGGER THAN THE ESSAY** (explicitly outranks Rule 13; Rule 13 amended with the one exception). The hinge is WHERE the darkness lives, not the topic: in the WRITING → **never-refuse, full-quality** (positively stated, so the base model doesn't bail on legit grief/fiction); in the STUDENT'S PRESENT (tense past→present, episode→global, goodbye-shape, means/plan, disclosure beyond the ask; **topic alone is never a tell**) → **one check-in** (validate writing first + one honest human question, emit `[CARE]`). On a real disclosure: stop coaching, warm in-persona, one non-clinical resource (trusted-adult + 988 + 741741; Childhelp 1-800-422-4453 for abuse, **trusted-adult NOT parent-defaulted**), NEVER `[NUGGET]`/lock/probe, no secrecy promise, no parent-threat, offer to stop work-saved. **ONE check-in/session budget.** 6 persona-voiced examples (+ Jade "not that deep" banned near a disclosure).
+- **Guardrail 19 — PII & online safety:** never solicit/echo/lock PII → digital-citizenship redirect; online-meetup clause (warm, don't celebrate, loop in a trusted adult, don't endorse secrecy, escalate to G18 on grooming signals).
+- **Carve-outs:** Rule 14 (friend-in-danger ≠ rewrite request — never "not your friend"); Rule 15 (self-harm → G18 check-in BEFORE tactic-read; **hyperbole stays in Rule 15**); Rule 9 (safety resources are NEVER "evidence supply" — 988 always allowed even on a suicide-prevention essay). Self-check line added at the TOP of the per-response checklist (per-turn salience vs rule-fatigue at turn 40).
+
+**Scribe (`app/api/scribe`):** `safetyFlag` boolean added to the JSON schema — set only on a genuine present-tense disclosure (not dark topics/hyperbole), scribing stays **faithful** (transcript = evidence, never laundered), and the chirpy `thinNote` is suppressed on a flag (route coerces + the client can render a student-only banner). PII redaction is the single sanctioned deviation from faithfulness.
+
+**`[CARE]` token:** emitted by G18 on a check-in; added to `TOKEN_RE` in `app/api/tutor/route.js` (persist-strip), `ALL_TOKEN_RE` in `components/TutorSession.js` (display-strip), and `auditJudge` `TOKEN_RE` — treated exactly like `[DICTATE]`, so **students and watchers never see it**. Sampler-persistence of `[CARE]` is a deferred audit-lane wiring (flagged).
+
+**`auditJudge.js` (COUPLED — ADMIN/AUDIT LANE flag):** added the SAFETY-AXIS breach set `missed_disclosure` + `clumsy_escalation` (the over-refusal breach — a 988-dump on hyperbole is its own failure) + `pii_echoed` + `online_meetup_unflagged`, each written with explicit "NOT this" scoping so they stay orthogonal to the writing-integrity axis.
+
+**Gate 1 — GREEN:**
+- **audit-probes 17/17** — no regression to ghostwriting/drift; the safety breaches did NOT cross-fire on any ghostwriting probe; sanctioned controls clean.
+- **Build green; all stream tokens intact** (incl. `[CARE]` stripped at all three surfaces); Lever-B $0 gates still green (provenance 26/26, promotion 15/15).
+- **Behavioral smoke ($0.15, `sonnet-4-6`, scratchpad):** both wings + edges — grief-narrative & story-villain coached clean (zero crisis language, no `[CARE]`); hyperbole stayed in Rule 15; present-tense self-harm → `[CARE]` + one check-in, **no `[NUGGET]`**; friend-in-danger NOT deflected; PII redirected, address/phone not locked. (This is a sanity smoke, NOT the conductor's full Fable both-wings loop.)
+
+**NOT in this lane (routed / flagged):**
+- **Deterministic `/api/tutor` backstop** (inject G18 at max salience on a screened student turn — "prompt rules fatigue at turn 40; a crisis rule can't"): spec-listed but NOT in the 5 build items → recommend as the critical companion. Partially mitigated in-lane via the top-of-checklist self-check line, but a server-side screen is stronger.
+- **auth-coppa product surfaces:** out-of-band student-only resource card (NEVER written to watcher-readable `messages` — the abuser may be the watcher), admin safety-flag queue (unlock `auditTranscript` v1 "no student-safety" scope), deletion-hold on an open flag, ambient "linked adults can read this" indicator, COPPA-7-day-delete retention carve-out, US-only 988 vs international.
+- **admin/audit:** tune the judge-v2 rubric for the new safety breaches + re-run their `audit-probes.mjs`; wire `[CARE]` sampler-visibility.
+- **policy:** reconcile the privacy-policy "automated AI reviews for safety monitoring" promise with reality (currently coach-only, not deployed).

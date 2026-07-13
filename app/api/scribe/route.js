@@ -59,5 +59,11 @@ export async function POST(request) {
   // Ensure checklistUpdates is always an array
   if (!Array.isArray(result.checklistUpdates)) result.checklistUpdates = []
 
+  // Safety flag (Guardrail 18 companion): coerce to a real boolean, and on a
+  // flagged disclosure never surface the chirpy thinNote — the client can render a
+  // gentle student-only banner off this flag. Scribing itself stays faithful.
+  result.safetyFlag = result.safetyFlag === true
+  if (result.safetyFlag) result.thinNote = null
+
   return Response.json(result)
 }
