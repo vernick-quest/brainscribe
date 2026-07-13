@@ -96,6 +96,16 @@ Requires migration 033 applied. Gate 1 (automated fixture loop, local): `node sc
 - [ ] ⬜ COPPA/PKCE regression spot-check: a normal Google sign-in and the under-13 consent flow (`/coppa/consent` link → parent approves) both still complete unbroken
 - [ ] ⬜ Channel query returns rows: `select signup_attribution->>'utm_source', count(*) from profiles where signup_attribution is not null group by 1`
 
+### Child-safety infra — auth-coppa lane (new 2026-07-12; detection is coach-ai, see build note)
+Crisis card + ambient note. NOTE: the `[CARE]` emitter is coach-ai's — until it ships, force the card by temporarily having the coach include the literal `[CARE]` (or set `showCrisisCard` true in devtools) to test rendering.
+- [ ] ⬜ **Never in the transcript:** a coach turn containing `[CARE]` renders the resource card but the transcript/`messages` row for that turn contains **no** `[CARE]` text and no trace of the trigger (check the DB row + the parent/teacher transcript view)
+- [ ] ⬜ Crisis card is student-only, dismissible, non-blocking (writing continues underneath); sticky so it stays reachable while messages scroll; `tel:`/`sms:` links work on mobile
+- [ ] ⬜ Card makes **no network request** when it appears (DevTools → Network) — it must be invisible to any watcher
+- [ ] ⬜ "Trusted adult" wording is present and is **not** "tell your parent" (abuse case)
+- [ ] ⬜ Ambient note shows for a student **with** a linked parent/teacher, hidden with **zero** watchers, hidden during onboarding practice; count matches (parents + this assignment's teachers)
+- [ ] ⬜ Admin audit: once a safety key is emitted (coach-ai/admin-audit), `auditor_analysis.safety_flag=true` on the finding and it surfaces in the admin queue (inert until the judge taxonomy lands)
+- [ ] ⬜ After migration 035: `pg_policies` shows the RESTRICTIVE relationships-insert backstop; a client-side `relationships` insert is denied; service-role relationship creation (invite claim / consent) still works
+
 ### Parent teacher management (new 2026-06-27)
 - [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
 - [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears

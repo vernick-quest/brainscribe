@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
 import ImpersonationBanner from './ImpersonationBanner'
 import Navbar from './Navbar'
+import CrisisResourceCard from './CrisisResourceCard'
+import WatcherVisibilityNote from './WatcherVisibilityNote'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
@@ -151,8 +153,10 @@ function updateComponentItem(scaffold, paraIdx, componentId, updater) {
   }
 }
 
-// Strips scaffold stream tokens + [DICTATE] from display text
-const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]/g
+// Strips scaffold stream tokens + [DICTATE] + [CARE] from display text. [CARE] is
+// the child-safety signal — it drives the out-of-band CrisisResourceCard (client
+// state only) and must never render as literal text to the student.
+const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]|\[CARE\]/g
 
 // Display text for a still-streaming buffer: strips complete tokens, and also
 // drops a trailing partial token (e.g. "[ACT" before its "]" has arrived) so
@@ -686,6 +690,9 @@ export default function TutorSession({
   initialScaffold = null,
   studentName = 'there',
   initialTeachers = [],
+  // Count of linked adults (parents via relationships + teachers on this
+  // assignment) who can read this session — drives the ambient visibility note.
+  watcherCount = 0,
   user = null,
   profile = null,
   onboarding = false,
@@ -721,6 +728,10 @@ export default function TutorSession({
   const [titleDraft, setTitleDraft]       = useState('')
   const [replayingIndex, setReplayingIndex] = useState(null)
   const [sessionComplete, setSessionComplete] = useState(session.status === 'complete')
+  // Child-safety: shown when a coach turn carries the [CARE] signal. Local state
+  // ONLY — never persisted, never sent anywhere a watcher could read (the linked
+  // adult may be who the child needs help from). See CrisisResourceCard.
+  const [showCrisisCard, setShowCrisisCard] = useState(false)
   const [sectionJustCompleted, setSectionJustCompleted] = useState(null)
   const [expandedParas, setExpandedParas]   = useState({})
   const [assembledEssay, setAssembledEssay] = useState(null)
@@ -1426,6 +1437,12 @@ export default function TutorSession({
       if (newScaffold !== scaffold) setScaffold(newScaffold)
 
       if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
+
+      // Child-safety signal: surface the out-of-band, student-only resource card.
+      // Latches on (never auto-hidden mid-session); the token is stripped from the
+      // displayed + persisted text so it never appears as literal text or lands in
+      // the watcher-readable transcript.
+      if (full.includes('[CARE]')) setShowCrisisCard(true)
 
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
@@ -2336,7 +2353,21 @@ export default function TutorSession({
         {/* ── Tutor chat panel ── */}
         <div className={`flex-1 flex-col min-h-0 ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}
           style={{ backgroundColor: 'var(--surface-card)', borderBottom: '1px solid var(--border-default)' }}>
+          {/* Ambient, persistent "linked adults can read this" note (BUILD 3) —
+              passive, never a modal. Hidden during the throwaway practice tour. */}
+          {!onboarding && watcherCount > 0 && (
+            <div className="shrink-0 px-6 pt-3">
+              <WatcherVisibilityNote watcherCount={watcherCount} />
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/* Out-of-band, student-only crisis card (BUILD 1). Sticky so it stays
+                reachable while messages scroll under it; dismissible; non-blocking. */}
+            {showCrisisCard && (
+              <div className="sticky top-0 z-10 -mt-1 pb-1">
+                <CrisisResourceCard onDismiss={() => setShowCrisisCard(false)} />
+              </div>
+            )}
             {messages.map((m, i) => (
               m.role === 'system' ? (
                 <div key={i} className="flex justify-center">
