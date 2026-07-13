@@ -115,7 +115,7 @@ export async function POST(request) {
       } catch (err) {
         controller.error(err)
       } finally {
-        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
+        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').replace(/\[CARE\]/g, '').trim()
         resolveResult({ inputTokens, outputTokens, savedText })
       }
     },

@@ -152,7 +152,7 @@ function updateComponentItem(scaffold, paraIdx, componentId, updater) {
 }
 
 // Strips scaffold stream tokens + [DICTATE] from display text
-const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]/g
+const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]|\[CARE\]/g
 
 // Display text for a still-streaming buffer: strips complete tokens, and also
 // drops a trailing partial token (e.g. "[ACT" before its "]" has arrived) so
