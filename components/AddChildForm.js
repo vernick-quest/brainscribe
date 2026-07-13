@@ -10,6 +10,8 @@ export default function AddChildForm() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
+  const [sentTo, setSentTo] = useState('')
+  const [emailed, setEmailed] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState(false)
@@ -34,6 +36,8 @@ export default function AddChildForm() {
     }
 
     setInviteLink(`${window.location.origin}/invite?token=${json.token}`)
+    setSentTo(email.trim())
+    setEmailed(json.emailed === true)
     setEmail('')
   }
 
@@ -89,7 +93,8 @@ export default function AddChildForm() {
       {!inviteLink ? (
         <form onSubmit={handleSubmit} className="space-y-3">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Enter your child's email — they'll get a link to sign in and connect to you.
+            Enter your child's email to generate an invite link, then share it with them.
+            They'll sign in with that email to connect to your account.
           </p>
           <div className="flex gap-2">
             <input
@@ -123,7 +128,9 @@ export default function AddChildForm() {
       ) : (
         <div className="space-y-3">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Share this link with your child — they'll sign in with Google and be connected to your account.
+            {emailed
+              ? `We emailed the invite link to ${sentTo}. You can also share it directly:`
+              : "Share this link with your child — they'll sign in with Google and be connected to your account."}
           </p>
           <div className="flex gap-2 items-center rounded-xl px-4 py-2.5"
             style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
@@ -137,11 +144,14 @@ export default function AddChildForm() {
             </button>
           </div>
           <button
-            onClick={() => { setInviteLink(''); setEmail('') }}
-            className="text-xs hover:underline"
-            style={{ color: 'var(--text-muted)' }}
+            onClick={() => { setInviteLink(''); setEmail(''); setSentTo(''); setEmailed(false) }}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold rounded-full px-4 py-2 transition"
+            style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}
           >
-            Generate another link
+            <Icon name="users" size={15} style={{ color: 'currentColor' }} />
+            Add another child
           </button>
         </div>
       )}

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Navbar from '@/components/Navbar'
 import ProfileForm from '@/components/ProfileForm'
 import Avatar from '@/components/Avatar'
@@ -90,9 +91,48 @@ function ChildRow({ child, viewerId, impersonating }) {
   )
 }
 
+// ── One pending (unclaimed) child invite ───────────────────────────────
+// Shows a parent that "Add a child" worked and is waiting on the child, and lets
+// them re-copy the link to share again. The child is linked only once they open
+// this link and sign in with the invited email.
+function PendingInviteRow({ invite }) {
+  const [copied, setCopied] = useState(false)
+  const expired = invite.expires_at && new Date(invite.expires_at) < new Date()
+
+  function copyLink() {
+    navigator.clipboard.writeText(`${window.location.origin}/invite?token=${invite.token}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="rounded-2xl px-5 py-4 flex items-center gap-4"
+      style={{ backgroundColor: 'var(--surface-muted)', border: '1px dashed var(--border-strong)' }}>
+      <span className="shrink-0 flex items-center justify-center rounded-full"
+        style={{ width: 40, height: 40, backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)' }}>
+        <Icon name="mail" size={18} style={{ color: 'var(--text-subtle)' }} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-strong)' }}>{invite.email}</p>
+        <p className="text-xs mt-0.5" style={{ color: expired ? 'var(--status-error)' : 'var(--text-muted)' }}>
+          {expired ? 'Link expired — generate a new one below' : 'Invited · waiting for them to sign in'}
+        </p>
+      </div>
+      {!expired && (
+        <button onClick={copyLink}
+          className="shrink-0 text-xs font-semibold rounded-full px-3 py-1.5 transition"
+          style={{ border: '1px solid var(--border-strong)', color: copied ? 'var(--status-success)' : 'var(--text-muted)' }}>
+          {copied ? 'Copied!' : 'Copy link'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────
-export default function ParentSettings({ user, profile, viewerId, children = [], maxChildren = 3, impersonating = false }) {
+export default function ParentSettings({ user, profile, viewerId, children = [], pendingInvites = [], maxChildren = 3, impersonating = false }) {
   const atCap = children.length >= maxChildren
+  const nothingYet = children.length === 0 && pendingInvites.length === 0
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -147,14 +187,29 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             </span>
           </div>
 
-          {children.length === 0 ? (
+          {nothingYet && (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
               No children linked yet. Invite one below — or ask them to invite you from their own dashboard.
             </p>
-          ) : (
+          )}
+
+          {children.length > 0 && (
             <div className="space-y-3">
               {children.map(child => (
                 <ChildRow key={child.id} child={child} viewerId={viewerId} impersonating={impersonating} />
+              ))}
+            </div>
+          )}
+
+          {pendingInvites.length > 0 && (
+            <div className="space-y-2">
+              {children.length > 0 && (
+                <p className="text-[11px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                  Pending
+                </p>
+              )}
+              {pendingInvites.map(inv => (
+                <PendingInviteRow key={inv.id} invite={inv} />
               ))}
             </div>
           )}

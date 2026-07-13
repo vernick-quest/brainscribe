@@ -25,7 +25,7 @@ export default async function ParentSettingsPage() {
 
   // The profile we're viewing as (the impersonated parent, or the real user).
   const { data: profile } = await service
-    .from('profiles').select('role, full_name, email, avatar_url, birthdate').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, email, avatar_url, birthdate, phone').eq('id', targetId).single()
 
   const { data: rels } = await service
     .from('relationships').select('student_id').eq('watcher_id', targetId)
@@ -61,6 +61,21 @@ export default async function ParentSettingsPage() {
     }))
   }
 
+  // Pending child-invites this parent has generated but no child has claimed yet.
+  // Surfaced so "I added a child" doesn't read as "0 linked / nothing happened" —
+  // the link is shareable again and the state is visible until the child signs in.
+  // Service client + an explicit invited_by filter: the parent owns these rows, so
+  // this can't leak anyone else's invites, and it isn't clipped by invites RLS.
+  const invSvc = createServiceClient()
+  const { data: pendingRaw } = await invSvc
+    .from('invites')
+    .select('id, email, token, created_at, expires_at')
+    .eq('invited_by', targetId)
+    .eq('role', 'student')
+    .is('claimed_at', null)
+    .order('created_at', { ascending: false })
+  const pendingInvites = pendingRaw ?? []
+
   return (
     <>
       {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
@@ -69,6 +84,7 @@ export default async function ParentSettingsPage() {
         profile={profile}
         viewerId={targetId}
         children={children}
+        pendingInvites={pendingInvites}
         maxChildren={MAX_CHILDREN_PER_PARENT}
         impersonating={!!imp}
       />

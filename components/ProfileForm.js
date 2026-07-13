@@ -12,11 +12,14 @@ const ROLE_LABELS = {
 
 export default function ProfileForm({ profile, user }) {
   const [name, setName] = useState(profile?.full_name ?? '')
+  const [phone, setPhone] = useState(profile?.phone ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
   const role = ROLE_LABELS[profile?.role] ?? profile?.role ?? '—'
+  // Contact phone is an adult-account field — never collect a minor's phone (COPPA).
+  const isAdult = profile?.role !== 'student'
 
   async function handleSave(e) {
     e.preventDefault()
@@ -27,7 +30,7 @@ export default function ProfileForm({ profile, user }) {
     const res = await fetch('/api/profile/update', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full_name: name }),
+      body: JSON.stringify(isAdult ? { full_name: name, phone } : { full_name: name }),
     })
     setSaving(false)
     if (res.ok) {
@@ -45,11 +48,14 @@ export default function ProfileForm({ profile, user }) {
       {/* Avatar + identity */}
       <div className="flex items-center gap-4">
         {/* COPPA data-minimization: minimized profiles.avatar_url only, never
-            user.user_metadata.avatar_url. Avatar fail-closes on age_bracket. */}
+            user.user_metadata.avatar_url. This is the viewer's OWN identity card, so
+            per the Avatar contract a non-student sees their own photo (ageBracket
+            '13plus'); a student stays fail-closed on their real bracket (an under-13's
+            avatar_url is nulled anyway). Mirrors Navbar.js. */}
         <Avatar
           name={name || user?.email}
           avatarUrl={profile?.avatar_url}
-          ageBracket={profile?.age_bracket}
+          ageBracket={profile?.role === 'student' ? profile?.age_bracket : '13plus'}
           size={64}
           style={{ border: '2px solid var(--border-default)' }}
         />
@@ -115,6 +121,33 @@ export default function ProfileForm({ profile, user }) {
             Managed by Google — change it there.
           </p>
         </div>
+
+        {isAdult && (
+          <div>
+            <label
+              htmlFor="phone"
+              className="block text-xs font-bold uppercase tracking-widest mb-1.5"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Contact phone <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="(555) 123-4567"
+              className="w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none transition"
+              style={{
+                border: '1.5px solid var(--border-default)',
+                backgroundColor: 'var(--surface-card)',
+                color: 'var(--text-strong)',
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--border-accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+          </div>
+        )}
 
         {error && (
           <p className="text-sm rounded-xl px-4 py-2.5"

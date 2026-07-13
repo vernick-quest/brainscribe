@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
+import { sendInviteEmail } from '@/lib/notifications'
+import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { NextResponse } from 'next/server'
 
 // POST /api/invites
@@ -15,9 +17,15 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Invite creation now sends an email to the invited address, so cap it per user
+  // to blunt invite-spam / Resend-quota abuse (fails open like the other limits).
+  if (!await checkRateLimit(`invite:${user.id}`, 20, 3600)) {
+    return rateLimited('Too many invites just now — please try again in a little while.')
+  }
+
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, full_name')
     .eq('id', user.id)
     .single()
 
@@ -126,5 +134,18 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Failed to create invite.' }, { status: 500 })
   }
 
-  return NextResponse.json({ token: invite.token })
+  // Email the link to the invited address so an invite isn't only a copy-paste
+  // chore for the sender. Best-effort — the sender still gets the link back to
+  // share manually if email is unconfigured or bounces. The invitee still runs
+  // age-first onboarding (and, if under 13, parental consent) on sign-in, so
+  // emailing the link grants no access on its own.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
+  const emailed = await sendInviteEmail({
+    to: email.trim().toLowerCase(),
+    role,
+    inviteLink: `${siteUrl}/invite?token=${invite.token}`,
+    inviterName: profile?.full_name,
+  })
+
+  return NextResponse.json({ token: invite.token, emailed })
 }

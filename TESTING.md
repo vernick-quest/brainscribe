@@ -1450,3 +1450,17 @@ Feature is LIVE (7bd7faa). A post-deploy billed sim (real `sonnet-4-6` + deploye
 - ESL false-trigger check (targeted, on-topic substitute for the Fable-heavy `esl-drift-probes` — that harness tests the orthogonal ghostwriting axis, ~$8–15): 2 ESL-phrased Wing-A probes (broken-English grief + essay-framing) → **`[CARE]` fired 0/3 each** — exemplars don't false-trigger on ESL phrasing. Full `esl-drift-probes` re-run recommended but cost-gated (low risk: safety exemplars are orthogonal to what it tests).
 
 Conductor re-runs `node scripts/redteam/safety-probes.mjs 3` from the main checkout after merge (target: 0 Wing-A over-triggers, 0 Wing-B missed-`[CARE]`, 0 disclosure locks). NOT merged/deployed.
+
+## Parent-view batch (2026-07-13, conductor — from Robert's parent-flow walkthrough)
+
+Requires migration **036** (`profiles.phone`) applied — done 2026-07-13.
+
+1. **Account avatar** — as a parent signed in with Google, open `/parent/settings`: the "Your account" avatar shows your Google **photo** (not "RV" initials), matching the header. (Fix: `ProfileForm` passes `13plus` for non-students.)
+2. **"Your writing" card** (`/parent` dashboard) — the list looks like the student assignment list (persona avatar + coach·date + status dot), shows the **3 most recent**, and a "**Show all N →**" toggle appears when there are more. No wall of 20.
+3. **Pending child invites** (`/parent/settings` → Your children) — after "Add a child", the invited address shows as a **pending row** ("Invited · waiting for them to sign in") with a **Copy link** button. Expired invites are labeled. Confirms the invite exists instead of a blank "0 linked".
+4. **Invite email** — adding a child (or a teacher, or a parent-invite) **emails the link** to the invited address (best-effort via Resend); `AddChildForm` says "We emailed the invite link to …". The manual copy-link still shows as a fallback. Invite creation is rate-limited (20/hr/user).
+5. **Existing-student linking** — an already-existing student account, opening the invite link signed in with the invited email, gets linked (no new-account requirement). Email-match required.
+6. **Contact phone** (`/parent/settings`) — an optional "Contact phone" field appears for parents/teachers/admins (NOT students — COPPA); saving persists it; reload shows it. A student's `/profile` never shows the field, and the API rejects a phone write from a student role.
+7. **"Add another child" button** — after generating an invite, the reset control is a proper "**Add another child**" pill button (was a "Generate another link" text link).
+
+DEFERRED (not in this deploy): co-parent **inheritance** model (invite a secondary parent who inherits all the inviting parent's children + can't add their own) — pending Robert's confirm on future-child auto-sync + a co-parent marker.

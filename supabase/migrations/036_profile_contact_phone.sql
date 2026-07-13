@@ -1,0 +1,21 @@
+-- 036 — optional contact phone for adult accounts (parent/teacher/admin).
+-- File: 036_profile_contact_phone.sql · Date: 2026-07-13
+--
+-- ⚠️ INFRA: confirm this is the correct next number before applying (035 was the
+--    last file). Apply BY HAND in the Supabase SQL Editor for project
+--    lakozspeyxsuunogfant (NOT qqxgfg…).
+--
+-- WHY: parents asked to store a contact phone number (account contact; also the
+-- natural channel for future SMS safety alerts). Nullable, free-form text.
+--
+-- COPPA: this is for ADULTS only. We must never collect a minor's phone number.
+-- The write path (/api/profile/update) restricts phone writes to non-student
+-- roles; this column simply stores it. We do NOT grant any new watcher/teacher
+-- read of it — only the account owner (and admins/service-role) see their own.
+--
+-- The default profiles RLS lets an authenticated user UPDATE their own row, and
+-- migration 020 only REVOKEd the COPPA gate columns (coppa_consent_*, age_bracket,
+-- birthdate) — so `phone` is owner-writable by default, which is what we want
+-- (the role restriction is enforced in the API, mirroring full_name).
+
+alter table profiles add column if not exists phone text;
