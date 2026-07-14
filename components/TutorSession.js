@@ -693,6 +693,9 @@ export default function TutorSession({
   // Count of linked adults (parents via relationships + teachers on this
   // assignment) who can read this session — drives the ambient visibility note.
   watcherCount = 0,
+  // Edge-geo country code for the crisis card's local resources. Passed through
+  // from the server render (x-vercel-ip-country); never stored. null → US default.
+  country = null,
   user = null,
   profile = null,
   onboarding = false,
@@ -2365,7 +2368,7 @@ export default function TutorSession({
                 reachable while messages scroll under it; dismissible; non-blocking. */}
             {showCrisisCard && (
               <div className="sticky top-0 z-10 -mt-1 pb-1">
-                <CrisisResourceCard onDismiss={() => setShowCrisisCard(false)} />
+                <CrisisResourceCard onDismiss={() => setShowCrisisCard(false)} country={country} />
               </div>
             )}
             {messages.map((m, i) => (

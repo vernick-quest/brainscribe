@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { deriveAgeBracket, evaluateGateEdit } from '@/lib/coppa'
+import { generateConfirmToken, sendSecondStepConfirmEmail } from '@/lib/coppaConsent'
 
 // PATCH /api/profile/birthdate — set or correct a birthdate, the source of truth for
 // the COPPA age gate. age_bracket is DERIVED here (<13 → under13) and stored as a
@@ -94,18 +95,26 @@ export async function PATCH(request) {
 
   // ── Build the gate update ─────────────────────────────────────────────────────
   const update = { birthdate, age_bracket: newBracket }
-  let grantedConsent = false
+  let grantedConsent = false   // admin instant-grant (logged below)
+  let bootstrapEmailPlus = false  // parent correction → email-plus second step
 
   if (newBracket === 'under13') {
     update.coppa_consent_required = true
     update.avatar_url = null  // never retain a minor's photo
-    if (isAdmin || parentEditing) {
-      // Verified parent (or admin) correction IS the consent event — keep the child
-      // active rather than bouncing them to /coppa/pending.
+    if (isAdmin) {
+      // Admin override — instant grant (admins are trusted; unchanged).
       update.coppa_consent_given = true
       update.coppa_consent_given_at = now.toISOString()
-      update.coppa_consent_parent_id = parentEditing ? user.id : (target.coppa_consent_parent_id ?? null)
+      update.coppa_consent_parent_id = target.coppa_consent_parent_id ?? null
       grantedConsent = true
+    } else if (parentEditing) {
+      // EMAIL-PLUS (decision (c)): a parent correction is only STEP 1 now — it no
+      // longer instant-grants consent (that single in-app action was the weak VPC).
+      // Set the gate but keep consent UNGIVEN; the child waits at /coppa/pending
+      // until the parent acts on the confirmation email sent below. Consent lands
+      // at /coppa/confirm (grantConsentForPending), which records the guardian.
+      update.coppa_consent_given = false
+      bootstrapEmailPlus = true
     } else {
       // Self moving into protection — consent not yet obtained.
       update.coppa_consent_given = false
@@ -119,19 +128,52 @@ export async function PATCH(request) {
   const { error } = await service.from('profiles').update(update).eq('id', targetId)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  // Audit-log the consent event when a parent/admin correction grants it.
+  // Audit-log an admin instant-grant at the moment it happens.
   if (grantedConsent) {
     const ipAddress = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || null
     const userAgent = request.headers.get('user-agent') || null
     await service.from('coppa_consent_log').insert({
       student_id: targetId,
-      parent_id: parentEditing ? user.id : null,
-      consent_method: parentEditing ? 'parent_birthdate_correction' : 'admin_override',
+      parent_id: null,
+      consent_method: 'admin_override',
       ip_address: ipAddress,
       user_agent: userAgent,
       privacy_policy_version: 'v1.0-june-2025',
     })
   }
 
-  return Response.json({ ok: true, age_bracket: newBracket })
+  // Parent correction → kick off the email-plus second step. The confirmation email
+  // goes to the acting parent's own verified address; consent is granted only when
+  // they act on it at /coppa/confirm. Reuse an existing non-approved pending row if
+  // one exists (e.g. the child already submitted a parent email), else create one.
+  if (bootstrapEmailPlus) {
+    const confirmToken = generateConfirmToken()
+    const parentEmail = user.email
+    const { data: existing } = await service
+      .from('pending_coppa_signups')
+      .select('id')
+      .eq('student_id', targetId)
+      .neq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      await service.from('pending_coppa_signups').update({
+        parent_email: parentEmail, status: 'pending',
+        first_step_at: now.toISOString(), confirm_token: confirmToken, confirm_sent_at: now.toISOString(),
+      }).eq('id', existing.id)
+    } else {
+      await service.from('pending_coppa_signups').insert({
+        student_id: targetId, parent_email: parentEmail,
+        first_step_at: now.toISOString(), confirm_token: confirmToken, confirm_sent_at: now.toISOString(),
+      })
+    }
+
+    const { data: child } = await service
+      .from('profiles').select('full_name').eq('id', targetId).single()
+    await sendSecondStepConfirmEmail({ parentEmail, studentName: child?.full_name, confirmToken })
+  }
+
+  return Response.json({ ok: true, age_bracket: newBracket, consentPending: bootstrapEmailPlus })
 }

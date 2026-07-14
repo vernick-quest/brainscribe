@@ -1,11 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 import Icon from '@/components/Icon'
-import { validateConsentBinding, escapeHtml } from '@/lib/coppa'
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
+import { validateConsentBinding } from '@/lib/coppa'
+import { generateConfirmToken, shouldResendConfirm, sendSecondStepConfirmEmail } from '@/lib/coppaConsent'
 
 export const metadata = { title: 'Setting up your account — BrainScribe' }
 
@@ -25,7 +23,7 @@ export default async function CoppaCompletePage({ searchParams }) {
   // Validate token
   const { data: pending } = await service
     .from('pending_coppa_signups')
-    .select('id, student_id, parent_email, status, expires_at')
+    .select('id, student_id, parent_email, status, expires_at, first_step_at, confirm_token, confirm_sent_at')
     .eq('token', token)
     .single()
 
@@ -85,26 +83,13 @@ export default async function CoppaCompletePage({ searchParams }) {
     )
   }
 
-  // Fetch student profile for the activation email
-  const { data: student } = await service
-    .from('profiles')
-    .select('full_name, email')
-    .eq('id', pending.student_id)
-    .single()
+  // ── STEP 1 of email-plus VPC — DO NOT grant consent here ─────────────────────
+  // The email-match + OAuth above is only the FIRST step. Consent is granted only
+  // after the parent acts on a SECOND confirmation email (/coppa/confirm). Here we:
+  // set the signer's parent role, mark step 1 done, and send the confirm email.
 
-  // ── Process approval ─────────────────────────────────────────────────────────
-
-  // 1. Mark pending record as approved (status-guarded so a double-open can't
-  //    re-run the approval transaction).
-  await service
-    .from('pending_coppa_signups')
-    .update({ status: 'approved' })
-    .eq('id', pending.id)
-    .eq('status', 'pending')
-
-  // 2. Update the signer's profile (ensure role='parent', role_confirmed=true) —
-  //    but NEVER demote an admin: an admin approving a consent link must keep
-  //    their admin role, or approving would lock them out of /admin.
+  // Ensure the signer is a confirmed parent (never demote an admin — approving must
+  // not lock them out of /admin). Safe to do at step 1: they proved the email.
   await service
     .from('profiles')
     .update({
@@ -114,105 +99,41 @@ export default async function CoppaCompletePage({ searchParams }) {
     })
     .eq('id', user.id)
 
-  // 3. Grant student access
-  await service
-    .from('profiles')
-    .update({
-      coppa_consent_given: true,
-      coppa_consent_given_at: new Date().toISOString(),
-      coppa_consent_parent_id: user.id,
-    })
-    .eq('id', pending.student_id)
+  const { data: student } = await service
+    .from('profiles').select('full_name').eq('id', pending.student_id).single()
 
-  // 4. Create parent→student relationship (ignore if already exists)
-  await service
-    .from('relationships')
-    .upsert(
-      { watcher_id: user.id, student_id: pending.student_id },
-      { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
-    )
+  // First visit: stamp step 1 + mint a confirm token + send the second email.
+  // Re-visit (parent reloaded): re-send only if throttle allows. status stays
+  // 'pending' the whole time — consent is set only at /coppa/confirm.
+  let confirmToken = pending.confirm_token
+  if (!pending.first_step_at) {
+    confirmToken = generateConfirmToken()
+    await service
+      .from('pending_coppa_signups')
+      .update({ first_step_at: new Date().toISOString(), confirm_token: confirmToken, confirm_sent_at: new Date().toISOString() })
+      .eq('id', pending.id)
+      .eq('status', 'pending')
+    await sendSecondStepConfirmEmail({ parentEmail: pending.parent_email, studentName: student?.full_name, confirmToken })
+  } else if (shouldResendConfirm(pending.confirm_sent_at)) {
+    if (!confirmToken) {
+      confirmToken = generateConfirmToken()
+      await service.from('pending_coppa_signups').update({ confirm_token: confirmToken }).eq('id', pending.id)
+    }
+    await service.from('pending_coppa_signups').update({ confirm_sent_at: new Date().toISOString() }).eq('id', pending.id)
+    await sendSecondStepConfirmEmail({ parentEmail: pending.parent_email, studentName: student?.full_name, confirmToken })
+  }
 
-  // 5. Log the consent (audit trail). COPPA requires recording the parent's IP and
-  //    device at the moment of consent — capture them from the request headers.
-  const hdrs = await headers()
-  const ipAddress = (hdrs.get('x-forwarded-for') ?? '').split(',')[0].trim() || null
-  const userAgent = hdrs.get('user-agent') || null
-  await service
-    .from('coppa_consent_log')
-    .insert({
-      student_id: pending.student_id,
-      parent_id: user.id,
-      pending_id: pending.id,
-      consent_method: 'email_approval',
-      ip_address: ipAddress,
-      user_agent: userAgent,
-      privacy_policy_version: 'v1.0-june-2025',
-    })
-
-  // 6. Send student "you're approved!" email
-  await sendApprovalEmail({
-    studentEmail: student?.email,
-    studentName: student?.full_name,
-  })
-
-  // ── Done — redirect parent to their new dashboard ────────────────────────────
-  redirect('/parent')
+  return <CheckEmailPage parentEmail={pending.parent_email} />
 }
 
-async function sendApprovalEmail({ studentEmail, studentName }) {
-  if (!studentEmail || !process.env.RESEND_API_KEY) return
-
-  // full_name is client-writable — escape before HTML interpolation.
-  const firstName = escapeHtml(studentName?.split(' ')[0] ?? 'there')
-
-  const html = `
-    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#211D17">
-      <img src="${SITE_URL}/brainscribe-wordmark.png" alt="BrainScribe"
-           style="height:32px;margin-bottom:28px" />
-
-      <h2 style="font-size:20px;font-weight:700;margin:0 0 16px;color:#14385A">
-        You're approved, ${firstName}! 🎉
-      </h2>
-
-      <p style="margin:0 0 16px;line-height:1.7;color:#4A4439">
-        Great news — your parent approved your BrainScribe account.
-        You can now sign in and start working on your assignments.
-      </p>
-
-      <a href="${SITE_URL}/login"
-         style="display:inline-block;background:#F0811E;color:#fff;text-decoration:none;
-                font-weight:700;padding:14px 28px;border-radius:12px;font-size:15px;
-                margin-bottom:28px">
-        Sign in to BrainScribe →
-      </a>
-
-      <p style="margin:0;font-size:13px;color:#6B6358;line-height:1.6">
-        Your parent can see your session progress in their dashboard.
-        Your words are always your own — BrainScribe just asks the questions.
-      </p>
-    </div>
-  `
-
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'BrainScribe <notifications@brainscribe.io>',
-        to: studentEmail,
-        subject: "You're approved! Sign in to BrainScribe",
-        html,
-      }),
-    })
-    if (!res.ok) {
-      console.error('[coppa/complete] Resend error:', await res.text())
-    }
-  } catch (e) {
-    console.error('[coppa/complete] Email send failed:', e)
-  }
+// The parent has done step 1 — tell them to check their inbox for the confirm link.
+function CheckEmailPage({ parentEmail }) {
+  return (
+    <InfoPage
+      title="One more step — check your email"
+      message={`To keep kids safe, we confirm consent in two steps. We just sent a confirmation link to ${maskEmail(parentEmail)}. Open it to activate the account — until then, the account stays inactive.`}
+    />
+  )
 }
 
 // Mask the invited email in error copy so the page doesn't disclose the full
@@ -266,6 +187,35 @@ function ErrorPage({ message, linkLabel, linkHref }) {
             {linkLabel}
           </a>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Neutral info card (email-plus step-1 confirmation) — no alarm styling.
+function InfoPage({ title, message }) {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: 'var(--brand-cream)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2rem 1rem',
+    }}>
+      <div style={{
+        backgroundColor: 'var(--surface-card)',
+        borderRadius: 24,
+        padding: '2.5rem',
+        maxWidth: 440,
+        width: '100%',
+        boxShadow: 'var(--shadow-lg)',
+        border: '1px solid var(--border-default)',
+        textAlign: 'center',
+      }}>
+        <div style={{ marginBottom: '1rem' }}><Icon name="mail" size={36} style={{ color: 'var(--accent-text)' }} /></div>
+        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.75rem' }}>{title}</h1>
+        <p style={{ fontSize: '0.95rem', lineHeight: 1.7, color: 'var(--text-body)' }}>{message}</p>
       </div>
     </div>
   )
