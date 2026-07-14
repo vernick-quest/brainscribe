@@ -1,8 +1,13 @@
 import './globals.css'
 import SiteFooter from '@/components/SiteFooter'
-import { CANONICAL_URL } from '@/lib/site'
+import JsonLd from '@/components/JsonLd'
+import { organizationSchema, softwareApplicationSchema } from '@/lib/schema'
+import { CANONICAL_URL, CANONICAL_DESCRIPTION } from '@/lib/site'
 
-const DESCRIPTION = 'Voice-first writing coach for kids with ADHD, grades 6–12 (ages 11–17).'
+// Site-wide default description = the canonical entity line (verbatim). Pages
+// with their own topic-tuned description override it; this is the fallback and
+// the entity signal.
+const DESCRIPTION = CANONICAL_DESCRIPTION
 
 export const metadata = {
   // Resolves relative metadata URLs (incl. the file-convention OG images) and
@@ -38,6 +43,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="antialiased flex flex-col min-h-screen">
+        {/* Site-wide entity schema — appears on every page for AI-assistant
+            entity resolution. Page-level FAQPage schema is added per page. */}
+        <JsonLd data={organizationSchema()} />
+        <JsonLd data={softwareApplicationSchema()} />
         <div className="flex-1 flex flex-col">
           {children}
         </div>

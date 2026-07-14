@@ -15,6 +15,9 @@ export default function SiteFooter() {
       </p>
       <nav style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         {[
+          { href: '/writing-help', label: 'Writing help' },
+          { href: '/compare', label: 'Compare' },
+          { href: '/faq',     label: 'FAQ' },
           { href: '/blog',    label: 'Blog' },
           { href: '/about',   label: 'About' },
           { href: '/privacy', label: 'Privacy' },
