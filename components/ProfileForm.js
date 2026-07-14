@@ -10,9 +10,24 @@ const ROLE_LABELS = {
   admin: 'Admin',
 }
 
+// Format a US phone as (XXX) XXX-XXXX as the user types — works whether or not they
+// added parens/hyphens, and reformats a pasted or previously-stored raw number.
+// Explicit international numbers (leading +) pass through untouched.
+function formatPhone(input) {
+  const raw = String(input ?? '')
+  if (raw.trimStart().startsWith('+')) return raw
+  let d = raw.replace(/\D/g, '')
+  if (d.length === 11 && d[0] === '1') d = d.slice(1) // drop US country code
+  d = d.slice(0, 10)
+  if (d.length === 0) return ''
+  if (d.length < 4) return `(${d}`
+  if (d.length < 7) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 export default function ProfileForm({ profile, user }) {
   const [name, setName] = useState(profile?.full_name ?? '')
-  const [phone, setPhone] = useState(profile?.phone ?? '')
+  const [phone, setPhone] = useState(formatPhone(profile?.phone ?? ''))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
@@ -135,7 +150,7 @@ export default function ProfileForm({ profile, user }) {
               id="phone"
               type="tel"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => setPhone(formatPhone(e.target.value))}
               placeholder="(555) 123-4567"
               className="w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none transition"
               style={{
