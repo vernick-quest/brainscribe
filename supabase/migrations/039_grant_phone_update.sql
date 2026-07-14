@@ -1,0 +1,22 @@
+-- 039 — grant UPDATE on profiles.phone to `authenticated` (fixes a 036 omission).
+-- File: 039_grant_phone_update.sql · Date: 2026-07-13
+--
+-- ⚠️ Apply BY HAND in the Supabase SQL Editor for project lakozspeyxsuunogfant.
+--    INDEPENDENT of 038 — apply anytime; it fixes the LIVE phone-save bug the
+--    moment it runs (DB-only, no code deploy needed).
+--
+-- BUG: saving a contact phone returns "permission denied for table profiles".
+-- Migration 020 REVOKEd blanket UPDATE on profiles from `authenticated` and
+-- re-granted it column-by-column (full_name, avatar_url). Migration 036 added the
+-- `phone` column but did NOT add its grant (the 036 comment wrongly assumed
+-- owner-writable-by-default — 020 had already flipped profiles to deny-by-default,
+-- and 020 explicitly says any new client-writable column must add its own grant).
+-- /api/profile/update writes phone with the USER (authenticated) client, so the
+-- missing column grant denies the whole UPDATE.
+--
+-- FIX: grant UPDATE on just the `phone` column. Phone stays adult-only via the API
+-- role check (students never see the field and the route rejects a student write);
+-- this grant only lets the owner write their OWN row's phone (RLS "profiles: own"
+-- still scopes WHICH row). Idempotent.
+
+grant update (phone) on profiles to authenticated;
