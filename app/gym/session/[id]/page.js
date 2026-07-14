@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import TutorSession from '@/components/TutorSession'
 import { getSkill } from '@/lib/gymCurriculum'
 
@@ -39,6 +40,8 @@ export default async function GymSessionPage({ params }) {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
   const skill = getSkill(gymSession.skill_key)
+  // Edge-geo country for the crisis card (read at render only, never stored).
+  const geoCountry = (await headers()).get('x-vercel-ip-country') || null
 
   return (
     <TutorSession
@@ -47,6 +50,7 @@ export default async function GymSessionPage({ params }) {
       initialParagraphs={paragraphs ?? []}
       initialScaffold={scaffoldData ?? null}
       studentName={firstName}
+      country={geoCountry}
       user={user}
       profile={profile}
       tutorEndpoint="/api/gym/tutor"

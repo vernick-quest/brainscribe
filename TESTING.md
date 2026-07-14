@@ -106,6 +106,21 @@ Crisis card + ambient note. NOTE: the `[CARE]` emitter is coach-ai's — until i
 - [ ] ⬜ Admin audit: once a safety key is emitted (coach-ai/admin-audit), `auditor_analysis.safety_flag=true` on the finding and it surfaces in the admin queue (inert until the judge taxonomy lands)
 - [ ] ⬜ After migration 035: `pg_policies` shows the RESTRICTIVE relationships-insert backstop; a client-side `relationships` insert is denied; service-role relationship creation (invite claim / consent) still works
 
+### (c) Email-plus VPC — two-step parental consent (new 2026-07-12; REQUIRES the pending_coppa_signups ADD-COLUMN migration)
+Invariant: `profiles.coppa_consent_given` is NEVER set on a single email match — only after the second confirmation.
+- [ ] ⬜ /coppa flow: student → initiate → parent opens email #1 → OAuth → `/coppa/complete` now shows "check your email" (NOT the dashboard); DB shows the child still `coppa_consent_given=false`, pending `status='pending'` with `first_step_at` + `confirm_token` set; a 2nd email arrives
+- [ ] ⬜ Parent opens email #2 → `/coppa/confirm` → NOW `coppa_consent_given=true`, `coppa_consent_log` row `email_plus`, relationship created, pending `status='approved'` + `confirmed_at`; student gets the approval email; child can sign in
+- [ ] ⬜ **Single-match no longer suffices:** stopping after step 1 (never opening email #2) leaves the child inactive; the 7-day cron still deletes it if never confirmed
+- [ ] ⬜ `/coppa/confirm` requires the invited parent: a different Google account (or the student) hitting the confirm link is refused; double-clicking confirm does not double-grant or re-send the approval email
+- [ ] ⬜ Birthdate bootstrap: a linked **parent** setting a child under-13 via BirthdateField no longer instant-activates — response `consentPending:true`, child held at `/coppa/pending`, parent gets the confirm email; only `/coppa/confirm` activates. An **admin** setting under-13 still instant-grants (`admin_override` log)
+- [ ] ⬜ Regression: normal 13+ sign-in and the `/coppa/pending` holding screen still behave; nothing grants consent except `/coppa/confirm` and admin override
+
+### (d) International-aware crisis card (new 2026-07-12)
+- [ ] ⬜ US or absent `x-vercel-ip-country` → card shows 988 / 741741 / Childhelp / NCMEC **and** findahelpline
+- [ ] ⬜ Simulate `x-vercel-ip-country: GB` (curl `-H`) and an unknown value (`ZZ`) → US default set, findahelpline **always** present; findahelpline + NCMEC report links open in a new tab
+- [ ] ⬜ Confirm NO location is persisted: no new DB column/cookie/log; the country only appears as a transient render prop
+- [ ] ⬜ Card still renders in a **gym** session (country passed there too) and the `[CARE]` strip is intact (no `[CARE]` in `messages`)
+
 ### Parent teacher management (new 2026-06-27)
 - [ ] ⬜ Each child assignment shows its added teachers as chips (name/email) with an "Invite a teacher" affordance
 - [ ] ⬜ Parent invites a teacher to a child's assignment → link generates; after the teacher claims it, the chip appears

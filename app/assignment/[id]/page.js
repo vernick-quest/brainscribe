@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import TutorSession from '@/components/TutorSession'
 import TeacherAssignmentView from '@/components/TeacherAssignmentView'
 import { getImpersonation } from '@/lib/impersonation'
@@ -156,6 +157,13 @@ export default async function AssignmentPage({ params }) {
     redirect(`/transcript/${id}`)
   }
 
+  // Country for the student-only crisis card, from the Vercel edge geo header.
+  // Read at render ONLY and passed straight through as a prop — never stored on a
+  // row, cookie, or log (under-13 data-minimization). Absent locally / off-Vercel
+  // → null → US default in the card. This is NOT PII we retain; it never leaves
+  // this render.
+  const geoCountry = (await headers()).get('x-vercel-ip-country') || null
+
   return (
     <TutorSession
       session={session}
@@ -165,6 +173,7 @@ export default async function AssignmentPage({ params }) {
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       watcherCount={watcherCount}
+      country={geoCountry}
       user={user}
       profile={profile}
       onboarding={onboardingMode}

@@ -1,6 +1,6 @@
 'use client'
 
-import { CRISIS_RESOURCES, CARD_INTRO, CARD_FOOTER } from '@/lib/safetyResources'
+import { resourcesForCountry, CARD_INTRO, CARD_FOOTER } from '@/lib/safetyResources'
 
 // CrisisResourceCard — the out-of-band, STUDENT-ONLY safety card.
 //
@@ -13,9 +13,12 @@ import { CRISIS_RESOURCES, CARD_INTRO, CARD_FOOTER } from '@/lib/safetyResources
 //    make the disclosure observable to a watcher.
 //  • Dismissible and non-blocking: it must not trap the student or force a choice
 //    (that reads as alarming/punitive). Writing continues underneath.
+//  • `country` (from the edge geo header, read at render only — never stored)
+//    picks the local resource set; unknown → US default, always + findahelpline.
 //
 // It's presentational: the parent component owns when to show/hide it.
-export default function CrisisResourceCard({ onDismiss }) {
+export default function CrisisResourceCard({ onDismiss, country = null }) {
+  const resources = resourcesForCountry(country)
   return (
     <div
       role="complementary"
@@ -46,7 +49,7 @@ export default function CrisisResourceCard({ onDismiss }) {
       </div>
 
       <ul className="space-y-2">
-        {CRISIS_RESOURCES.map(r => (
+        {resources.map(r => (
           <li
             key={r.id}
             className="rounded-xl px-3.5 py-2.5"
@@ -70,7 +73,10 @@ export default function CrisisResourceCard({ onDismiss }) {
 }
 
 // Turn a resource into an actionable label. On a phone the tel:/sms: links dial;
-// on desktop they're still readable text. No tracking params, ever.
+// on desktop they're still readable text. External links (findahelpline, NCMEC
+// report) open in a new tab. No tracking params, ever — and no auto-fired request:
+// every link is user-initiated navigation, so the card still makes zero network
+// calls on render (a watcher can never observe that it appeared).
 function resourceAction(r) {
   if (r.tel) {
     return <a href={`tel:${r.tel}`} style={{ color: 'var(--accent-text)' }}>{r.label}</a>
@@ -78,6 +84,9 @@ function resourceAction(r) {
   if (r.sms) {
     const href = r.smsBody ? `sms:${r.sms}?&body=${encodeURIComponent(r.smsBody)}` : `sms:${r.sms}`
     return <a href={href} style={{ color: 'var(--accent-text)' }}>{r.label}</a>
+  }
+  if (r.url) {
+    return <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>{r.label}</a>
   }
   return r.label
 }
