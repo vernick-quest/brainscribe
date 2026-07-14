@@ -1476,3 +1476,27 @@ Requires migration **037** (`profiles.coparent_of`, `invites.coparent`) applied 
 5. **Co-parents list** — the primary's settings shows a "Co-parents" section listing linked co-parents.
 6. **Caps respected** — a child already at the max parents (2) is skipped, not over-linked. Co-parent is a read-only watcher, never a consenting guardian (no consent columns written).
 7. **Superseded** — the old per-child co-guardian form is removed; the account-level flow is the single co-parent path.
+
+## GEO / AEO Phase 1 — on-site pages + schema (2026-07-13, focus/marketing)
+
+On-site work to get BrainScribe cited by AI assistants (ChatGPT/SearchGPT, Gemini/AI Overviews, Claude, Perplexity) for "writing help for kids who struggle / ADHD / dysgraphia." Positioning threaded through: voice-first, can't-cheat AI writing **coach**, grades 6–12. **Worktree only — NOT merged/deployed** (conductor deploys from main).
+
+**Routes added** (all render answer-first — a question-format H2 with a self-contained answer directly beneath):
+- `/writing-help` hub + 5 use-case pages `/writing-help/{adhd,dysgraphia,blank-page,hate-writing,without-cheating}` (dynamic `[topic]` route driven by `lib/useCases.js`).
+- `/compare` — BrainScribe vs. Grammarly / Co:Writer / ChatGPT, honest neutral table, leads with can't-cheat + voice-first.
+- `/faq` — 8 Q&A.
+- `/llms.txt` — route handler (`force-static`), llmstxt.org format.
+
+**Schema** (`lib/schema.js` builders + `components/JsonLd.js`):
+- Site-wide **Organization + SoftwareApplication** injected in `app/layout.js` (on every page).
+- Page-level **FAQPage** on each use-case page (4 Q), `/compare` (4 Q), `/faq` (8 Q); answer text mirrors visible content.
+- One canonical entity description used verbatim in schema, layout default metadata, and an "About BrainScribe" block on every GEO page: *"BrainScribe — a voice-first, Socratic AI writing coach for grades 6–12 that never writes for the student."*
+
+**Verified** (`npm run build` green; served on :3205):
+1. All 12 new/affected routes return **200 logged-out** (not 307) — middleware public paths added (`/faq`, `/compare`, `/writing-help` prefixes; `/llms.txt` exact). Canonical-host redirect + PKCE logic untouched.
+2. **robots.txt** — explicit ALLOW group for GPTBot, OAI-SearchBot, PerplexityBot, ClaudeBot, anthropic-ai, Google-Extended, Bingbot, Applebot-Extended (all 8 present); `*` + AI-bot groups both keep the app-route disallows.
+3. **JSON-LD** — Organization + SoftwareApplication + FAQPage present and valid JSON on every GEO page (Python validator, all PASS); first H2 is a question on every use-case/FAQ/compare page.
+4. **sitemap.xml** includes all new routes; **llms.txt** lists the canonical description + every page.
+5. **Visual/mobile** — on-brand (Lora serif / cream / navy, orange = action only); comparison table scrolls inside its `overflow-x:auto` wrapper at 375px with no body overflow.
+
+**Still worth doing post-deploy (against LIVE URLs):** Google Rich Results Test / schema validator; confirm the vercel.app→www 308 still fires for the new routes.
