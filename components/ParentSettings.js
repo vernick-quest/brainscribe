@@ -6,8 +6,8 @@ import ProfileForm from '@/components/ProfileForm'
 import Avatar from '@/components/Avatar'
 import BirthdateField from '@/components/BirthdateField'
 import AddChildForm from '@/components/AddChildForm'
+import AddCoParentForm from '@/components/AddCoParentForm'
 import UnlinkChildButton from '@/components/UnlinkChildButton'
-import CoParentInviteForm from '@/components/CoParentInviteForm'
 import Icon from '@/components/Icon'
 
 const ROLE_LABELS = {
@@ -47,10 +47,6 @@ function IdentityCard({ profile }) {
 // ── One linked child row ───────────────────────────────────────────────
 function ChildRow({ child, viewerId, impersonating }) {
   const firstName = child.full_name?.split(' ')[0] ?? 'your student'
-  // The co-parent invite posts as the authenticated user, so it can't work while
-  // an admin is remoting in (the guardian check is against the real caller) —
-  // hide it in that case rather than offer a button that would 403.
-  const showCoParent = child.canAddCoParent && !impersonating
   return (
     <div className="rounded-2xl px-5 py-4 space-y-3"
       style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
@@ -82,11 +78,6 @@ function ChildRow({ child, viewerId, impersonating }) {
         </div>
       </div>
 
-      {showCoParent && (
-        <div className="pt-1">
-          <CoParentInviteForm childId={child.id} childName={firstName} />
-        </div>
-      )}
     </div>
   )
 }
@@ -130,8 +121,9 @@ function PendingInviteRow({ invite }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────
-export default function ParentSettings({ user, profile, viewerId, children = [], pendingInvites = [], maxChildren = 3, impersonating = false }) {
+export default function ParentSettings({ user, profile, viewerId, children = [], pendingInvites = [], coParents = [], coparentOf = null, primaryParentName = null, maxChildren = 3, impersonating = false }) {
   const atCap = children.length >= maxChildren
+  const isCoParent = !!coparentOf
   const nothingYet = children.length === 0 && pendingInvites.length === 0
 
   return (
@@ -187,7 +179,7 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             </span>
           </div>
 
-          {nothingYet && (
+          {nothingYet && !isCoParent && (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
               No children linked yet. Invite one below — or ask them to invite you from their own dashboard.
             </p>
@@ -214,16 +206,49 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             </div>
           )}
 
-          {atCap ? (
-            <div className="flex items-center gap-2 rounded-2xl px-5 py-4"
+          {/* Co-parents this account has linked (read-only mirrors of these children). */}
+          {coParents.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest pt-1" style={{ color: 'var(--text-subtle)' }}>
+                Co-parents
+              </p>
+              {coParents.map(cp => (
+                <div key={cp.id} className="rounded-2xl px-5 py-3 flex items-center gap-3"
+                  style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+                  <Avatar name={cp.full_name} avatarUrl={cp.avatar_url} ageBracket="13plus" size={32} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-strong)' }}>{cp.full_name ?? cp.email ?? 'Co-parent'}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Co-parent · shares your children (read-only)</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isCoParent ? (
+            <div className="rounded-2xl px-5 py-4"
               style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-              <Icon name="alert" size={16} style={{ color: 'var(--text-subtle)' }} />
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                You've reached the maximum of {maxChildren} linked children. Unlink one to add another.
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                You're a co-parent linked to{' '}
+                <span style={{ fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)' }}>{primaryParentName}</span>.
+                Their children appear above — you share them read-only, and a co-parent can't add children.
               </p>
             </div>
           ) : (
-            <AddChildForm />
+            <>
+              {atCap ? (
+                <div className="flex items-center gap-2 rounded-2xl px-5 py-4"
+                  style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+                  <Icon name="alert" size={16} style={{ color: 'var(--text-subtle)' }} />
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    You've reached the maximum of {maxChildren} linked children. Unlink one to add another.
+                  </p>
+                </div>
+              ) : (
+                <AddChildForm />
+              )}
+              <AddCoParentForm />
+            </>
           )}
         </section>
 

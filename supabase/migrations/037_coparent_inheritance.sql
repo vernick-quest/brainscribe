@@ -1,0 +1,31 @@
+-- 037 — co-parent inheritance model.
+-- File: 037_coparent_inheritance.sql · Date: 2026-07-13
+--
+-- ⚠️ INFRA: confirm this is the correct next number before applying (036 was the
+--    last file). Apply BY HAND in the Supabase SQL Editor for project
+--    lakozspeyxsuunogfant (NOT qqxgfg…).
+--
+-- WHAT: a "secondary parent" is a MIRROR of an inviting (primary) parent, not a
+-- new independent account. When primary parent A invites co-parent B and B
+-- accepts, B is tethered to ALL of A's children via `relationships` rows, inherits
+-- A's future children automatically, and CANNOT add children of their own.
+--
+-- Two columns:
+--   profiles.coparent_of  — set on B when they claim a co-parent invite: the id of
+--     the primary parent A they mirror. Doubles as the marker ("B is a co-parent")
+--     and the tether (find A's co-parents = profiles where coparent_of = A.id, used
+--     to auto-link them to a newly-added child). NULL for a primary parent.
+--   invites.coparent      — true on an account-level "invite another parent" invite
+--     (role='parent', all-children inheritance) to distinguish it from a per-child
+--     co-guardian invite or a student-sent parent invite at claim time.
+--
+-- COPPA / trust: a co-parent is a READ-ONLY watcher (relationships only) — never a
+-- consenting guardian and never a consent grant (matches the existing role='parent'
+-- claim, which writes no consent columns). Both columns are service-role-written in
+-- the claim flow; migration 020's deny-by-default already blocks client writes to
+-- any new profiles column, so no new grant is needed (and none is wanted).
+--
+-- Idempotent (add-column-if-not-exists). Reversible: drop the two columns.
+
+alter table profiles add column if not exists coparent_of uuid references profiles(id) on delete set null;
+alter table invites  add column if not exists coparent boolean not null default false;

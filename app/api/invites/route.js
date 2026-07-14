@@ -25,11 +25,11 @@ export async function POST(request) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name')
+    .select('role, full_name, coparent_of')
     .eq('id', user.id)
     .single()
 
-  const { email, role, assignmentId, childId } = await request.json()
+  const { email, role, assignmentId, childId, coparent } = await request.json()
 
   if (!email?.trim()) return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   if (!['parent', 'teacher', 'student'].includes(role)) {
@@ -48,10 +48,24 @@ export async function POST(request) {
     if (profile?.role !== 'parent') {
       return NextResponse.json({ error: 'Only parents can invite a child.' }, { status: 403 })
     }
+    // A co-parent mirrors the primary parent's children and can't add their own.
+    if (profile?.coparent_of) {
+      return NextResponse.json({ error: "As a linked co-parent you share the primary parent's children — you can't add your own." }, { status: 403 })
+    }
     const { count } = await supabase
       .from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', user.id)
     if ((count ?? 0) >= MAX_CHILDREN_PER_PARENT) {
       return NextResponse.json({ error: `You're already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.` }, { status: 400 })
+    }
+  } else if (role === 'parent' && coparent) {
+    // Account-level co-parent: a PRIMARY parent invites a secondary parent who will
+    // inherit ALL their children (current + future) as a read-only watcher. Only a
+    // primary parent may send it (a co-parent can't invite another co-parent).
+    if (profile?.role !== 'parent') {
+      return NextResponse.json({ error: 'Only a parent can invite a co-parent.' }, { status: 403 })
+    }
+    if (profile?.coparent_of) {
+      return NextResponse.json({ error: "You're a linked co-parent, so you can't invite another parent." }, { status: 403 })
     }
   } else if (role === 'parent' && childId) {
     // Co-parent: a child's CONSENTING GUARDIAN invites a second parent for that
@@ -125,6 +139,8 @@ export async function POST(request) {
       // invites.student_id column — migration 022 (pending). invited_by stays the
       // authorizing guardian for the audit trail.
       ...(role === 'parent' && childId ? { student_id: childId } : {}),
+      // Account-level co-parent invite → inherit all the inviter's children at claim.
+      ...(role === 'parent' && coparent ? { coparent: true } : {}),
     })
     .select('token')
     .single()

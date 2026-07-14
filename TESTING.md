@@ -1464,3 +1464,15 @@ Requires migration **036** (`profiles.phone`) applied — done 2026-07-13.
 7. **"Add another child" button** — after generating an invite, the reset control is a proper "**Add another child**" pill button (was a "Generate another link" text link).
 
 DEFERRED (not in this deploy): co-parent **inheritance** model (invite a secondary parent who inherits all the inviting parent's children + can't add their own) — pending Robert's confirm on future-child auto-sync + a co-parent marker.
+
+## Co-parent inheritance (2026-07-13, conductor — Robert confirmed: auto-inherit future children + marker)
+
+Requires migration **037** (`profiles.coparent_of`, `invites.coparent`) applied — done 2026-07-13.
+
+1. **Invite a co-parent** — as a primary parent with ≥1 linked child, `/parent/settings` → Your children shows an **"Invite another parent"** card (account-level, not per-child). Generate a link; it also emails the invited address.
+2. **Inherit current children** — the co-parent opens the link, signs in (13+) with the invited email → their dashboard shows **all** the primary's current children, **read-only**. No new relationship the primary didn't have.
+3. **Marker / can't add children** — the co-parent's `/parent/settings` shows **no "Add a child"** and no "Invite another parent"; instead a notice: "You're a co-parent linked to [primary]… can't add children." The API also rejects a child-invite from a co-parent (403).
+4. **Future children auto-inherit** — after the co-parent is linked, have the PRIMARY add a NEW child (invite → child accepts). Confirm the co-parent is **automatically** linked to that new child too (no action by the co-parent).
+5. **Co-parents list** — the primary's settings shows a "Co-parents" section listing linked co-parents.
+6. **Caps respected** — a child already at the max parents (2) is skipped, not over-linked. Co-parent is a read-only watcher, never a consenting guardian (no consent columns written).
+7. **Superseded** — the old per-child co-guardian form is removed; the account-level flow is the single co-parent path.

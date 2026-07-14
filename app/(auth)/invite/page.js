@@ -75,12 +75,13 @@ export default async function InvitePage({ searchParams }) {
     // (parent invited a child) create one watcher→student relationship. Resolve
     // who is the parent (watcher) and who is the child (student) for this claim.
     let pendingRel = null
-    if (invite.role === 'parent' && invite.invited_by) {
-      // Co-parent invite (sent by a child's guardian) carries an explicit target
-      // child in invite.student_id; a student-sent parent invite has no target,
+    if (invite.role === 'parent' && !invite.coparent && invite.invited_by) {
+      // Per-child co-guardian invite (sent by a child's guardian) carries an explicit
+      // target child in invite.student_id; a student-sent parent invite has no target,
       // so the inviting student (invited_by) is the child. Either way the claimer
       // becomes a read-only watcher — never a consenting guardian (no consent
-      // columns are written here).
+      // columns are written here). Account-level co-parent invites (invite.coparent)
+      // link MULTIPLE children and are handled after the role update below.
       pendingRel = { watcher_id: user.id, student_id: invite.student_id ?? invite.invited_by }
     } else if (invite.role === 'student' && invite.invited_by) {
       pendingRel = { watcher_id: invite.invited_by, student_id: user.id }
@@ -132,6 +133,26 @@ export default async function InvitePage({ searchParams }) {
     // 020, so this write goes through the service client created above.
     await service.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
 
+    // Account-level co-parent claim: tether B to the primary parent A and inherit
+    // ALL of A's current children as a read-only watcher (future children auto-link
+    // in the student-claim branch below). Per-child parent cap respected — a child
+    // already at the cap is skipped. coparent_of is the marker that later blocks B
+    // from adding their own children (/api/invites).
+    if (invite.coparent && invite.invited_by) {
+      await service.from('profiles').update({ coparent_of: invite.invited_by }).eq('id', user.id)
+      const { data: primaryKids } = await service
+        .from('relationships').select('student_id').eq('watcher_id', invite.invited_by)
+      for (const { student_id } of primaryKids ?? []) {
+        const { count } = await service
+          .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', student_id)
+        if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) continue
+        await service.from('relationships').upsert(
+          { watcher_id: user.id, student_id },
+          { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
+        )
+      }
+    }
+
     // Create the watcher→student link (service client: see the cap note above).
     // A student claiming a parent-sent invite still runs their own age-first /
     // COPPA onboarding separately — this relationship is read-only oversight.
@@ -140,6 +161,23 @@ export default async function InvitePage({ searchParams }) {
         pendingRel,
         { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
       )
+
+      // Co-parent inheritance — FUTURE children: when a child newly links to a
+      // primary parent A, also link A's co-parents to that child (read-only),
+      // respecting the per-child parent cap. Only on a student→parent link.
+      if (invite.role === 'student' && invite.invited_by) {
+        const { data: coParents } = await service
+          .from('profiles').select('id').eq('coparent_of', invite.invited_by)
+        for (const cp of coParents ?? []) {
+          const { count } = await service
+            .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+          if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) break
+          await service.from('relationships').upsert(
+            { watcher_id: cp.id, student_id: user.id },
+            { onConflict: 'watcher_id,student_id', ignoreDuplicates: true }
+          )
+        }
+      }
     }
 
     // Teacher invite scoped to a specific assignment → grant access + notify.
