@@ -88,6 +88,8 @@ function ChildRow({ child, viewerId, impersonating }) {
 // this link and sign in with the invited email.
 function PendingInviteRow({ invite }) {
   const [copied, setCopied] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [gone, setGone] = useState(false)
   const expired = invite.expires_at && new Date(invite.expires_at) < new Date()
 
   function copyLink() {
@@ -95,6 +97,15 @@ function PendingInviteRow({ invite }) {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  async function remove() {
+    setRemoving(true)
+    const res = await fetch(`/api/invites/${invite.id}`, { method: 'DELETE' })
+    if (res.ok) setGone(true)
+    else setRemoving(false)
+  }
+
+  if (gone) return null
 
   return (
     <div className="rounded-2xl px-5 py-4 flex items-center gap-4"
@@ -109,13 +120,20 @@ function PendingInviteRow({ invite }) {
           {expired ? 'Link expired — generate a new one below' : 'Invited · waiting for them to sign in'}
         </p>
       </div>
-      {!expired && (
-        <button onClick={copyLink}
-          className="shrink-0 text-xs font-semibold rounded-full px-3 py-1.5 transition"
-          style={{ border: '1px solid var(--border-strong)', color: copied ? 'var(--status-success)' : 'var(--text-muted)' }}>
-          {copied ? 'Copied!' : 'Copy link'}
+      <div className="shrink-0 flex items-center gap-2">
+        {!expired && (
+          <button onClick={copyLink}
+            className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
+            style={{ border: '1px solid var(--border-strong)', color: copied ? 'var(--status-success)' : 'var(--text-muted)' }}>
+            {copied ? 'Copied!' : 'Copy link'}
+          </button>
+        )}
+        <button onClick={remove} disabled={removing} aria-label={`Cancel invite to ${invite.email}`}
+          className="text-xs font-semibold rounded-full px-3 py-1.5 transition disabled:opacity-50"
+          style={{ border: '1px solid var(--border-default)', color: 'var(--status-error)' }}>
+          {removing ? '…' : 'Remove'}
         </button>
-      )}
+      </div>
     </div>
   )
 }
