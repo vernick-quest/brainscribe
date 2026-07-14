@@ -25,7 +25,7 @@ export default async function ParentDashboardPage() {
 
   // Fetch the profile we're viewing as
   const { data: profile } = await service
-    .from('profiles').select('role, full_name, birthdate').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, birthdate, avatar_url').eq('id', targetId).single()
 
   const { data: rels } = await service
     .from('relationships').select('student_id').eq('watcher_id', targetId)
