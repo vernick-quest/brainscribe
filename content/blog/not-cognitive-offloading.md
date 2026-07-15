@@ -5,6 +5,8 @@ summary: "\"BrainScribe is AI, so isn't it just cognitive offloading?\" It's a f
 tag: How it works
 ---
 
+<p style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px">The cognitive offloading series · Part 1 of 3</p>
+
 A thoughtful version of the first question we get is: *BrainScribe is AI — so isn't it just cognitive offloading?* Letting a machine do the mental work your kid's brain should be doing.
 
 It's a fair worry, and a real one. But "it's AI" hides the actual question. A spam filter is AI. A chess engine is AI. Whether something is *cognitive offloading* — whether it takes over the thinking — depends on what it actually does. So the honest question is sharper: **what would cognitive offloading actually be, in writing?**
@@ -49,3 +51,12 @@ That's the part no other tool offers. Every BrainScribe session is a transcript 
 The danger was never that a tool helped. It's *which steps* it took over. BrainScribe takes the mechanical ones — the wall that stops so many kids before they start — and leaves the thinking exactly where it belongs.
 
 [Try a session](/login) — it's free to start.
+
+<div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-default)">
+<p style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">The cognitive offloading series</p>
+<p style="margin:0;line-height:2">
+<strong>1. A calculator for writing — but not for the thinking</strong> <span style="color:var(--text-subtle)">(you're here)</span><br>
+2. <a href="/blog/why-chatbots-cause-cognitive-offloading">Why chatbots cause cognitive offloading</a><br>
+3. <a href="/blog/how-coaching-avoids-cognitive-offloading">How coaching avoids cognitive offloading</a>
+</p>
+</div>
