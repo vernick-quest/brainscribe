@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import ParentDashboard from '@/components/ParentDashboard'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import { getImpersonation } from '@/lib/impersonation'
+import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
 
 export default async function ParentDashboardPage() {
   const supabase = await createClient()
@@ -83,6 +84,10 @@ export default async function ParentDashboardPage() {
     .limit(20)
   const ownSessions = (ownSessionData ?? []).filter(s => !s.is_onboarding)
 
+  // Pending connection invites (e.g. a student invited this parent, who already
+  // had an account). Surfaced as a confirmation banner. Not while impersonating.
+  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+
   return (
     <>
       {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
@@ -94,6 +99,7 @@ export default async function ParentDashboardPage() {
         sessions={sessions}
         teachersBySession={teachersBySession}
         ownSessions={ownSessions}
+        pendingInvites={pendingInvites}
       />
     </>
   )

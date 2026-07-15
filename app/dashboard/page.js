@@ -4,8 +4,10 @@ import { redirect } from 'next/navigation'
 import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
+import PendingInviteBanner from '@/components/PendingInviteBanner'
 import Navbar from '@/components/Navbar'
 import { getImpersonation } from '@/lib/impersonation'
+import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -78,9 +80,16 @@ export default async function DashboardPage() {
   }
   const sessions = sessionsRes.data
 
+  // Pending connection invites addressed to this user — they were invited AFTER
+  // already having an account, so the signup trigger never auto-claimed them and
+  // (if they didn't get/open the email) they'd otherwise stay unlinked. Surfaced
+  // as a confirmation banner; Accept routes through /invite to run the real claim.
+  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+
   // Zero assignments ever → skip the empty list and drop them straight on the
-  // new-assignment page. (Not while impersonating — admin views the real state.)
-  if (!imp && (sessions?.length ?? 0) === 0) redirect('/assignment/new')
+  // new-assignment page. But keep them here if they have a pending invite to
+  // accept. (Not while impersonating — admin views the real state.)
+  if (!imp && (sessions?.length ?? 0) === 0 && pendingInvites.length === 0) redirect('/assignment/new')
 
   // Per-assignment teachers + the watchers who can see this student's work.
   const sessionIds = (sessions ?? []).map(s => s.id)
@@ -106,6 +115,8 @@ export default async function DashboardPage() {
       <Navbar user={user} profile={adminProfile} />
 
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
+        <PendingInviteBanner invites={pendingInvites} />
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-6)' }}>
           <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>
 

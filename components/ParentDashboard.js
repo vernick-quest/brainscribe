@@ -1,6 +1,7 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
+import PendingInviteBanner from '@/components/PendingInviteBanner'
 import Avatar from '@/components/Avatar'
 import AssignmentTeachers from '@/components/AssignmentTeachers'
 import Navbar from '@/components/Navbar'
@@ -147,7 +148,7 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [] }) {
+export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [], pendingInvites = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -156,6 +157,8 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
       <Navbar user={user} profile={profile} />
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
+
+        <PendingInviteBanner invites={pendingInvites} />
 
         {/* Greeting. (The old top-right "Account & children" button is gone — the
             Navbar avatar now links straight to /parent/settings, and adding a
