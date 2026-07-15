@@ -5,6 +5,7 @@ import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
+import Avatar from '@/components/Avatar'
 import Navbar from '@/components/Navbar'
 import { getImpersonation } from '@/lib/impersonation'
 import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
@@ -97,7 +98,7 @@ export default async function DashboardPage() {
     sessionIds.length
       ? service.from('assignment_teachers').select('session_id, teacher_id, profiles(full_name)').in('session_id', sessionIds)
       : Promise.resolve({ data: [] }),
-    service.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name, role)').eq('student_id', targetId),
+    service.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name, role, avatar_url)').eq('student_id', targetId),
   ])
 
   const teachersBySession = {}
@@ -106,6 +107,7 @@ export default async function DashboardPage() {
   }
   const watchers = (watcherRows ?? []).map(w => ({
     name: w.profiles?.full_name ?? 'Someone', role: w.profiles?.role ?? 'watcher',
+    avatarUrl: w.profiles?.avatar_url ?? null,
   }))
 
   return (
@@ -164,13 +166,23 @@ export default async function DashboardPage() {
           </a>
         )}
 
-        {/* Watcher line — who can see this student's work */}
+        {/* Watcher line — who can see this student's work, shown with their
+            avatars (mirrors the child avatar the parent sees on their side). */}
         {watchers.length > 0 && (
-          <div className="inline-flex items-center gap-2" style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', marginBottom: 'var(--space-5)' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-            {watchers.map(w => w.name).join(' and ')} can see your work
+          <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 'var(--space-5)' }}>
+            <div className="flex items-center">
+              {watchers.map((w, i) => (
+                <span key={i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: watchers.length - i }}>
+                  {/* Watchers are parents/teachers — inherently 13+, so pass
+                      '13plus' to surface their photo (never a child's). */}
+                  <Avatar name={w.name} avatarUrl={w.avatarUrl} ageBracket="13plus" size={24}
+                    style={{ border: '2px solid var(--bg-page)' }} />
+                </span>
+              ))}
+            </div>
+            <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>
+              {watchers.map(w => w.name).join(' and ')} can see your work
+            </span>
           </div>
         )}
 
