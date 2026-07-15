@@ -1,14 +1,20 @@
 import { Lora } from 'next/font/google'
 import { notFound } from 'next/navigation'
-import { getAllPosts, getPostBySlug } from '@/lib/blog'
+import { getAllSlugs, getPostBySlug } from '@/lib/blog'
 import { CANONICAL_URL } from '@/lib/site'
 import SiteHeader from '@/components/SiteHeader'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
 const serif = lora.style.fontFamily
 
+// ISR: re-run the publish-date gate periodically so a scheduled post reveals on
+// its date without a manual rebuild. generateStaticParams includes EVERY slug
+// (even future-dated) so each is a known route that 404s until its date, then
+// re-generates to reveal the post.
+export const revalidate = 3600
+
 export function generateStaticParams() {
-  return getAllPosts().map(p => ({ slug: p.slug }))
+  return getAllSlugs().map(slug => ({ slug }))
 }
 
 export async function generateMetadata({ params }) {

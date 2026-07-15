@@ -10,6 +10,10 @@ export const metadata = {
   description: "What's new in BrainScribe — features, fixes, and the thinking behind them.",
 }
 
+// ISR: re-run the publish-date gate periodically so a scheduled post appears on
+// its date without a manual rebuild (auto-reveal, no cron/deploy-hook needed).
+export const revalidate = 3600
+
 function formatDate(d) {
   if (!d) return ''
   const date = new Date(d + 'T00:00:00')
