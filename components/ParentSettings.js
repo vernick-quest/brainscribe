@@ -160,13 +160,24 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
               Manage your details and the children linked to your account.
             </p>
           </div>
-          <a href="/parent"
-            className="shrink-0 text-xs font-semibold rounded-full px-3 py-1.5 transition mt-1"
-            style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
-            ← Dashboard
-          </a>
+          <div className="flex items-center gap-2 shrink-0 mt-1">
+            <a href="/parent"
+              className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
+              style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+              ← Dashboard
+            </a>
+            {!impersonating && (
+              <form action="/api/auth/signout" method="POST">
+                <button type="submit"
+                  className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--status-error)', background: 'transparent' }}>
+                  Sign out
+                </button>
+              </form>
+            )}
+          </div>
         </div>
 
         {/* Account */}
@@ -269,21 +280,6 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             </>
           )}
         </section>
-
-        {/* Sign out — lives here since the Navbar avatar links straight to this
-            account page. Hidden while an admin is impersonating (it would sign
-            out the admin, not the impersonated parent). */}
-        {!impersonating && (
-          <div>
-            <form action="/api/auth/signout" method="POST">
-              <button type="submit"
-                className="text-sm font-semibold rounded-full px-4 py-2 transition"
-                style={{ color: 'var(--status-error)', border: '1px solid var(--border-default)', backgroundColor: 'transparent' }}>
-                Sign out
-              </button>
-            </form>
-          </div>
-        )}
 
       </main>
     </div>
