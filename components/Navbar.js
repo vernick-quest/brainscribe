@@ -1,11 +1,28 @@
 'use client'
 
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/Avatar'
 
+// The breadcrumb word shown next to the logo — reflects the section of the site
+// the current URL is in. Empty string → show just the logo.
+function sectionLabel(pathname) {
+  if (!pathname) return ''
+  if (pathname.startsWith('/parent/settings')) return 'Account & children'
+  if (pathname === '/parent' || pathname === '/teacher') return 'Dashboard'
+  if (pathname === '/dashboard') return 'Assignments'
+  if (pathname === '/profile') return 'Profile'
+  if (pathname.startsWith('/gym')) return 'Skill Studio'
+  if (pathname.startsWith('/assignment')) return 'Assignment'
+  if (pathname.startsWith('/transcript')) return 'Transcript'
+  if (pathname.startsWith('/admin')) return 'Admin'
+  return ''
+}
+
 export default function Navbar({ user, profile }) {
   const renderedUserId = user?.id ?? null
+  const section = sectionLabel(usePathname())
 
   const isParent = profile?.role === 'parent'
   const homeHref = profile?.role === 'teacher' ? '/teacher'
@@ -65,16 +82,19 @@ export default function Navbar({ user, profile }) {
         borderBottom: '1px solid var(--border-default)',
       }}>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3">
         <a href={homeHref}>
           <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
         </a>
-        {/* Writing Gym — a distinct mode from Assignments; students only. */}
-        {profile?.role === 'student' && (
-          <a href="/gym" className="hidden sm:inline transition hover:opacity-80"
-            style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-body)' }}>
-            Skill Studio
-          </a>
+        {/* Section breadcrumb — the word next to the logo names the section the
+            current URL is in (Profile, Assignments, Skill Studio, …). */}
+        {section && (
+          <span className="hidden sm:flex items-center gap-3">
+            <span aria-hidden="true" style={{ color: 'var(--border-strong)' }}>|</span>
+            <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-muted)' }}>
+              {section}
+            </span>
+          </span>
         )}
       </div>
 
