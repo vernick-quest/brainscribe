@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import Avatar from '@/components/Avatar'
 import ProfileForm from '@/components/ProfileForm'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import InviteParentForm from '@/components/InviteParentForm'
@@ -32,9 +34,12 @@ export default async function ProfilePage() {
     isStudent
       ? supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id).eq('status', 'complete')
       : Promise.resolve({ count: 0 }),
-    // Fetch parents connected to this student
+    // Fetch parents connected to this student. Service client: RLS lets the
+    // student read the relationship row but NOT the watcher's profile — and the
+    // student is entitled to see who their linked parent is (name + photo). Same
+    // rationale as the parent seeing teacher names on their dashboard.
     isStudent
-      ? supabase.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name)').eq('student_id', user.id)
+      ? createServiceClient().from('relationships').select('watcher_id, created_at, profiles!relationships_watcher_id_fkey(full_name, avatar_url)').eq('student_id', user.id)
       : Promise.resolve({ data: [] }),
     // Count sessions by subject
     isStudent
@@ -123,16 +128,21 @@ export default async function ProfilePage() {
               <div className="space-y-3">
                 {parents.map(p => {
                   const name = p.profiles?.full_name ?? 'Parent'
-                  const initial = name[0]?.toUpperCase() ?? 'P'
+                  const linked = p.created_at
+                    ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : null
                   return (
                     <div key={p.watcher_id} className="flex items-center gap-3 rounded-xl px-4 py-3"
                       style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
-                        style={{ backgroundColor: 'var(--navy-100)', color: 'var(--navy-700)' }}>
-                        {initial}
+                      {/* Parents are adults → '13plus' surfaces their photo. */}
+                      <Avatar name={name} avatarUrl={p.profiles?.avatar_url} ageBracket="13plus" size={36} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>{name}</p>
+                        {linked && (
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Linked {linked}</p>
+                        )}
                       </div>
-                      <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-strong)' }}>{name}</span>
-                      <span className="text-xs rounded-full px-2.5 py-1 font-medium"
+                      <span className="text-xs rounded-full px-2.5 py-1 font-medium shrink-0"
                         style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
                         Connected
                       </span>
