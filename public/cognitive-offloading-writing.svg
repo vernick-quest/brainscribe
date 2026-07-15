@@ -1,0 +1,83 @@
+<svg viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Where cognitive offloading actually happens in writing</title>
+  <desc id="desc">Writing has six steps. Steps 1 to 4 (have an idea, choose what matters, put it in order, turn it into words) are the thinking. Steps 5 and 6 (get it on the page, fix grammar) are the mechanics. Handing over the thinking steps is cognitive offloading — what a chatbot that writes the essay does. Handing over only the mechanics is what a calculator, spell-check, and BrainScribe do.</desc>
+  <style>
+    text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+    .h{fill:#14385A;font-weight:700}
+    .eyebrow{fill:#1D4D78;font-weight:700;letter-spacing:1.4px}
+    .eyebrowO{fill:#9A4A0C;font-weight:700;letter-spacing:1.4px}
+    .num{fill:#14385A;font-weight:700}
+    .lbl{fill:#14385A;font-weight:600}
+    .body{fill:#14385A}
+    .muted{fill:#6B6353}
+  </style>
+
+  <rect x="1" y="1" width="758" height="418" rx="16" fill="#FFFFFF" stroke="#E7DECB"/>
+
+  <!-- title -->
+  <text x="380" y="40" text-anchor="middle" class="h" font-size="20">Where does cognitive offloading actually happen in writing?</text>
+
+  <!-- group labels + brackets -->
+  <text x="261" y="82" text-anchor="middle" class="eyebrow" font-size="12">THE THINKING · YOUR KID'S JOB</text>
+  <path d="M30 92 H492" stroke="#B7C7D6" stroke-width="1.5"/>
+  <path d="M30 92 V86 M492 92 V86" stroke="#B7C7D6" stroke-width="1.5"/>
+  <text x="615" y="82" text-anchor="middle" class="eyebrowO" font-size="12">THE MECHANICS · A TOOL CAN HELP</text>
+  <path d="M502 92 H728" stroke="#E2A86A" stroke-width="1.5"/>
+  <path d="M502 92 V86 M728 92 V86" stroke="#E2A86A" stroke-width="1.5"/>
+
+  <!-- step cards -->
+  <!-- thinking cards (navy tint) -->
+  <g>
+    <rect x="30"  y="104" width="108" height="104" rx="12" fill="#EEF4F9" stroke="#D6E3EE"/>
+    <rect x="148" y="104" width="108" height="104" rx="12" fill="#EEF4F9" stroke="#D6E3EE"/>
+    <rect x="266" y="104" width="108" height="104" rx="12" fill="#EEF4F9" stroke="#D6E3EE"/>
+    <rect x="384" y="104" width="108" height="104" rx="12" fill="#EEF4F9" stroke="#D6E3EE"/>
+    <!-- mechanics cards (orange tint) -->
+    <rect x="502" y="104" width="108" height="104" rx="12" fill="#FEF6EC" stroke="#F6DCBB"/>
+    <rect x="620" y="104" width="108" height="104" rx="12" fill="#FEF6EC" stroke="#F6DCBB"/>
+  </g>
+
+  <!-- card numbers + labels -->
+  <g font-size="12.5" text-anchor="middle">
+    <text x="84"  y="136" class="num" font-size="15">1</text>
+    <text x="84"  y="164" class="lbl">Have an</text><text x="84" y="181" class="lbl">idea</text>
+    <text x="202" y="136" class="num" font-size="15">2</text>
+    <text x="202" y="164" class="lbl">Choose what</text><text x="202" y="181" class="lbl">matters</text>
+    <text x="320" y="136" class="num" font-size="15">3</text>
+    <text x="320" y="164" class="lbl">Put it in</text><text x="320" y="181" class="lbl">order</text>
+    <text x="438" y="136" class="num" font-size="15">4</text>
+    <text x="438" y="164" class="lbl">Turn it</text><text x="438" y="181" class="lbl">into words</text>
+    <text x="556" y="136" class="num" font-size="15">5</text>
+    <text x="556" y="164" class="lbl">Get it on</text><text x="556" y="181" class="lbl">the page</text>
+    <text x="674" y="136" class="num" font-size="15">6</text>
+    <text x="674" y="164" class="lbl">Fix</text><text x="674" y="181" class="lbl">grammar</text>
+  </g>
+
+  <!-- divider between thinking and mechanics -->
+  <path d="M497 96 V344" stroke="#CBB994" stroke-width="1.5" stroke-dasharray="4 5"/>
+
+  <!-- definition blocks -->
+  <!-- left: the offloading zone -->
+  <g>
+    <rect x="30" y="236" width="462" height="108" rx="12" fill="#FBE6E1"/>
+    <rect x="30" y="236" width="5" height="108" rx="2.5" fill="#D1503C"/>
+    <text x="52" y="266" font-size="15" font-weight="700" fill="#B23A28">This is cognitive offloading.</text>
+    <text x="52" y="290" class="body" font-size="13">Take over the thinking (steps 1–4) and the learning goes</text>
+    <text x="52" y="309" class="body" font-size="13">with it. That's what a chatbot does when it writes the essay</text>
+    <text x="52" y="328" class="body" font-size="13">for a student from a one-line prompt.</text>
+  </g>
+  <!-- right: the mechanics zone -->
+  <g>
+    <rect x="502" y="236" width="226" height="108" rx="12" fill="#FCEAD0"/>
+    <rect x="502" y="236" width="5" height="108" rx="2.5" fill="#F0811E"/>
+    <text x="524" y="266" font-size="15" font-weight="700" fill="#9A4A0C">Like a calculator.</text>
+    <text x="524" y="289" class="body" font-size="12.5">Take over only the</text>
+    <text x="524" y="306" class="body" font-size="12.5">mechanics (5–6) and you've</text>
+    <text x="524" y="323" class="body" font-size="12.5">done what a calculator does.</text>
+    <text x="524" y="341" font-size="12.5" font-weight="700" fill="#9A4A0C">BrainScribe lands here.</text>
+  </g>
+
+  <!-- bottom caption -->
+  <text x="380" y="384" text-anchor="middle" class="muted" font-size="13" font-style="italic">The danger was never that a tool helped — it's which steps it took over.</text>
+  <text x="380" y="405" text-anchor="middle" class="muted" font-size="11">brainscribe.io</text>
+</svg>
