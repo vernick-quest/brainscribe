@@ -97,7 +97,15 @@ export async function GET(request) {
     // data-minimization). Migration 019 nulls existing under-13 avatars; this
     // stops a fresh photo from re-accumulating on every login. avatar_url stays
     // client-writable (not revoked by 020), so the user-scoped client is fine here.
+    // Google puts the photo in different places depending on the account/flow:
+    // user_metadata.avatar_url|picture, or the raw provider payload in
+    // identities[].identity_data. Read all of them so a photo isn't missed just
+    // because it landed in identity_data instead of user_metadata.
+    const googleIdentity = user.identities?.find(i => i.provider === 'google')?.identity_data
     const avatarUrl = user.user_metadata?.avatar_url
+      ?? user.user_metadata?.picture
+      ?? googleIdentity?.avatar_url
+      ?? googleIdentity?.picture
     if (avatarUrl && profile?.age_bracket !== 'under13') {
       await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id)
     }

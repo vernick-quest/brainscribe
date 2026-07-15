@@ -12,7 +12,12 @@ function LoginContent() {
   async function signInWithGoogle() {
     const supabase = createClient()
     const redirectTo = `${window.location.origin}/api/auth/callback${inviteToken ? `?next=/invite?token=${inviteToken}` : ''}`
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })
+    // Explicitly request the `profile` scope so Google returns the display name
+    // AND the profile picture. (Without it, some accounts come back with no photo.)
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, scopes: 'openid email profile' },
+    })
   }
 
   return (
