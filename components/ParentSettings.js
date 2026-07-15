@@ -270,6 +270,21 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
           )}
         </section>
 
+        {/* Sign out — lives here since the Navbar avatar links straight to this
+            account page. Hidden while an admin is impersonating (it would sign
+            out the admin, not the impersonated parent). */}
+        {!impersonating && (
+          <div>
+            <form action="/api/auth/signout" method="POST">
+              <button type="submit"
+                className="text-sm font-semibold rounded-full px-4 py-2 transition"
+                style={{ color: 'var(--status-error)', border: '1px solid var(--border-default)', backgroundColor: 'transparent' }}>
+                Sign out
+              </button>
+            </form>
+          </div>
+        )}
+
       </main>
     </div>
   )

@@ -67,18 +67,19 @@ export default function YourWritingCard({ ownSessions = [] }) {
   const overflow = ownSessions.length - PREVIEW_COUNT
 
   return (
-    <section className="rounded-2xl p-5"
-      style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
-      <div className="flex items-center justify-between gap-3">
+    // No boxed wrapper — this reads as a plain titled list, matching the student
+    // "Your assignments" page (title + primary action + cards on the page bg).
+    <section>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Your writing</p>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-strong)', margin: 0 }}>Your writing</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Want to write something yourself? Same coaches, same flow.
           </p>
         </div>
         <a href="/write"
-          className="text-sm font-semibold rounded-full px-4 py-2 text-white shrink-0 transition"
-          style={{ backgroundColor: 'var(--accent)' }}>
+          className="shrink-0 inline-flex items-center gap-1.5 transition hover:opacity-90"
+          style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '10px 18px' }}>
           Write your own →
         </a>
       </div>

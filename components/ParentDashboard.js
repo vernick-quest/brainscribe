@@ -157,27 +157,20 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
 
-        {/* Greeting */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
-              Hey, {firstName}!
-            </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              {children.length === 0
-                ? 'Connect with your child to see their progress.'
-                : children.length === 1
-                  ? `Following ${children[0].full_name?.split(' ')[0] ?? 'your student'}'s writing.`
-                  : `Following ${children.length} students.`}
-            </p>
-          </div>
-          <a href="/parent/settings"
-            className="shrink-0 text-xs font-semibold rounded-full px-3 py-1.5 transition mt-1"
-            style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
-            Account &amp; children
-          </a>
+        {/* Greeting. (The old top-right "Account & children" button is gone — the
+            Navbar avatar now links straight to /parent/settings, and adding a
+            child lives at the bottom of the page.) */}
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)' }}>
+            Hey, {firstName}!
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            {children.length === 0
+              ? 'Connect with your child to see their progress.'
+              : children.length === 1
+                ? `Following ${children[0].full_name?.split(' ')[0] ?? 'your student'}'s writing.`
+                : `Following ${children.length} students.`}
+          </p>
         </div>
 
         {/* Your own writing — parents can use the coaches too */}
@@ -191,6 +184,21 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
           <ChildBlock key={child.id} child={child} sessions={sessions}
             teachersBySession={teachersBySession} />
         ))}
+
+        {/* Add-child affordance stays at the bottom. When there are 0 children the
+            EmptyState above already carries it; once they have at least one, offer
+            "Add another child" here. */}
+        {children.length > 0 && (
+          <div className="flex justify-center pt-1">
+            <a href="/parent/settings"
+              className="text-sm font-semibold rounded-full px-4 py-2 transition"
+              style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+              + Add another child
+            </a>
+          </div>
+        )}
 
       </main>
     </div>

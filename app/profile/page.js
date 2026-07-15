@@ -216,6 +216,24 @@ export default async function ProfilePage() {
           </>
         )}
 
+        {/* Account actions — sign out (and Admin panel for admins). Lives here
+            because the Navbar avatar now links straight to this page. */}
+        <div className="rounded-2xl p-6 flex flex-wrap items-center gap-4"
+          style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+          <form action="/api/auth/signout" method="POST">
+            <button type="submit"
+              className="text-sm font-semibold rounded-full px-4 py-2 transition"
+              style={{ color: 'var(--status-error)', border: '1px solid var(--border-default)', backgroundColor: 'transparent' }}>
+              Sign out
+            </button>
+          </form>
+          {profile?.role === 'admin' && (
+            <a href="/admin" className="text-sm font-semibold" style={{ color: 'var(--text-link)' }}>
+              Admin panel ↗
+            </a>
+          )}
+        </div>
+
       </main>
     </div>
   )
