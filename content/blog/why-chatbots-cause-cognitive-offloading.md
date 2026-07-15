@@ -1,6 +1,6 @@
 ---
 title: "Why chatbots cause cognitive offloading — and detectors won't catch it"
-date: 2026-07-15
+date: 2026-07-20
 summary: A general chatbot will write a kid's whole essay from a one-line prompt — cognitive offloading at the level of the thinking itself. Here's why "just tell them not to" fails, why AI detectors backfire, and what actually gets lost.
 tag: How it works
 ---

@@ -1,6 +1,6 @@
 ---
 title: "A calculator for writing — but not for the thinking"
-date: 2026-07-13
+date: 2026-07-16
 summary: "\"BrainScribe is AI, so isn't it just cognitive offloading?\" It's a fair question. But to answer it honestly you have to ask a sharper one first: what would cognitive offloading actually be, in writing? Break writing into its steps and the answer gets clear."
 tag: How it works
 ---

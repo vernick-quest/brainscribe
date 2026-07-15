@@ -1,6 +1,6 @@
 ---
 title: "How coaching avoids cognitive offloading"
-date: 2026-07-17
+date: 2026-07-23
 summary: If a chatbot writing the essay is cognitive offloading, what's the opposite? A coach that can't do the thinking for a kid — only draw it out and help get it down. Here's how that's built, and why a good question is the opposite of offloading.
 tag: How it works
 ---
