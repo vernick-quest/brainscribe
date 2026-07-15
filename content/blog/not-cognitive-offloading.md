@@ -7,7 +7,7 @@ tag: How it works
 
 A thoughtful version of the first question we get is: *BrainScribe is AI — so isn't it just cognitive offloading?* Letting a machine do the mental work your kid's brain should be doing.
 
-It's a fair worry, and a real one. But "it's AI" hides the actual question. A spam filter is AI. A chess engine is AI. Whether something offloads the *thinking* depends on what it does — so the honest question is sharper: **what would cognitive offloading actually be, in writing?**
+It's a fair worry, and a real one. But "it's AI" hides the actual question. A spam filter is AI. A chess engine is AI. Whether something is *cognitive offloading* — whether it takes over the thinking — depends on what it actually does. So the honest question is sharper: **what would cognitive offloading actually be, in writing?**
 
 To answer that, you have to notice that "writing" isn't one thing.
 
@@ -22,7 +22,7 @@ When we tell a kid to "go write," we're really asking them to do six things in a
 
 The first four steps are the thinking. The last two are the mechanics. And for a lot of kids — especially those with ADHD or dysgraphia — steps 5 and 6 are exactly where everything jams. They have plenty to say. Getting it onto the page is the wall.
 
-## So what's the offloading, really?
+## So what counts as cognitive offloading, really?
 
 Cognitive offloading in writing is handing over the **thinking** — steps 1 through 4. That's the part the research actually worries about, and it's exactly what happens when a kid asks a chatbot to write the essay: the machine has the idea, decides what matters, structures it, and words it. The student did none of the part that makes them a writer.
 
