@@ -14,9 +14,10 @@ function sectionLabel(pathname) {
   if (pathname === '/dashboard') return 'Assignments'
   if (pathname === '/profile') return 'Profile'
   if (pathname.startsWith('/gym')) return 'Skill Studio'
-  if (pathname.startsWith('/assignment')) return 'Assignment'
-  if (pathname.startsWith('/transcript')) return 'Transcript'
   if (pathname.startsWith('/admin')) return 'Admin'
+  // Individual assignment/transcript pages already have their own in-page back
+  // link (e.g. "← Assignments"), so no breadcrumb here — a "Assignment" crumb
+  // next to an "Assignments" back arrow just reads as a confusing duplicate.
   return ''
 }
 
