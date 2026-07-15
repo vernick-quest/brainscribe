@@ -2,10 +2,13 @@ import { getAllPosts } from '@/lib/blog'
 import { CANONICAL_URL } from '@/lib/site'
 import { USE_CASE_SLUGS } from '@/lib/useCases'
 
-// Generates /sitemap.xml at build time. Lists only the publicly indexable
-// marketing surfaces — the app surfaces (/write, /dashboard, …) are kept out of
-// the index via app/robots.js. Post `lastModified` comes from each post's
-// frontmatter date, so this stays statically cached (no request-time API).
+// Generates /sitemap.xml. Lists only the publicly indexable marketing surfaces —
+// the app surfaces (/write, /dashboard, …) are kept out of the index via
+// app/robots.js. Post `lastModified` comes from each post's frontmatter date.
+// ISR (revalidate) so a SCHEDULED post enters the sitemap on its publish date —
+// matching the ISR blog pages — so Google discovers it promptly without a rebuild.
+export const revalidate = 3600
+
 export default function sitemap() {
   const posts = getAllPosts()
   const latestPostDate = posts[0]?.date || undefined
