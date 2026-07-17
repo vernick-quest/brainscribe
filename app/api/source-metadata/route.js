@@ -50,7 +50,16 @@ class FetchError extends Error {
 // server dribbling bytes just under the inactivity timeout).
 function requestOnce(urlObj, pinnedIp, budgetMs = TIMEOUT_MS) {
   const mod = urlObj.protocol === 'https:' ? https : http
-  return new Promise((resolve, reject) => {
+  const hardMs = Math.max(500, Math.min(TIMEOUT_MS, budgetMs))
+  return new Promise((resolve0, reject0) => {
+    // HARD wall-clock kill. `timeout:` below is socket-INACTIVITY only — a slow
+    // server dribbling one byte per (timeout−ε) stays alive indefinitely, and it
+    // doesn't cover the header phase at all. This timer destroys the request after
+    // the budget no matter what, and is cleared the moment the promise settles.
+    let killer = null
+    const done = () => { if (killer) { clearTimeout(killer); killer = null } }
+    const resolve = v => { done(); resolve0(v) }
+    const reject = e => { done(); reject0(e) }
     const req = mod.request(urlObj, {
       method: 'GET',
       // Pin the connection to the pre-validated IP — DNS can't be re-resolved to an
@@ -66,7 +75,7 @@ function requestOnce(urlObj, pinnedIp, budgetMs = TIMEOUT_MS) {
         'Accept-Language': 'en',
         // no Cookie / Authorization — nothing of ours is ever forwarded
       },
-      timeout: Math.max(500, Math.min(TIMEOUT_MS, budgetMs)),
+      timeout: hardMs,
     }, res => {
       const status = res.statusCode || 0
       // Redirect: hand the Location back up; don't read the body.
@@ -91,6 +100,7 @@ function requestOnce(urlObj, pinnedIp, budgetMs = TIMEOUT_MS) {
     })
     req.on('timeout', () => { req.destroy(new FetchError('timeout')) })
     req.on('error', err => reject(err instanceof FetchError ? err : new FetchError('request-failed')))
+    killer = setTimeout(() => req.destroy(new FetchError('timeout')), hardMs)
     req.end()
   })
 }
