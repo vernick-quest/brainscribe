@@ -264,22 +264,24 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
               </p>
             </div>
           ) : (
-            <>
-              {atCap ? (
-                <div className="flex items-center gap-2 rounded-2xl px-5 py-4"
-                  style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-                  <Icon name="alert" size={16} style={{ color: 'var(--text-subtle)' }} />
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    You've reached the maximum of {maxChildren} linked children. Unlink one to add another.
-                  </p>
-                </div>
-              ) : (
-                <AddChildForm />
-              )}
-              <AddCoParentForm />
-            </>
+            atCap ? (
+              <div className="flex items-center gap-2 rounded-2xl px-5 py-4"
+                style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+                <Icon name="alert" size={16} style={{ color: 'var(--text-subtle)' }} />
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  You've reached the maximum of {maxChildren} linked children. Unlink one to add another.
+                </p>
+              </div>
+            ) : (
+              <AddChildForm />
+            )
           )}
         </section>
+
+        {/* Co-parent invite — its OWN box, kept out of the "Your children" card
+            since inviting a co-parent isn't managing children. Hidden for a
+            co-parent (they can't invite another parent). */}
+        {!isCoParent && <AddCoParentForm />}
 
       </main>
     </div>
