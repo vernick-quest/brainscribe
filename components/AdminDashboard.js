@@ -337,6 +337,52 @@ function DemoDataControl({ seeded }) {
   )
 }
 
+// Maintenance: re-analyze completed essays that never got a writing profile
+// (historical fire-and-forget misses). Idempotent — POSTs to the admin-gated
+// backfill sweep and reports how many it fixed.
+function BackfillWritingProfiles() {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  async function run() {
+    setBusy(true); setError(''); setResult(null)
+    try {
+      const res = await fetch('/api/admin/backfill-writing-profiles', { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); setBusy(false); return }
+      setResult(json)
+    } catch { setError('Network error.') }
+    setBusy(false)
+  }
+
+  return (
+    <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+      style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Backfill writing profiles</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          Re-analyze completed essays that are missing a writing profile (historical accumulation misses).
+          Idempotent — safe to run anytime.
+        </p>
+        {result && (
+          <p className="text-xs mt-1" style={{ color: 'var(--status-success)' }}>
+            Scanned {result.scanned} · backfilled {result.backfilled}.
+          </p>
+        )}
+        {error && <p className="text-xs mt-1" style={{ color: 'var(--status-error)' }}>{error}</p>}
+      </div>
+      <div className="shrink-0">
+        <button onClick={run} disabled={busy}
+          className="text-xs font-bold rounded-full px-4 py-2 disabled:opacity-60"
+          style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+          {busy ? 'Running…' : 'Run backfill'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Transcript guardrail audit ────────────────────────────────
 // Coach-only trust-and-safety review (brainscribe-transcript-audit). "Run audit"
 // samples N never-audited completed transcripts server-side; a Sonnet judge flags
