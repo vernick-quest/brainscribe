@@ -40,7 +40,7 @@ export default async function ParentDashboardPage() {
     const [{ data: profileData }, { data: sessionData }] = await Promise.all([
       service.from('profiles').select('id, full_name, email, avatar_url, age_bracket, birthdate').in('id', studentIds),
       service.from('sessions')
-        .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label')
+        .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, writing_profile, subject, subject_custom_label, requirements')
         .in('student_id', studentIds)
         .order('updated_at', { ascending: false })
         .limit(100),

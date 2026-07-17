@@ -4,70 +4,9 @@ import { useState, useRef, useEffect } from 'react'
 import Navbar from '@/components/Navbar'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
 import YourWritingCard from '@/components/YourWritingCard'
-import { PersonaAvatar } from '@/lib/personas'
-import { getSubject } from '@/lib/subjects'
-import SubjectIcon from '@/components/SubjectIcon'
+import SessionsList from '@/components/SessionsList'
 import Icon from '@/components/Icon'
 import Avatar from '@/components/Avatar'
-
-
-function formatDate(str) {
-  if (!str) return ''
-  const d = new Date(str)
-  const now = new Date()
-  const days = Math.floor((now - d) / 86400000)
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Yesterday'
-  if (days < 7) return `${days} days ago`
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// ── Assignment row ────────────────────────────────────────────
-function AssignmentRow({ session }) {
-  const isDone = session.status === 'complete'
-  const label = session.title || session.assignment_text?.slice(0, 72) + (session.assignment_text?.length > 72 ? '…' : '')
-  const subjectInfo = session.subject && session.subject !== 'unspecified' ? getSubject(session.subject) : null
-  const subjectLabel = session.subject === 'other' ? (session.subject_custom_label || 'Other') : subjectInfo?.label
-
-  return (
-    <a
-      href={`/assignment/${session.id}`}
-      className="flex items-center gap-4 rounded-2xl px-5 py-4 transition group"
-      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.borderColor = 'var(--border-strong)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-xs)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
-    >
-      <PersonaAvatar personaId={session.persona} size={32} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
-        <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-          {subjectInfo && (
-            <>
-              <SubjectIcon value={session.subject} size={12} style={{ color: 'var(--text-muted)' }} />
-              <span>{subjectLabel}</span>
-              <span style={{ color: 'var(--border-strong)' }}>·</span>
-            </>
-          )}
-          {formatDate(session.updated_at ?? session.created_at)}
-        </p>
-      </div>
-
-      <span
-        className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1"
-        style={isDone
-          ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
-          : { backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }
-        }
-      >
-        {isDone ? '✓ Done' : 'In progress'}
-      </span>
-
-      <span className="shrink-0 text-sm transition-transform group-hover:translate-x-0.5"
-        style={{ color: 'var(--text-subtle)' }}>→</span>
-    </a>
-  )
-}
 
 // ── Notification bell + panel ─────────────────────────────────
 function timeAgo(str) {
@@ -223,7 +162,10 @@ function StudentBlock({ student, sessions, defaultOpen }) {
         </svg>
       </button>
 
-      {/* Body — assignments + profile link */}
+      {/* Body — assignments + profile link. SAME list UI the student sees
+          (SessionsList), read-only: canManage=false, and watcher clicks route to
+          the tailored teacher read-only view (/assignment → TeacherAssignmentView).
+          No teacher chips ({} teachersBySession) — the viewer IS the teacher. */}
       {open && (
         <div className="p-5 space-y-3">
           {studentSessions.length === 0 ? (
@@ -231,7 +173,7 @@ function StudentBlock({ student, sessions, defaultOpen }) {
               No assignments yet.
             </p>
           ) : (
-            studentSessions.map(session => <AssignmentRow key={session.id} session={session} />)
+            <SessionsList sessions={studentSessions} teachersBySession={{}} canManage={false} watcherHref="/assignment" />
           )}
           <a href={`/profile/${student.id}`}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 transition"

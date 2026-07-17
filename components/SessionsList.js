@@ -62,7 +62,7 @@ function MenuItem({ label, color = 'var(--text-body)', icon, onClick }) {
   )
 }
 
-function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
+function AssignmentRow({ session, teachers, canManage, watcherHref = '/transcript', onDeleted, onRenamed }) {
   const router = useRouter()
   const meta = getPersona(session.persona)
   const [menu, setMenu] = useState(false)
@@ -92,10 +92,13 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
   const subjectLabel = session.subject === 'other' ? (session.subject_custom_label || 'Other') : subjectInfo?.label
 
   function close() { setMenu(false); setPicking(false) }
-  // Completed assignments open the read-only transcript (the canonical end-state
-  // page); in-progress ones open the active-writing view.
+  // The writer (canManage) opens the active-writing view for in-progress work and
+  // the read-only transcript for completed work. A WATCHER (!canManage) never
+  // enters the writing view; it lands on `watcherHref/<id>` — parents on the
+  // transcript (default), teachers on their tailored /assignment read-only view.
   function open() {
-    router.push(session.status === 'complete' ? `/transcript/${session.id}` : `/assignment/${session.id}`)
+    const writing = canManage && session.status !== 'complete'
+    router.push(writing ? `/assignment/${session.id}` : `${watcherHref}/${session.id}`)
   }
 
   async function saveRename() {
@@ -247,14 +250,17 @@ function AssignmentRow({ session, teachers, canManage, onDeleted, onRenamed }) {
 // is kept behind this flag so it can be switched on when plans land.
 const SHOW_USAGE_METER = false
 
-export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true }) {
+export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true, watcherHref = '/transcript' }) {
   const [sessions, setSessions] = useState(initial)
-  const [filter, setFilter] = useState('all')
+  // Two tabs only (no "All"). Default to "In progress" when there's active work,
+  // else "Done" — so the default view is never empty (e.g. a parent viewing a
+  // child whose assignments are all complete lands on Done).
+  const [filter, setFilter] = useState(() => initial.some(s => s.status !== 'complete') ? 'active' : 'complete')
 
   const visible = sessions.filter(s =>
-    filter === 'all' ? true : filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
+    filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
   )
-  const filters = [['all', 'All'], ['active', 'In progress'], ['complete', 'Done']]
+  const filters = [['active', 'In progress'], ['complete', 'Done']]
 
   return (
     <section>
@@ -298,6 +304,7 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
             session={s}
             teachers={teachersBySession[s.id]}
             canManage={canManage}
+            watcherHref={watcherHref}
             onDeleted={id => setSessions(prev => prev.filter(x => x.id !== id))}
             onRenamed={(id, title) => setSessions(prev => prev.map(x => x.id === id ? { ...x, title } : x))}
           />

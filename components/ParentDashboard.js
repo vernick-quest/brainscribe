@@ -3,71 +3,9 @@
 import YourWritingCard from '@/components/YourWritingCard'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
 import Avatar from '@/components/Avatar'
-import AssignmentTeachers from '@/components/AssignmentTeachers'
 import Navbar from '@/components/Navbar'
-import { PersonaAvatar } from '@/lib/personas'
-import { getSubject } from '@/lib/subjects'
-import SubjectIcon from '@/components/SubjectIcon'
+import SessionsList from '@/components/SessionsList'
 import Icon from '@/components/Icon'
-
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diffDays = Math.floor((now - d) / 86400000)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// ── Assignment card ───────────────────────────────────────────
-function AssignmentCard({ session }) {
-  const label = session.title || session.assignment_text?.slice(0, 70) + (session.assignment_text?.length > 70 ? '…' : '')
-  const isDone = session.status === 'complete'
-  const subjectInfo = session.subject && session.subject !== 'unspecified' ? getSubject(session.subject) : null
-  const subjectLabel = session.subject === 'other' ? (session.subject_custom_label || 'Other') : subjectInfo?.label
-
-  return (
-    <a
-      href={`/transcript/${session.id}`}
-      className="flex items-center gap-4 rounded-2xl px-5 py-4 transition group"
-      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.borderColor = 'var(--border-strong)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-xs)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
-    >
-      <PersonaAvatar personaId={session.persona} size={32} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
-        <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-          {subjectInfo && (
-            <>
-              <SubjectIcon value={session.subject} size={12} style={{ color: 'var(--text-muted)' }} />
-              <span>{subjectLabel}</span>
-              <span style={{ color: 'var(--border-strong)' }}>·</span>
-            </>
-          )}
-          {formatDate(session.updated_at ?? session.created_at)}
-        </p>
-      </div>
-
-      <span
-        className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1"
-        style={isDone
-          ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
-          : { backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }
-        }
-      >
-        {isDone ? '✓ Done' : 'In progress'}
-      </span>
-
-      <span className="shrink-0 text-sm transition-transform group-hover:translate-x-0.5"
-        style={{ color: 'var(--text-subtle)' }}>→</span>
-    </a>
-  )
-}
 
 
 // ── No children linked ────────────────────────────────────────
@@ -128,19 +66,16 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
         </a>
       </div>
 
-      {/* Assignments */}
-      <div className="p-5 space-y-3">
+      {/* Assignments — SAME list UI the student sees (SessionsList), read-only
+          because a parent is a watcher (canManage=false → no rename/delete/assign,
+          links land on the transcript). */}
+      <div className="p-5">
         {childSessions.length === 0 ? (
           <p className="text-sm italic text-center py-6" style={{ color: 'var(--text-subtle)' }}>
             No assignments yet — they'll appear here once {firstName} starts writing.
           </p>
         ) : (
-          childSessions.map(s => (
-            <div key={s.id} className="space-y-2">
-              <AssignmentCard session={s} />
-              <AssignmentTeachers sessionId={s.id} teachers={teachersBySession[s.id] ?? []} />
-            </div>
-          ))
+          <SessionsList sessions={childSessions} teachersBySession={teachersBySession} canManage={false} />
         )}
       </div>
     </section>
