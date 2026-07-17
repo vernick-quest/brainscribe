@@ -190,6 +190,7 @@ export default async function DashboardPage() {
           sessions={sessions ?? []}
           teachersBySession={teachersBySession}
           canManage={!imp}
+          canInvite={true}
         />
       </main>
     </div>

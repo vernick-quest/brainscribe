@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { sendInviteEmail } from '@/lib/notifications'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { getImpersonation } from '@/lib/impersonation'
 import { NextResponse } from 'next/server'
 
 // POST /api/invites
@@ -17,16 +18,26 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Admin remote-in: an impersonating admin creates the invite AS the impersonated
+  // user — invited_by, the authorization checks, and the sender's cap all resolve
+  // to THAT user (via the service client), so a parent/teacher link made while
+  // troubleshooting attributes correctly. getImpersonation only honours the cookie
+  // for a real admin, so a non-admin can never act as someone else here.
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const imp = await getImpersonation(actor)
+  const effectiveUserId = imp?.userId ?? user.id
+  const db = imp ? createServiceClient() : supabase
+
   // Invite creation now sends an email to the invited address, so cap it per user
   // to blunt invite-spam / Resend-quota abuse (fails open like the other limits).
-  if (!await checkRateLimit(`invite:${user.id}`, 20, 3600)) {
+  if (!await checkRateLimit(`invite:${effectiveUserId}`, 20, 3600)) {
     return rateLimited('Too many invites just now — please try again in a little while.')
   }
 
-  const { data: profile } = await supabase
+  const { data: profile } = await db
     .from('profiles')
-    .select('role, full_name, coparent_of')
-    .eq('id', user.id)
+    .select('role, full_name, coparent_of, email')
+    .eq('id', effectiveUserId)
     .single()
 
   const { email, role, assignmentId, childId, coparent } = await request.json()
@@ -35,7 +46,9 @@ export async function POST(request) {
   if (!['parent', 'teacher', 'student'].includes(role)) {
     return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
   }
-  if (email.trim().toLowerCase() === (user.email ?? '').toLowerCase()) {
+  // Compare against the EFFECTIVE user's email (the impersonated user when remoted
+  // in), not the admin's — the self-invite guard is about the sender-of-record.
+  if (email.trim().toLowerCase() === (profile?.email ?? user.email ?? '').toLowerCase()) {
     return NextResponse.json({ error: "That's your own email — enter the other person's." }, { status: 400 })
   }
 
@@ -52,8 +65,8 @@ export async function POST(request) {
     if (profile?.coparent_of) {
       return NextResponse.json({ error: "As a linked co-parent you share the primary parent's children — you can't add your own." }, { status: 403 })
     }
-    const { count } = await supabase
-      .from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', user.id)
+    const { count } = await db
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('watcher_id', effectiveUserId)
     if ((count ?? 0) >= MAX_CHILDREN_PER_PARENT) {
       return NextResponse.json({ error: `You're already linked to the maximum of ${MAX_CHILDREN_PER_PARENT} students.` }, { status: 400 })
     }
@@ -83,7 +96,7 @@ export async function POST(request) {
     const svc = createServiceClient()
     const { data: child } = await svc
       .from('profiles').select('age_bracket, coppa_consent_parent_id').eq('id', childId).single()
-    if (!child || child.age_bracket !== 'under13' || child.coppa_consent_parent_id !== user.id) {
+    if (!child || child.age_bracket !== 'under13' || child.coppa_consent_parent_id !== effectiveUserId) {
       return NextResponse.json({ error: "Only this child's approving parent can invite a co-parent." }, { status: 403 })
     }
     const { count } = await svc
@@ -96,8 +109,8 @@ export async function POST(request) {
     if (profile?.role !== 'student') {
       return NextResponse.json({ error: 'Only students can send these invites.' }, { status: 403 })
     }
-    const { count } = await supabase
-      .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+    const { count } = await db
+      .from('relationships').select('id', { count: 'exact', head: true }).eq('student_id', effectiveUserId)
     if ((count ?? 0) >= MAX_PARENTS_PER_CHILD) {
       return NextResponse.json({ error: `You already have the maximum of ${MAX_PARENTS_PER_CHILD} parents linked.` }, { status: 400 })
     }
@@ -108,16 +121,16 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Assignment ID is required for teacher invites.' }, { status: 400 })
     }
     if (profile?.role === 'student') {
-      const { data: session } = await supabase
-        .from('sessions').select('id').eq('id', assignmentId).eq('student_id', user.id).single()
+      const { data: session } = await db
+        .from('sessions').select('id').eq('id', assignmentId).eq('student_id', effectiveUserId).single()
       if (!session) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
     } else if (profile?.role === 'parent') {
       // The assignment must belong to one of this parent's linked children.
-      const { data: session } = await supabase
+      const { data: session } = await db
         .from('sessions').select('student_id').eq('id', assignmentId).single()
       const { data: rel } = session?.student_id
-        ? await supabase.from('relationships').select('watcher_id')
-            .eq('watcher_id', user.id).eq('student_id', session.student_id).maybeSingle()
+        ? await db.from('relationships').select('watcher_id')
+            .eq('watcher_id', effectiveUserId).eq('student_id', session.student_id).maybeSingle()
         : { data: null }
       if (!rel) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 })
     } else {
@@ -132,7 +145,7 @@ export async function POST(request) {
     .insert({
       email: email.trim().toLowerCase(),
       role,
-      invited_by: user.id,
+      invited_by: effectiveUserId,
       ...(role === 'teacher' && assignmentId ? { assignment_id: assignmentId } : {}),
       // Co-parent invite: bind to the target child so the claim links the new
       // parent to the CHILD (not to the inviting guardian). Requires the

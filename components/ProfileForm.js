@@ -25,7 +25,7 @@ function formatPhone(input) {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
 }
 
-export default function ProfileForm({ profile, user }) {
+export default function ProfileForm({ profile, user, impersonating = false }) {
   const [name, setName] = useState(profile?.full_name ?? '')
   const [phone, setPhone] = useState(formatPhone(profile?.phone ?? ''))
   const [saving, setSaving] = useState(false)
@@ -173,16 +173,23 @@ export default function ProfileForm({ profile, user }) {
 
         <button
           type="submit"
-          disabled={saving || !name.trim()}
+          disabled={saving || !name.trim() || impersonating}
+          title={impersonating ? 'Editing is disabled while viewing as admin' : undefined}
           className="rounded-2xl px-5 py-2.5 text-sm font-semibold transition"
           style={{
             backgroundColor: saved ? 'var(--status-success)' : 'var(--accent)',
             color: 'white',
-            opacity: saving || !name.trim() ? 0.6 : 1,
+            opacity: (saving || !name.trim() || impersonating) ? 0.5 : 1,
+            cursor: impersonating ? 'not-allowed' : undefined,
           }}
         >
           {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save changes'}
         </button>
+        {impersonating && (
+          <p className="text-xs mt-2" style={{ color: 'var(--text-subtle)' }}>
+            Editing account details is disabled while viewing as admin.
+          </p>
+        )}
       </form>
 
     </div>

@@ -62,7 +62,7 @@ function MenuItem({ label, color = 'var(--text-body)', icon, onClick }) {
   )
 }
 
-function AssignmentRow({ session, teachers, canManage, watcherHref = '/transcript', onDeleted, onRenamed }) {
+function AssignmentRow({ session, teachers, canManage, canInvite = canManage, watcherHref = '/transcript', onDeleted, onRenamed }) {
   const router = useRouter()
   const meta = getPersona(session.persona)
   const [menu, setMenu] = useState(false)
@@ -168,12 +168,14 @@ function AssignmentRow({ session, teachers, canManage, watcherHref = '/transcrip
         )}
       </div>
 
-      {/* Teacher chip */}
+      {/* Teacher chip. Gated by canInvite (not canManage): an impersonating admin
+          can link/change a teacher while troubleshooting even though delete/rename
+          (canManage) stay off. */}
       {teacher ? (
-        <button onClick={() => canManage && (setPicking(p => !p), setMenu(false))} title={teacher.name}
-          aria-label={`Teacher: ${teacher.name}${canManage ? ' — change' : ''}`}
-          aria-haspopup={canManage ? 'menu' : undefined} aria-expanded={canManage ? picking : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0, cursor: canManage ? 'pointer' : 'default', background: 'var(--surface-muted)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '4px 14px 4px 5px' }}>
+        <button onClick={() => canInvite && (setPicking(p => !p), setMenu(false))} title={teacher.name}
+          aria-label={`Teacher: ${teacher.name}${canInvite ? ' — change' : ''}`}
+          aria-haspopup={canInvite ? 'menu' : undefined} aria-expanded={canInvite ? picking : undefined}
+          style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0, cursor: canInvite ? 'pointer' : 'default', background: 'var(--surface-muted)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '4px 14px 4px 5px' }}>
           <span style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
             <TeacherAvatar name={teacher.name} />
             <GoogleBadge />
@@ -185,7 +187,7 @@ function AssignmentRow({ session, teachers, canManage, watcherHref = '/transcrip
             <span style={{ display: 'block', font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Teacher</span>
           </span>
         </button>
-      ) : canManage ? (
+      ) : canInvite ? (
         <button onClick={() => { setPicking(p => !p); setMenu(false) }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer', font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-muted)', background: 'var(--surface-card)', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-pill)', padding: '7px 14px' }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -250,7 +252,7 @@ function AssignmentRow({ session, teachers, canManage, watcherHref = '/transcrip
 // is kept behind this flag so it can be switched on when plans land.
 const SHOW_USAGE_METER = false
 
-export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true, watcherHref = '/transcript' }) {
+export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true, canInvite = canManage, watcherHref = '/transcript' }) {
   const [sessions, setSessions] = useState(initial)
   // Two tabs only (no "All"). Default to "In progress" when there's active work,
   // else "Done" — so the default view is never empty (e.g. a parent viewing a
@@ -304,6 +306,7 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
             session={s}
             teachers={teachersBySession[s.id]}
             canManage={canManage}
+            canInvite={canInvite}
             watcherHref={watcherHref}
             onDeleted={id => setSessions(prev => prev.filter(x => x.id !== id))}
             onRenamed={(id, title) => setSessions(prev => prev.map(x => x.id === id ? { ...x, title } : x))}

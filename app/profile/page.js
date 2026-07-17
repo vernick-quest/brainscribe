@@ -6,6 +6,8 @@ import Avatar from '@/components/Avatar'
 import ProfileForm from '@/components/ProfileForm'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import InviteParentForm from '@/components/InviteParentForm'
+import ImpersonationBanner from '@/components/ImpersonationBanner'
+import { getImpersonation } from '@/lib/impersonation'
 import { getSubject } from '@/lib/subjects'
 
 export default async function ProfilePage() {
@@ -14,10 +16,21 @@ export default async function ProfilePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  // Admin remote-in: view the IMPERSONATED user's profile (writing profile +
+  // linked parents), so an admin troubleshooting sees exactly what the user sees
+  // and can link a parent as them. Reads go through the service client; profile
+  // EDITS are disabled while impersonating (view + link only — no destructive
+  // account changes). Only a real admin's cookie is honoured.
+  const { data: actorProfile } = await supabase
+    .from('profiles').select('role').eq('id', user.id).single()
+  const imp = await getImpersonation(actorProfile)
+  const targetId = imp?.userId ?? user.id
+  const db = imp ? createServiceClient() : supabase
+
+  const { data: profile } = await db
     .from('profiles')
     .select('role, full_name, avatar_url, age_bracket, writing_profile_aggregate, phone')
-    .eq('id', user.id)
+    .eq('id', targetId)
     .single()
 
   const isStudent = profile?.role === 'student'
@@ -29,21 +42,20 @@ export default async function ProfilePage() {
     { data: subjectRows },
   ] = await Promise.all([
     isStudent
-      ? supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id)
+      ? db.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', targetId)
       : Promise.resolve({ count: 0 }),
     isStudent
-      ? supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id).eq('status', 'complete')
+      ? db.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', targetId).eq('status', 'complete')
       : Promise.resolve({ count: 0 }),
-    // Fetch parents connected to this student. Service client: RLS lets the
-    // student read the relationship row but NOT the watcher's profile — and the
-    // student is entitled to see who their linked parent is (name + photo). Same
-    // rationale as the parent seeing teacher names on their dashboard.
+    // Parents connected to this student. Service client: RLS lets the student read
+    // the relationship row but NOT the watcher's profile — the student is entitled
+    // to see who their linked parent is (name + photo).
     isStudent
-      ? createServiceClient().from('relationships').select('watcher_id, created_at, profiles!relationships_watcher_id_fkey(full_name, avatar_url)').eq('student_id', user.id)
+      ? createServiceClient().from('relationships').select('watcher_id, created_at, profiles!relationships_watcher_id_fkey(full_name, avatar_url)').eq('student_id', targetId)
       : Promise.resolve({ data: [] }),
     // Count sessions by subject
     isStudent
-      ? supabase.from('sessions').select('subject, subject_custom_label').eq('student_id', user.id)
+      ? db.from('sessions').select('subject, subject_custom_label').eq('student_id', targetId)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -67,6 +79,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
+      {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
       <Navbar user={user} profile={profile} />
 
       <main className="max-w-xl mx-auto px-6 py-10 space-y-8">
@@ -74,28 +87,31 @@ export default async function ProfilePage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
-              Your profile
+              {imp ? `${profile?.full_name?.split(' ')[0] ?? 'This user'}'s profile` : 'Your profile'}
             </h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              Manage your account details.
+              {imp ? "Viewing as admin — you can link a parent below." : 'Manage your account details.'}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0 mt-1">
-            {profile?.role === 'admin' && (
-              <a href="/admin"
-                className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
-                style={{ border: '1px solid var(--border-default)', color: 'var(--text-link)' }}>
-                Admin ↗
-              </a>
-            )}
-            <form action="/api/auth/signout" method="POST">
-              <button type="submit"
-                className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
-                style={{ border: '1px solid var(--border-default)', color: 'var(--status-error)', background: 'transparent' }}>
-                Sign out
-              </button>
-            </form>
-          </div>
+          {/* Sign out hidden while impersonating (it would sign out the admin). */}
+          {!imp && (
+            <div className="flex items-center gap-2 shrink-0 mt-1">
+              {profile?.role === 'admin' && (
+                <a href="/admin"
+                  className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-link)' }}>
+                  Admin ↗
+                </a>
+              )}
+              <form action="/api/auth/signout" method="POST">
+                <button type="submit"
+                  className="text-xs font-semibold rounded-full px-3 py-1.5 transition"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--status-error)', background: 'transparent' }}>
+                  Sign out
+                </button>
+              </form>
+            </div>
+          )}
         </div>
 
         {/* Profile form */}
@@ -107,7 +123,7 @@ export default async function ProfilePage() {
             boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <ProfileForm profile={profile} user={user} />
+          <ProfileForm profile={profile} user={user} impersonating={!!imp} />
         </div>
 
         {/* Parents section — students only */}
