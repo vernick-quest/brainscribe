@@ -185,12 +185,19 @@ export async function PATCH(request, { params }) {
   // onboarding warm-up: a single opening line isn't enough signal and shouldn't seed
   // the student's writing profile.
   if (!session.is_onboarding) {
-    after(() => analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
-      // Once the fresh writing profile is saved, recompute the student's gym suggestion
-      // (no-op if they don't use the gym — recomputeSuggestion returns null). Provenance
-      // stays one-way: the gym reads the assignment profile, never writes to it.
-      .then(() => recomputeSuggestion(user.id))
-      .catch(e => console.error('[analyzeWriting complete]', e)))
+    // AWAIT the analysis so the cross-assignment aggregate reliably accumulates on
+    // EVERY completion. The old after() fire-and-forget was reclaimed post-response
+    // (or two completions raced their read-modify-write), so some completions never
+    // updated the writing profile — leaving based_on_count behind the real essay
+    // count. Haiku, ~2-4s; a small, one-time cost at the completion moment.
+    try {
+      await analyzeWriting({ sessionId: id, essay, assignmentText: session.assignment_text, userId: user.id })
+    } catch (e) {
+      console.error('[analyzeWriting complete]', e)
+    }
+    // Gym suggestion recompute stays fire-and-forget — gym-only, non-critical, and a
+    // no-op if they don't use the gym.
+    after(() => recomputeSuggestion(user.id).catch(e => console.error('[recomputeSuggestion complete]', e)))
   }
 
   // Return the assembled paragraphs so the client can show the finished prose
