@@ -3,6 +3,7 @@
 import { useState, Suspense, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { displayNameNeedsConfirm } from '@/lib/displayName'
 import Icon from '@/components/Icon'
 
 const ROLES = [
@@ -60,15 +61,7 @@ function Card({ children }) {
 function WelcomeContent() {
   const router = useRouter()
 
-  // Admins should never be here — redirect them straight to /admin
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.from('profiles').select('role').single().then(({ data }) => {
-      if (data?.role === 'admin') router.replace('/admin')
-    })
-  }, [router])
-
-  // Age first, then profile. step: 'age' | 'role' | 'parent-email'
+  // Age first, then profile. step: 'name' (only when flagged) | 'age' | 'role' | 'parent-email'
   const [step, setStep] = useState('age')
   const [ageBracket, setAgeBracket] = useState(null)
   const [role, setRole] = useState(null)
@@ -76,6 +69,52 @@ function WelcomeContent() {
   const [error, setError] = useState('')
   const [parentEmail, setParentEmail] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
+  // Display-name soft confirm (BACKLOG "Student name validation at signup") —
+  // the Google name feeds the COPPA consent email, so an org/placeholder name
+  // gets one gentle "is this really your name?" nudge before age/role.
+  const [flaggedName, setFlaggedName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [savingName, setSavingName] = useState(false)
+
+  // Admins should never be here — redirect straight to /admin. Same fetch also
+  // decides the name nudge. Pre-migration-040 this select errors on the missing
+  // column → data is null → nudge silently stays off (fail-open by design).
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('profiles').select('role, full_name, display_name_confirmed').single().then(({ data }) => {
+      if (!data) return
+      if (data.role === 'admin') { router.replace('/admin'); return }
+      if (!data.display_name_confirmed && displayNameNeedsConfirm(data.full_name)) {
+        const words = (data.full_name ?? '').trim().split(/\s+/).filter(Boolean)
+        setFirstName(words[0] ?? '')
+        setLastName(words.slice(1).join(' '))
+        setFlaggedName(data.full_name ?? '')
+        // Only jump in if the user hasn't already moved past the first step.
+        setStep(s => (s === 'age' ? 'name' : s))
+      }
+    })
+  }, [router])
+
+  // Save the confirmed/corrected name, then continue to the age step. Fail-open:
+  // the nudge must never block signup, so any error still advances the flow.
+  async function handleConfirmName() {
+    if (!firstName.trim()) return
+    setSavingName(true)
+    setError('')
+    try {
+      const res = await fetch('/api/profile/confirm-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName }),
+      })
+      if (!res.ok) console.error('[welcome] confirm-name save failed')
+    } catch (e) {
+      console.error('[welcome] confirm-name error:', e)
+    }
+    setSavingName(false)
+    setStep('age')
+  }
 
   // Step 1 — age. 13+ unlocks the full role picker; under-13 can only ever be a
   // student and goes straight into the parental-consent flow.
@@ -218,6 +257,81 @@ function WelcomeContent() {
         >
           ← Back
         </button>
+      </Card>
+    )
+  }
+
+  // ── Step: Display-name soft confirm (only when the Google name looks off) ──
+  if (step === 'name') {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
+            Just checking — is this your name?
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            Google gave us <strong>“{flaggedName || '(no name)'}”</strong>. BrainScribe uses
+            your name when contacting your parent or teacher, so it should be your real one.
+            You can fix it here.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginBottom: '1rem' }}>
+          {[
+            { label: 'First name', value: firstName, set: setFirstName, auto: 'given-name' },
+            { label: 'Last name', value: lastName, set: setLastName, auto: 'family-name' },
+          ].map(f => (
+            <div key={f.label} style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--brand-navy)', marginBottom: 6 }}>
+                {f.label}
+              </label>
+              <input
+                type="text"
+                value={f.value}
+                onChange={e => f.set(e.target.value)}
+                autoComplete={f.auto}
+                disabled={savingName}
+                style={{
+                  width: '100%',
+                  padding: '0.8rem 1rem',
+                  borderRadius: 12,
+                  border: '1.5px solid var(--border-strong)',
+                  fontSize: '0.95rem',
+                  color: 'var(--text-body)',
+                  backgroundColor: 'var(--surface-card)',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                onKeyDown={e => { if (e.key === 'Enter' && firstName.trim()) handleConfirmName() }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={handleConfirmName}
+          disabled={!firstName.trim() || savingName}
+          style={{
+            width: '100%',
+            padding: '1rem',
+            borderRadius: 14,
+            fontWeight: 700,
+            fontSize: '1rem',
+            color: '#fff',
+            backgroundColor: firstName.trim() && !savingName ? 'var(--brand-orange)' : 'var(--border-strong)',
+            border: 'none',
+            cursor: firstName.trim() && !savingName ? 'pointer' : 'not-allowed',
+            transition: 'background-color 0.15s',
+          }}
+        >
+          {savingName ? 'Saving…' : 'Looks good, continue →'}
+        </button>
+
+        {error && (
+          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--status-error)', marginTop: '0.75rem' }}>
+            {error}
+          </p>
+        )}
       </Card>
     )
   }

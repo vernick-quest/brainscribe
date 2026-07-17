@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import TeacherDashboard from '@/components/TeacherDashboard'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import { getImpersonation } from '@/lib/impersonation'
+import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
 
 export default async function TeacherDashboardPage() {
   const supabase = await createClient()
@@ -71,6 +72,11 @@ export default async function TeacherDashboardPage() {
     .limit(20)
   const ownSessions = (ownSessionData ?? []).filter(s => !s.is_onboarding)
 
+  // Pending connection invites (e.g. a student added this teacher — who already
+  // had an account — to an assignment). Surfaced as a confirmation banner; Accept
+  // routes through /invite which runs the real claim guards. Not while impersonating.
+  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+
   return (
     <>
       {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
@@ -81,6 +87,7 @@ export default async function TeacherDashboardPage() {
         sessions={sessions}
         notifications={notifications ?? []}
         ownSessions={ownSessions}
+        pendingInvites={pendingInvites}
       />
     </>
   )

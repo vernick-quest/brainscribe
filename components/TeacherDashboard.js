@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Navbar from '@/components/Navbar'
+import PendingInviteBanner from '@/components/PendingInviteBanner'
 import YourWritingCard from '@/components/YourWritingCard'
 import { PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
@@ -246,7 +247,7 @@ function StudentBlock({ student, sessions, defaultOpen }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────
-export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [] }) {
+export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [], pendingInvites = [] }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -255,6 +256,8 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
       <Navbar user={user} profile={profile} />
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
+
+        <PendingInviteBanner invites={pendingInvites} />
 
         {/* Greeting + notifications */}
         <div className="flex items-start justify-between gap-4">

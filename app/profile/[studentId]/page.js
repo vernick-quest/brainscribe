@@ -30,6 +30,7 @@ export default async function StudentProfilePage({ params }) {
 
   // ── Access control ───────────────────────────────────────────
   let allowed = false
+  let teacherSessionIds = null // non-null for teachers: the ONLY sessions they may see
   if (!imp && adminProfile?.role === 'admin') {
     allowed = true
   } else if (viewerRole === 'parent') {
@@ -46,6 +47,7 @@ export default async function StudentProfilePage({ params }) {
         .from('sessions').select('id').eq('student_id', studentId).in('id', sessionIds).limit(1)
       allowed = (data?.length ?? 0) > 0
     }
+    teacherSessionIds = sessionIds
   }
 
   if (!allowed) {
@@ -53,20 +55,26 @@ export default async function StudentProfilePage({ params }) {
   }
 
   // ── Data ─────────────────────────────────────────────────────
+  // Teachers are PER-ASSIGNMENT watchers (parents are whole-student): scope every
+  // stat to the sessions the teacher is actually linked to, and withhold the
+  // cross-assignment writing profile — it aggregates sessions they can't see.
+  const isTeacherView = viewerRole === 'teacher'
+  const scoped = q => (isTeacherView ? q.in('id', teacherSessionIds) : q)
+
   const [
     { data: student },
     { count: sessionCount },
     { count: completeCount },
     { data: subjectRows },
   ] = await Promise.all([
-    service.from('profiles').select('full_name, writing_profile_aggregate').eq('id', studentId).single(),
-    service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId),
-    service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('status', 'complete'),
-    service.from('sessions').select('subject, subject_custom_label').eq('student_id', studentId),
+    service.from('profiles').select(isTeacherView ? 'full_name' : 'full_name, writing_profile_aggregate').eq('id', studentId).single(),
+    scoped(service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId)),
+    scoped(service.from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('status', 'complete')),
+    scoped(service.from('sessions').select('subject, subject_custom_label').eq('student_id', studentId)),
   ])
 
-  // Cross-assignment aggregate from the durable profiles row.
-  const writingProfile = student?.writing_profile_aggregate ?? null
+  // Cross-assignment aggregate from the durable profiles row (never for teachers).
+  const writingProfile = isTeacherView ? null : (student?.writing_profile_aggregate ?? null)
   const studentName = student?.full_name ?? 'Student'
   const firstName = studentName.split(' ')[0]
 
@@ -104,7 +112,7 @@ export default async function StudentProfilePage({ params }) {
             {firstName}&apos;s writing
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Progress and writing profile.
+            {isTeacherView ? 'Progress on the assignments you’re linked to.' : 'Progress and writing profile.'}
           </p>
         </div>
 
@@ -149,18 +157,21 @@ export default async function StudentProfilePage({ params }) {
           )}
         </div>
 
-        {/* Writing profile */}
-        <div className="rounded-2xl p-6"
-          style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
-          <h2 className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color: 'var(--text-muted)' }}>
-            Writing profile
-          </h2>
-          <WritingProfileCard
-            profile={writingProfile}
-            sessionComplete={(completeCount ?? 0) > 0}
-            studentName={firstName}
-          />
-        </div>
+        {/* Writing profile — parents/admin only. It aggregates across ALL of the
+            student's sessions, so a per-assignment teacher never sees it. */}
+        {!isTeacherView && (
+          <div className="rounded-2xl p-6"
+            style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+            <h2 className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color: 'var(--text-muted)' }}>
+              Writing profile
+            </h2>
+            <WritingProfileCard
+              profile={writingProfile}
+              sessionComplete={(completeCount ?? 0) > 0}
+              studentName={firstName}
+            />
+          </div>
+        )}
 
       </main>
     </div>

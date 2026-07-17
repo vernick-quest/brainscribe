@@ -1515,3 +1515,12 @@ On-site work to get BrainScribe cited by AI assistants (ChatGPT/SearchGPT, Gemin
 5. **Visual/mobile** — on-brand (Lora serif / cream / navy, orange = action only); comparison table scrolls inside its `overflow-x:auto` wrapper at 375px with no body overflow.
 
 **Still worth doing post-deploy (against LIVE URLs):** Google Rich Results Test / schema validator; confirm the vercel.app→www 308 still fires for the new routes.
+
+## 2026-07-15 — Backlog batch: teacher invite banner, name nudge, teacher scoping, consent-pending note
+- [ ] Teacher dashboard: with an unclaimed invite addressed to the teacher's email, a confirmation banner shows; Accept links them (routes through /invite). "Not now" hides it for the session.
+- [ ] /welcome name nudge: sign in with a flagged Google display name (org words / >3 words / digits / ALL CAPS) → "Just checking — is this your name?" step appears BEFORE age; correcting saves to full_name and never shows again (display_name_confirmed). Requires migration 040; pre-migration the nudge silently stays off.
+- [ ] /welcome normal name: clean two-word name goes straight to the age step (no nudge).
+- [ ] /profile/[studentId] as TEACHER: stats count ONLY the assignments the teacher is linked to; Writing profile card is absent; subtitle reads "Progress on the assignments you're linked to."
+- [ ] /profile/[studentId] as PARENT: unchanged — whole-student stats + Writing profile visible.
+- [ ] Parent settings: editing a child's birthdate to under-13 shows the "we emailed you a confirmation link" note after save (email-plus pending), until /coppa/confirm is clicked.
+- Known-diagnosed (routed to coaching-session lane): completed SHORT-FORM sessions (haiku) have messages but zero paragraphs rows — the final line is never persisted as a paragraph, so the transcript's Final Draft is empty for them.

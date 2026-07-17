@@ -26,6 +26,10 @@ export default function BirthdateField({ studentId, birthdate, label, readOnly =
   const [value, setValue] = useState(birthdate ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Email-plus second step: a parent save that lands a child under-13 does NOT
+  // grant consent yet — the endpoint sends a confirmation email and reports
+  // consentPending until the parent clicks its link (/coppa/confirm).
+  const [consentPending, setConsentPending] = useState(false)
 
   const today = new Date().toISOString().slice(0, 10)
   const display = formatDob(current)
@@ -62,6 +66,7 @@ export default function BirthdateField({ studentId, birthdate, label, readOnly =
     }
     setCurrent(value)
     setEditing(false)
+    setConsentPending(Boolean(json.consentPending))
     // Re-fetch server data so the new age bracket (avatar suppression, consent
     // state) is reflected without a manual reload.
     router.refresh()
@@ -116,6 +121,13 @@ export default function BirthdateField({ studentId, birthdate, label, readOnly =
       )}
 
       {error && <span className="text-xs w-full" style={{ color: 'var(--status-error)' }}>{error}</span>}
+
+      {consentPending && (
+        <span className="text-xs w-full rounded-lg px-3 py-2"
+          style={{ color: 'var(--text-body)', backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+          Almost done — we emailed you a confirmation link. Their account unlocks once you click it.
+        </span>
+      )}
     </div>
   )
 }
