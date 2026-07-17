@@ -98,6 +98,7 @@ export default async function AssignmentPage({ params }) {
     { data: scaffoldData },
     { data: ownerProfile },
     { count: parentLinkCount },
+    { data: sources },
   ] = await Promise.all([
     service
       .from('messages')
@@ -133,6 +134,12 @@ export default async function AssignmentPage({ params }) {
       .from('relationships')
       .select('watcher_id', { count: 'exact', head: true })
       .eq('student_id', session.student_id),
+    // Research & Citations v1: the session's saved sources (metadata only).
+    service
+      .from('sources')
+      .select('*')
+      .eq('session_id', id)
+      .order('position'),
   ])
 
   const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
@@ -172,6 +179,7 @@ export default async function AssignmentPage({ params }) {
       initialScaffold={scaffoldData ?? null}
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
+      initialSources={sources ?? []}
       watcherCount={watcherCount}
       country={geoCountry}
       user={user}

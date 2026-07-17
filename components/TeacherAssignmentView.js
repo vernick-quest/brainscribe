@@ -61,7 +61,7 @@ function EssayTab({ paragraphs, essay }) {
         <div className="space-y-5">
           {paragraphs.map((p, i) => (
             <div key={i} className="space-y-1">
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-body)' }}>
                 {p.scribed_text}
               </p>
               {p.is_thin && (

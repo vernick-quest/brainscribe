@@ -52,6 +52,46 @@ async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
   }))
 }
 
+// Persist a custom / non-prose form's final lines (haiku, poem, list, letter, speech,
+// story) as a VERBATIM paragraphs row at completion. Custom forms are excluded from
+// prose assembly above (assembling them would reword the student's lines), so without
+// this they end up with ZERO paragraphs rows — leaving the teacher Essay tab, "Copy
+// essay", and the writing-profile analysis empty (all read `paragraphs`), and forcing
+// the transcript onto its scaffold-only fallback. Here the locked lines are written
+// through UNCHANGED (joined by newlines, never model-assembled) so `paragraphs` is the
+// single source of truth for finished content across every consumer.
+async function persistCustomFinals(supabase, sessionId) {
+  const [{ data: scaffold }, { data: existing }] = await Promise.all([
+    supabase.from('paragraph_scaffolds').select('components').eq('session_id', sessionId).single(),
+    supabase.from('paragraphs').select('position, paragraph_index').eq('session_id', sessionId),
+  ])
+  const built = new Set((existing ?? []).map(p => p.paragraph_index ?? p.position))
+  const customSections = (scaffold?.components ?? [])
+    .map((para, idx) => ({ para, idx }))
+    .filter(({ para, idx }) => para.type === 'custom' && !built.has(idx))
+
+  await Promise.all(customSections.map(async ({ para, idx }) => {
+    // Only lines the student actually CONFIRMED (matches the prose path's filter) —
+    // never persist a coach-suggested candidate as the student's finished work.
+    const lines = (para.items ?? [])
+      .filter(c => c.status === 'confirmed' && (c.text || c.nuggetText))
+      .map(c => (c.text || c.nuggetText).trim())
+      .filter(Boolean)
+    if (!lines.length) return
+    const text = lines.join('\n')
+    const { error } = await supabase.from('paragraphs').insert({
+      session_id: sessionId,
+      scribed_text: text,
+      raw_spoken_text: text,     // verbatim — the student's own locked lines, no reword
+      position: idx,
+      paragraph_index: idx,
+      paragraph_type: 'other',   // custom isn't a prose paragraph_type; 'other' is allowed by the CHECK
+      is_thin: false,
+    })
+    if (error) console.error('[complete custom-finals]', error.message)
+  }))
+}
+
 // PATCH /api/sessions/[id]/complete
 // Marks the session complete and notifies any linked teachers.
 export async function PATCH(request, { params }) {
@@ -126,6 +166,8 @@ export async function PATCH(request, { params }) {
   // verbatim line from the scaffold instead.
   if (!session.is_onboarding) {
     await assembleUnbuiltParagraphs(supabase, id, user.id)
+    // Custom / non-prose finals persist verbatim (assembleUnbuiltParagraphs skips them).
+    await persistCustomFinals(supabase, id)
   }
 
   // Final actual-progress snapshot for sessions.requirements (no-op if none set).

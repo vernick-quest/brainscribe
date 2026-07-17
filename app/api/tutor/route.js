@@ -95,7 +95,10 @@ export async function POST(request) {
   // is rendered client-side only, from local state (components/CrisisResourceCard).
   // NOTE: the emitter (coach Guardrail 18 / deterministic screen) is the coach-ai
   // lane's to build — this strip is the safety backstop regardless of when it lands.
-  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[CARE\]/g
+  // [SOURCE:…] is the research/citations capture token (coaching-session lane): it
+  // opens the source-confirm card client-side and must be stripped from the persisted
+  // coach turn like every other control token.
+  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE|SOURCE):[^\]]*\]|\[COMPLETE\]|\[CARE\]/g
 
   // The stream's text tokens are enqueued to the client as they arrive, then the
   // stream closes immediately. The usage log + message insert run in after(), so the

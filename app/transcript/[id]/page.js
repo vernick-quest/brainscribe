@@ -10,6 +10,7 @@ import TranscriptToolbar from '@/components/TranscriptToolbar'
 import ConversationLog from '@/components/ConversationLog'
 import RubricReviewSection from '@/components/RubricReviewSection'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
+import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { computeActual, chipState } from '@/lib/requirements'
@@ -45,12 +46,21 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
     db.from('rubrics').select('rubric_text, feedback_text').eq('session_id', id).maybeSingle(),
+    db.from('sources').select('*').eq('session_id', id).order('position'),
   ])
+
+  // Auto-generated Works Cited (deterministic; MLA on the transcript). Metadata only.
+  const bibliography = (sourceRows?.length)
+    ? formatBibliography(sourceRows.map(s => ({
+        title: s.title || '', author: s.author || '', publisher: s.publisher || '',
+        publishedDate: s.published_date || '', url: s.url || '', accessedDate: s.accessed_date || '',
+      })), 'mla')
+    : null
 
   // FTUE finale: landing on the practice transcript is the end of the tutorial.
   // Mark onboarding done for the real student (never during an admin remote-in).
@@ -242,7 +252,7 @@ export default async function TranscriptPage({ params, searchParams }) {
             <div className="space-y-4">
               {paragraphs.map((p, i) => (
                 <div key={i}>
-                  <p className="text-sm leading-relaxed" style={{ color: p.is_thin ? 'var(--text-muted)' : 'var(--text-body)' }}>
+                  <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: p.is_thin ? 'var(--text-muted)' : 'var(--text-body)' }}>
                     {p.scribed_text}
                   </p>
                   {p.is_thin && (
@@ -266,6 +276,25 @@ export default async function TranscriptPage({ params, searchParams }) {
             </div>
           )}
         </section>
+
+        {/* Works Cited — auto-generated bibliography (metadata only), when the
+            student referenced sources. Deterministic MLA; copies with the essay. */}
+        {bibliography && (
+          <section className="rounded-2xl p-6 space-y-3"
+            style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{bibliography.heading}</h2>
+              <CopyButton text={`${bibliography.heading}\n${bibliography.plain}`} />
+            </div>
+            <ol className="space-y-2">
+              {bibliography.entries.map((e, i) => (
+                <li key={i} className="text-sm leading-relaxed" style={{ color: 'var(--text-body)', paddingLeft: '1.25rem', textIndent: '-1.25rem' }}>
+                  {e.segments.map((s, j) => (s.italic ? <em key={j}>{s.text}</em> : <span key={j}>{s.text}</span>))}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
         {/* Full conversation transcript */}
         <section className="rounded-2xl p-6 space-y-4"

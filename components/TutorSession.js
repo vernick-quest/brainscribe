@@ -7,6 +7,8 @@ import ImpersonationBanner from './ImpersonationBanner'
 import Navbar from './Navbar'
 import CrisisResourceCard from './CrisisResourceCard'
 import WatcherVisibilityNote from './WatcherVisibilityNote'
+import { SourcesShelf, WorksCitedCard, toCitationSource } from '@/components/SourcesPanel'
+import { formatBibliography } from '@/lib/citations'
 import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
@@ -153,10 +155,30 @@ function updateComponentItem(scaffold, paraIdx, componentId, updater) {
   }
 }
 
-// Strips scaffold stream tokens + [DICTATE] + [CARE] from display text. [CARE] is
-// the child-safety signal — it drives the out-of-band CrisisResourceCard (client
-// state only) and must never render as literal text to the student.
-const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]|\[CARE\]/g
+// Strips scaffold stream tokens + [DICTATE] + [CARE] + [SOURCE] from display text.
+// [CARE] is the child-safety signal (drives the out-of-band CrisisResourceCard);
+// [SOURCE] is the research/citations capture signal (drives the SourceCaptureCard).
+// Both are client-state only and must never render as literal text to the student.
+const ALL_TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE|SOURCE):[^\]]*\]|\[COMPLETE\]|\[DICTATE\]|\[CARE\]/g
+
+// Pulls the payloads of every [SOURCE:…] token out of a completed coach turn.
+const SOURCE_TOKEN_RE = /\[SOURCE:([^\]]*)\]/g
+function extractSourceTokens(text) {
+  const out = []
+  let m
+  while ((m = SOURCE_TOKEN_RE.exec(text)) !== null) {
+    const desc = m[1].trim()
+    if (desc) out.push(desc)
+  }
+  return out
+}
+// A URL sitting inside a [SOURCE:…] payload, so the capture card can offer auto-fill.
+function firstUrlIn(text) {
+  const m = /(https?:\/\/[^\s\])]+)|(\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}\b(?:\/[^\s\])]*)?)/i.exec(text || '')
+  if (!m) return null
+  const raw = m[0]
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+}
 
 // Display text for a still-streaming buffer: strips complete tokens, and also
 // drops a trailing partial token (e.g. "[ACT" before its "]" has arrived) so
@@ -690,6 +712,9 @@ export default function TutorSession({
   initialScaffold = null,
   studentName = 'there',
   initialTeachers = [],
+  // Research & Citations v1: the session's saved sources (metadata only). Drives the
+  // form-gated sources shelf + auto-bibliography. Empty/absent for non-essay forms.
+  initialSources = [],
   // Count of linked adults (parents via relationships + teachers on this
   // assignment) who can read this session — drives the ambient visibility note.
   watcherCount = 0,
@@ -735,6 +760,12 @@ export default function TutorSession({
   // ONLY — never persisted, never sent anywhere a watcher could read (the linked
   // adult may be who the child needs help from). See CrisisResourceCard.
   const [showCrisisCard, setShowCrisisCard] = useState(false)
+  // Research & Citations v1 (form-gated to essays). `sources` = saved citation rows;
+  // `captureQueue` = pending [SOURCE:]/manual cards awaiting the student's confirm.
+  const [sources, setSources]               = useState(initialSources)
+  const [captureQueue, setCaptureQueue]     = useState([])
+  const [citationStyle, setCitationStyle]   = useState('mla')
+  const captureKeyRef                        = useRef(0)
   const [sectionJustCompleted, setSectionJustCompleted] = useState(null)
   const [expandedParas, setExpandedParas]   = useState({})
   const [assembledEssay, setAssembledEssay] = useState(null)
@@ -1447,6 +1478,15 @@ export default function TutorSession({
       // the watcher-readable transcript.
       if (full.includes('[CARE]')) setShowCrisisCard(true)
 
+      // Research/citations: the coach filed a source the student named. Open the
+      // confirm card so the student checks/edits the citation before it's saved.
+      // Double-gated to research-relevant (essay) forms — even if the coach mis-emits
+      // on a creative form, the card never opens. Gate on the JUST-PARSED scaffold so
+      // a [SOURCE:] arriving on the same turn as [SCAFFOLD:essay:…] isn't missed.
+      if (newScaffold?.assignment_type === 'essay' && full.includes('[SOURCE:')) {
+        for (const desc of extractSourceTokens(full)) enqueueSourceCapture(desc)
+      }
+
       const hasDictateSignal = full.includes('[DICTATE]')
       const displayText = full.replace(ALL_TOKEN_RE, '').trim()
 
@@ -1578,6 +1618,40 @@ export default function TutorSession({
     // Commit + speak the greeting the same way session-start greetings are handled
     // (deliverTutorMessage), preserving the existing conversation history above it.
     await deliverTutorMessage(greeting, messages, newPersona)
+  }
+
+  // ── Research & Citations v1 (form-gated) ─────────────────────────────────────
+  // Sources appear only for research-relevant prose (essay). This is the single
+  // gate for the shelf, the Works Cited card, AND the coach's [SOURCE:] capture —
+  // so a mis-emitted [SOURCE:] on a poem/story never opens a card.
+  const sourcesEnabled = scaffold?.assignment_type === 'essay'
+
+  function enqueueSourceCapture(description, manual = false) {
+    const url = manual ? null : firstUrlIn(description)
+    setCaptureQueue(q => [...q, { key: ++captureKeyRef.current, description, url, manual }])
+  }
+
+  function dismissCapture(key) {
+    setCaptureQueue(q => q.filter(c => c.key !== key))
+  }
+
+  async function saveSource(fields, key) {
+    dismissCapture(key)
+    try {
+      const res = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, ...fields }),
+      })
+      const data = await res.json().catch(() => null)
+      if (data?.source) setSources(s => [...s, data.source])
+    } catch (e) { console.error('[saveSource]', e) }
+  }
+
+  async function deleteSource(id) {
+    setSources(s => s.filter(row => row.id !== id))   // optimistic
+    try { await fetch(`/api/sources?id=${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+    catch (e) { console.error('[deleteSource]', e) }
   }
 
   async function markSessionComplete(finalScaffold) {
@@ -1969,6 +2043,12 @@ export default function TutorSession({
   // ── Derived values ───────────────────────────────────────────────────────────
 
   const fullEssay    = paragraphs.map(p => p.scribed_text).filter(Boolean).join('\n\n')
+  // Copy essay appends the deterministic Works Cited (never woven into the model
+  // assembly — citations stay deterministic, never hallucinated). Gated to essays.
+  const worksCited   = sourcesEnabled && sources.length
+    ? (() => { const b = formatBibliography(sources.map(toCitationSource), citationStyle); return `${b.heading}\n${b.plain}` })()
+    : ''
+  const fullEssayWithSources = worksCited ? `${fullEssay}\n\n${worksCited}` : fullEssay
   const reqActual    = computeActual(paragraphs)
   const currentMeta  = PERSONA_META[persona]
 
@@ -2540,12 +2620,28 @@ export default function TutorSession({
               )}
             </div>
             {paragraphs.length > 0 && (
-              <button onClick={() => navigator.clipboard.writeText(fullEssay)}
+              <button onClick={() => navigator.clipboard.writeText(fullEssayWithSources)}
                 className="text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
                 Copy essay
               </button>
             )}
           </div>
+
+          {/* Research & Citations v1: the sources shelf. Form-gated to essays; a mis-
+              emitted [SOURCE:] on a non-essay never reaches here (sourcesEnabled). */}
+          {sourcesEnabled && (
+            <div className="mx-4 mt-3 shrink-0">
+              <SourcesShelf
+                sources={sources}
+                captures={captureQueue}
+                style={citationStyle}
+                onSave={saveSource}
+                onDismiss={dismissCapture}
+                onAdd={() => enqueueSourceCapture('', true)}
+                onDelete={deleteSource}
+              />
+            </div>
+          )}
 
           {/* "You can stop here" — quiet permission to bank progress and return.
               Shows only at a clean paragraph boundary (0 < done < total, not
@@ -2993,7 +3089,7 @@ export default function TutorSession({
                     ✓ Full Essay — Assembled
                   </span>
                   <button
-                    onClick={() => navigator.clipboard.writeText(assembledEssay)}
+                    onClick={() => navigator.clipboard.writeText(worksCited ? `${assembledEssay}\n\n${worksCited}` : assembledEssay)}
                     className="text-[10px] font-semibold hover:underline"
                     style={{ color: 'var(--accent)' }}
                   >
@@ -3019,6 +3115,12 @@ export default function TutorSession({
                 </div>
               </div>
             ))}
+
+            {/* Works Cited — the auto-generated bibliography, last card of the draft.
+                Renders null when there are no sources (WorksCitedCard guards). */}
+            {sourcesEnabled && (
+              <WorksCitedCard sources={sources} style={citationStyle} onStyleChange={setCitationStyle} />
+            )}
           </div>
         </div>
         </div>

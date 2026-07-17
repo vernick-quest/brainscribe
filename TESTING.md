@@ -1524,3 +1524,84 @@ On-site work to get BrainScribe cited by AI assistants (ChatGPT/SearchGPT, Gemin
 - [ ] /profile/[studentId] as PARENT: unchanged — whole-student stats + Writing profile visible.
 - [ ] Parent settings: editing a child's birthdate to under-13 shows the "we emailed you a confirmation link" note after save (email-plus pending), until /coppa/confirm is clicked.
 - Known-diagnosed (routed to coaching-session lane): completed SHORT-FORM sessions (haiku) have messages but zero paragraphs rows — the final line is never persisted as a paragraph, so the transcript's Final Draft is empty for them.
+
+## 2026-07-16 — Research & Citations v1 (sources + auto-bibliography) + short-form Final Draft fix — focus/coaching-session
+
+**Scope (Robert's locked v1):** "Sources I referenced" + auto-generated bibliography ONLY.
+NO scratchpad, NO quotes — only citation METADATA (title/author/publisher/date/url) ever
+enters a session, never source content. Decoupled from Lever B. Form-gated to essays.
+
+### Feature pieces
+- **`lib/citations.js`** (pure, deterministic): `formatCitation(source, style)` /
+  `formatBibliography(sources, style)` → MLA 9 (default) + APA 7, structured fields →
+  string (never stored as strings). Returns `{plain, segments}` (segments carry italic
+  spans so the card/transcript render italics without building HTML from user fields).
+- **`lib/ssrf.js`** (pure): private/reserved IP classification (v4 full ranges incl. cloud
+  metadata 169.254.169.254, CGNAT, TEST-NETs, multicast; v6 loopback/ULA/link-local +
+  v4-mapped), `isDisallowedUrl` (scheme allowlist, no credentials, no localhost/.internal/
+  .local, private-literal reject), `canonicalizeStoredUrl` (strips query/fragment/userinfo).
+- **`lib/citationMeta.js`** (pure): deterministic HTML → citation fields (OG / citation_* /
+  JSON-LD / <title>). Returns ONLY metadata — never page body. Missing fields → '' (never
+  guessed; the student's confirm card turns them into coached blanks).
+- **`app/api/source-metadata`** (🔴 SSRF surface — FLAGGED for conductor security pass):
+  server-side URL fetch, `runtime='nodejs'`. Layers: isDisallowedUrl → DNS-resolve-and-
+  validate EVERY address → socket PINNED to validated IP (closes DNS-rebinding TOCTOU) →
+  per-hop revalidation across ≤3 redirects → 3s + 1MB caps → generic UA, no cookies. On
+  block/failure returns `{ok:false, fallback:true}` (200) so the UI opens a guided manual
+  card, never a dead end. Never returns page content. KNOWN residuals for the security pass:
+  IPv6 range coverage is pragmatic prefix-based (documented in lib/ssrf.js); pins addrs[0]
+  after validating all.
+- **`app/api/sources`**: CRUD (GET/POST/PATCH/DELETE), owner-only writes (RLS + explicit
+  ownership check), URL canonicalized on write, rate-limited.
+- **`[SOURCE:…]` token**: added to the coach prompt (lib/prompts.js, static/cached prefix —
+  research/essay only, student-named sources only, NO quoting) via the coach-prompt skill;
+  stripped server-side (`/api/tutor` TOKEN_RE) + client display (ALL_TOKEN_RE). Client opens
+  a confirm card (double-gated: only when scaffold.assignment_type==='essay').
+- **UI (`components/SourcesPanel.js`)**: slim "📚 Sources N · to confirm" shelf, capture/
+  confirm card (auto-fills from the URL via /api/source-metadata, editable), Works Cited card
+  (last draft card, MLA/APA toggle, Copy). "Copy essay" + assembled-essay Copy append the
+  deterministic Works Cited (citations NEVER woven into the model assembly). Flows to the
+  transcript (new Works Cited section, deterministic MLA).
+
+### Short-form Final Draft fix (routed bug)
+Completed custom/short-form sessions (haiku/poem/list/letter/speech/story) had ZERO
+`paragraphs` rows (custom is correctly excluded from prose assembly), leaving the teacher
+Essay tab, "Copy essay", and writing-profile analysis empty and the transcript on its
+scaffold-only fallback. `persistCustomFinals` (in the complete route) now writes the locked
+lines VERBATIM (joined by \n, never model-assembled, `paragraph_type='other'`) as one
+paragraphs row per custom section — `paragraphs` is now the single source of truth for
+finished content. `whitespace-pre-line` added to the transcript + teacher paragraph
+renderers so the joined line breaks render. Onboarding warm-up unchanged (still scaffold-only).
+
+### Gate 1 (automated, $0, no API — synthetic fixtures only)
+- `node scripts/verify/citations.mjs` — **19/19** (MLA/APA handbook-shaped cases: personal/
+  org author, missing author/date, year-only, MLA May-not-abbreviated, APA n.d., italic
+  segments, alphabetized bibliography).
+- `node scripts/verify/ssrf.mjs` — **66/66** (v4/v6 private-vs-public classification,
+  isDisallowedUrl bypass attempts incl. metadata IP + credentials + .internal, URL
+  canonicalization, metadata extraction incl. "body content never leaks into fields").
+- `node scripts/verify/provenance.mjs` — 28/28 (unchanged; re-run, still green).
+- `npm run build` — GREEN (exit 0, no errors/warnings). All harnesses gitignored.
+
+### Manual checks owed (live, post-migration)
+1. **Migration 042 must be applied first** — until then `sources` is inert (SSR reads degrade
+   to empty via supabase-js `{data:null}`; the assignment page still loads fine).
+2. Essay session: say "I used the National Geographic article on the Dust Bowl, natgeo.com/…"
+   → confirm card auto-fills → Save → shelf shows Sources 1 → Works Cited card renders →
+   Copy essay includes it → complete → transcript shows Works Cited. Verify [SOURCE:] never
+   appears in the chat text.
+3. Non-essay (poem/story): shelf + card never appear even if the coach emits [SOURCE:].
+4. SSRF: paste a URL like http://169.254.169.254/ or http://localhost/ → blocked → manual card.
+5. Haiku: finish a haiku → transcript + teacher view + Copy essay all show the 3 lines with
+   line breaks preserved.
+
+**Post-review fixes (per-lane correctness review, folded in before commit):**
+(1) SSRF `lookup` override now returns the ARRAY form when Node calls it with `{all:true}`
+(autoSelectFamily) — the single-value form threw, silently forcing every auto-fill to the
+manual fallback. Proven end-to-end against a localhost socket (pinned fetch → 200 → metadata
+parsed). (2) `persistCustomFinals` now filters to `status==='confirmed'` (matches the prose
+path) so a coach-suggested but unconfirmed candidate line is never persisted as finished work.
+(3) Added an 8s total wall-clock deadline across redirect hops (was per-hop inactivity only).
+Gate: `essay` is the only research-relevant prose type in the scaffold vocabulary
+(`narrative|essay|personal_statement|custom`); if coach-ai later adds a `research`/
+`argumentative` scaffold type, update the `assignment_type === 'essay'` gate in TutorSession.
