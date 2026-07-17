@@ -17,6 +17,15 @@ const ROLE_COPY = {
   teacher: 'invited you to view one of their assignments as their teacher',
 }
 
+// A parent-role invite with coparent:true is an account-level co-parent invite
+// (a primary parent adding a second parent), not a student inviting their parent.
+const COPARENT_COPY = "invited you to join as a co-parent — you'll share their children (current and future), read-only"
+
+function copyFor(inv) {
+  if (inv.role === 'parent' && inv.coparent) return COPARENT_COPY
+  return ROLE_COPY[inv.role] ?? 'invited you to connect'
+}
+
 export default function PendingInviteBanner({ invites = [] }) {
   const [dismissed, setDismissed] = useState([])
   const visible = invites.filter(i => !dismissed.includes(i.token))
@@ -30,7 +39,7 @@ export default function PendingInviteBanner({ invites = [] }) {
           style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)' }}>
           <p className="text-sm" style={{ color: 'var(--text-strong)', margin: 0 }}>
             <span style={{ fontWeight: 'var(--fw-bold)' }}>{inv.inviterName}</span>{' '}
-            {ROLE_COPY[inv.role] ?? 'invited you to connect'}.
+            {copyFor(inv)}.
           </p>
           <div className="flex items-center gap-2 shrink-0">
             <button

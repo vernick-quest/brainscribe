@@ -161,6 +161,7 @@ export async function POST(request) {
     role,
     inviteLink: `${siteUrl}/invite?token=${invite.token}`,
     inviterName: profile?.full_name,
+    coparent: role === 'parent' && !!coparent,
   })
 
   return NextResponse.json({ token: invite.token, emailed })
