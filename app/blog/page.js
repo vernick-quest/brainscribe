@@ -1,6 +1,7 @@
 import { Lora } from 'next/font/google'
 import { getAllPosts } from '@/lib/blog'
 import SiteHeader from '@/components/SiteHeader'
+import NewsletterSignup from '@/components/NewsletterSignup'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
 const serif = lora.style.fontFamily
@@ -75,6 +76,10 @@ export default function BlogIndex() {
             ))}
           </div>
         )}
+
+        <div style={{ marginTop: 48 }}>
+          <NewsletterSignup source="blog" />
+        </div>
       </main>
     </div>
   )

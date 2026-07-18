@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import AttributionCapture from '@/components/AttributionCapture'
 import SiteHeader from '@/components/SiteHeader'
 import CoachDemo from '@/components/CoachDemo'
+import NewsletterSignup from '@/components/NewsletterSignup'
 
 const lora = Lora({
   subsets: ['latin'],
@@ -253,6 +254,13 @@ function Landing() {
           <a href="/about" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-text)', textDecoration: 'none' }}>
             Read the full story &rarr;
           </a>
+        </div>
+      </section>
+
+      {/* ── Newsletter ── */}
+      <section style={{ ...sectionWrap, paddingTop: 8, paddingBottom: 8 }}>
+        <div style={{ maxWidth: 640, margin: '0 auto' }}>
+          <NewsletterSignup source="landing" />
         </div>
       </section>
 
