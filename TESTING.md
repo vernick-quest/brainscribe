@@ -1605,3 +1605,28 @@ path) so a coach-suggested but unconfirmed candidate line is never persisted as 
 Gate: `essay` is the only research-relevant prose type in the scaffold vocabulary
 (`narrative|essay|personal_statement|custom`); if coach-ai later adds a `research`/
 `argumentative` scaffold type, update the `assignment_type === 'essay'` gate in TutorSession.
+
+## 2026-07-17 — Block new-assignment creation while an admin is remoted-in (focus/assignment-intake)
+
+**What changed / why:** An impersonating admin ("remote in") could still create work
+attributed to themselves via the directly-reachable create paths. Per Robert's
+"view + link, no destructive act-as" impersonation posture (Option A), creation is now
+BLOCKED while impersonating — not re-attributed. Non-impersonated behavior is unchanged.
+
+- `app/api/sessions/route.js` (POST) — after auth, fetch actor role + `getImpersonation(actor)`;
+  if non-null → 403 (`"Exit remote-in to create an assignment …"`). No session/message rows written.
+- `app/api/gym/sessions/route.js` (POST) — same guard (`"Exit remote-in to start practice …"`),
+  covers both warm-up and standard skill sessions before any `gym_sessions`/`sessions` insert.
+- `app/assignment/new/page.js` — server guard: `getImpersonation(profile)` non-null → redirect to
+  the impersonated user's home (parent→/parent, teacher→/teacher, else /dashboard), placed BEFORE
+  the generic `role==='admin'` redirect so the remoted-in case lands in the user's context.
+  Covers the form-chooser modal too (it only renders inside NewSessionForm on this page).
+
+**How to test (manual, live):**
+1. As admin, go to `/admin`, remote into a student (sets `bs_impersonate` cookie + banner shows).
+2. Dashboard CTA is already hidden (`!imp`). Now hit `/assignment/new` DIRECTLY (type the URL) →
+   should immediately redirect to the impersonated user's dashboard, never showing the form.
+3. Direct API probe while remoted in: `POST /api/sessions` (or `/api/gym/sessions`) →
+   expect **403** with the exit-remote-in error; confirm NO new session row was created.
+4. Exit remote-in → `/assignment/new` loads the form and creation works as normal (regression check).
+5. Non-admin student (never impersonating) → creation works exactly as before (unaffected).

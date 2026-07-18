@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 
 const anthropic = new Anthropic()
@@ -106,6 +107,16 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Admin remote-in is view + link only — no destructive "act-as" writes. Creating
+  // a session is a data-writing act as the user, so block it while an admin is
+  // impersonating (getImpersonation only honours the bs_impersonate cookie for a
+  // real admin). The UI already hides the New-assignment CTA while remoted in; this
+  // is the server backstop for the directly-reachable route.
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (await getImpersonation(actor)) {
+    return Response.json({ error: "Exit remote-in to create an assignment — admins can't start work as a user." }, { status: 403 })
+  }
 
   // Daily per-account cap on session creation (fails open) — denial-of-wallet backstop.
   if (!await checkRateLimit(`sessions:day:${user.id}`, 30, 86400)) {

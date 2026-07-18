@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import NewSessionForm from '@/components/NewSessionForm'
 import Navbar from '@/components/Navbar'
 import WriteAgeGate from '@/components/WriteAgeGate'
+import { getImpersonation } from '@/lib/impersonation'
 
 // Canonical "new assignment" page. Decoupled from the assignments list so a
 // student with no work lands straight here, and the dashboard's "New assignment"
@@ -20,6 +21,18 @@ export default async function NewAssignmentPage({ searchParams }) {
     .select('role, full_name, age_bracket, avatar_url, coppa_consent_required, coppa_consent_given')
     .eq('id', user.id)
     .single()
+
+  // Admin remote-in is view + link only. Creating an assignment is a data-writing
+  // act as the user, so an impersonating admin never reaches the form — send them
+  // back to the impersonated user's own home (POST /api/sessions also 403s the write
+  // as a server backstop). Checked before the generic admin redirect so the remoted-in
+  // case lands in the user's context, not /admin. getImpersonation only honours the
+  // cookie for a real admin.
+  const imp = await getImpersonation(profile)
+  if (imp) {
+    const home = imp.role === 'parent' ? '/parent' : imp.role === 'teacher' ? '/teacher' : '/dashboard'
+    redirect(home)
+  }
 
   if (profile?.role === 'admin') redirect('/admin')
 

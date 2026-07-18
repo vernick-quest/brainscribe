@@ -6,6 +6,7 @@ import { getChallenge } from '@/lib/gymChallengeBank'
 import { ensureGymProgress, getPracticedKeys } from '@/lib/gymAwards'
 import { buildWarmupAssignmentText } from '@/lib/gymPlacement'
 import { recordSuggestionAction } from '@/lib/gymSuggest'
+import { getImpersonation } from '@/lib/impersonation'
 import { after } from 'next/server'
 
 // Compose the student-facing practice card the coach works from. The band card's
@@ -32,6 +33,15 @@ export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Admin remote-in is view + link only — no destructive "act-as" writes. Starting a
+  // gym session creates rows as the user, so block it while an admin is impersonating
+  // (same guard as POST /api/sessions; getImpersonation only honours the cookie for a
+  // real admin).
+  const { data: actor } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (await getImpersonation(actor)) {
+    return Response.json({ error: "Exit remote-in to start practice — admins can't start work as a user." }, { status: 403 })
+  }
 
   // Denial-of-wallet backstop, shared budget shape with assignment session creation.
   if (!await checkRateLimit(`gym-sessions:day:${user.id}`, 30, 86400)) {
