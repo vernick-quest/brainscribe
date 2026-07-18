@@ -5,7 +5,6 @@ import SessionsList from '@/components/SessionsList'
 
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
-import Avatar from '@/components/Avatar'
 import Navbar from '@/components/Navbar'
 import { getImpersonation } from '@/lib/impersonation'
 import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
@@ -92,23 +91,19 @@ export default async function DashboardPage() {
   // accept. (Not while impersonating — admin views the real state.)
   if (!imp && (sessions?.length ?? 0) === 0 && pendingInvites.length === 0) redirect('/assignment/new')
 
-  // Per-assignment teachers + the watchers who can see this student's work.
+  // Per-assignment teachers (for the assignment cards). "Who can see your work"
+  // is stated on the student's own /profile (the Parents section) rather than
+  // hovering over the assignments here — a watcher line on the work surface read
+  // as surveillance.
   const sessionIds = (sessions ?? []).map(s => s.id)
-  const [{ data: teacherRows }, { data: watcherRows }] = await Promise.all([
-    sessionIds.length
-      ? service.from('assignment_teachers').select('session_id, teacher_id, profiles(full_name)').in('session_id', sessionIds)
-      : Promise.resolve({ data: [] }),
-    service.from('relationships').select('watcher_id, profiles!relationships_watcher_id_fkey(full_name, role, avatar_url)').eq('student_id', targetId),
-  ])
+  const { data: teacherRows } = sessionIds.length
+    ? await service.from('assignment_teachers').select('session_id, teacher_id, profiles(full_name)').in('session_id', sessionIds)
+    : { data: [] }
 
   const teachersBySession = {}
   for (const r of (teacherRows ?? [])) {
     (teachersBySession[r.session_id] ??= []).push({ id: r.teacher_id, name: r.profiles?.full_name ?? 'Teacher' })
   }
-  const watchers = (watcherRows ?? []).map(w => ({
-    name: w.profiles?.full_name ?? 'Someone', role: w.profiles?.role ?? 'watcher',
-    avatarUrl: w.profiles?.avatar_url ?? null,
-  }))
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -167,26 +162,6 @@ export default async function DashboardPage() {
               Enter Skill Studio →
             </span>
           </a>
-        )}
-
-        {/* Watcher line — who can see this student's work, shown with their
-            avatars (mirrors the child avatar the parent sees on their side). */}
-        {watchers.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 'var(--space-5)' }}>
-            <div className="flex items-center">
-              {watchers.map((w, i) => (
-                <span key={i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: watchers.length - i }}>
-                  {/* Watchers are parents/teachers — inherently 13+, so pass
-                      '13plus' to surface their photo (never a child's). */}
-                  <Avatar name={w.name} avatarUrl={w.avatarUrl} ageBracket="13plus" size={24}
-                    style={{ border: '2px solid var(--bg-page)' }} />
-                </span>
-              ))}
-            </div>
-            <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>
-              {watchers.map(w => w.name).join(' and ')} can see your work
-            </span>
-          </div>
         )}
 
         <SessionsList
