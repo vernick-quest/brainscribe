@@ -1605,3 +1605,62 @@ path) so a coach-suggested but unconfirmed candidate line is never persisted as 
 Gate: `essay` is the only research-relevant prose type in the scaffold vocabulary
 (`narrative|essay|personal_statement|custom`); if coach-ai later adds a `research`/
 `argumentative` scaffold type, update the `assignment_type === 'essay'` gate in TutorSession.
+
+## 2026-07-17 — Persist the coach's opening greeting (assignment sessions) — focus/coaching-session
+
+**Change:** The opening greeting on a REGULAR (non-onboarding) assignment was
+generated client-side (`buildGreeting` → `deliverTutorMessage`) and never saved, so
+it was absent from DB-backed transcripts, reloads, and resumes (the transcript
+appeared to start at the student's first message — Robert saw this in his son's
+transcripts). Now persisted server-side at session creation, mirroring the
+onboarding precedent.
+
+**Files:**
+- `lib/greeting.js` (new) — single source of truth for the brand-new / "no written
+  work yet" opener. Exports `newSessionGreeting(persona, name)` + `resolveGreetingPersona`.
+  Replicates ONLY the no-scaffold branch of the old client `buildGreeting`; scaffold-aware,
+  resume, and persona-switch greetings stay client-only and ephemeral.
+- `app/api/sessions/route.js` — non-onboarding branch: after the session row is
+  created, insert `newSessionGreeting(persona, firstName)` as the first `role:'assistant'`
+  message. Best-effort (logs on error, never fails session creation), same posture as
+  the onboarding insert. `/api/messages` force-sets `role:'user'`, so this MUST be
+  server-side. NOT backfilled for pre-change sessions (historical; acceptable).
+- `components/TutorSession.js` — (a) `buildGreeting` no-scaffold branch now delegates
+  to `newSessionGreeting` (no drift with the persisted text); (b) mount-effect speak-once
+  branch generalized from onboarding-only to any greeting-only new session
+  (`initialMessages.length === 1 && role === 'assistant'`) so a regular new session speaks
+  its opener once with the composer live. Resume block (995) untouched.
+
+**No migration required** (uses the existing `messages` table).
+
+**Regression matrix (traced against the mount effect + creation flow; build green,
+no runtime test suite in repo):**
+1. ✅ New assignment, first load — server persists greeting → `router.push` → page.js
+   fetches messages `.order('created_at')` → `initialMessages=[greeting]`. Mount effect
+   takes the `length>0` path: `setPhase('listening')` (composer live), `length===1 &&
+   assistant` fires speak-once + `greetedSessions.add`; scaffold null → resume block skips;
+   returns before the client `buildGreeting` else-branch → no duplicate.
+2. ✅ Client remount / soft nav back — `greetedSessions.has(id)` guard returns early,
+   sets `listening` (no D1 composer lockout), no re-show, no re-speak.
+3. ✅ Hard reload mid-session — module Set reset; `initialMessages` length ≥ 2 →
+   speak-once (`length===1`) skipped; greeting present once from DB at top; no re-greet.
+4. ✅ Genuine resume (multi-para + banked + >45min gap) — length ≥ 2 → speak-once skipped;
+   resume block fires ephemeral "welcome back"; persisted opener sits at top of history.
+   (Coach no-double-greet is server Rule 10 + `resumePendingRef` — unchanged, out of lane.)
+5. ✅ Persona switch mid-session — still ephemeral (`deliverTutorMessage`, never POSTed as
+   assistant); path untouched.
+6. ✅ Onboarding/FTUE — unchanged: still persisted via its own branch; generalized
+   speak-once still fires for it (identical outcome to the old onboarding-only condition).
+7. ✅ Transcript view (parent/teacher + student `/transcript/[id]`) — greeting is now the
+   first `assistant` row in `messages`, so it renders as the first bubble.
+8. ✅ Gym — unaffected: gym sessions are created via `/api/gym/sessions`, not this route,
+   so no greeting is persisted; generalized speak-once can't fire (gym has no persisted
+   assistant first-message). Existing gym greeting behavior unchanged.
+
+**Graceful degradation:** if the server greeting insert fails (best-effort), the session
+loads with empty `initialMessages` → client falls back to the same `newSessionGreeting`
+text via `buildGreeting` (ephemeral) — old behavior, no crash.
+
+**Build:** `npm run build` green (exit 0). New files lint-clean; remaining TutorSession.js
+lint warnings/errors are all pre-existing (JSX `no-unescaped-entities`, mount-effect
+`set-state-in-effect`/`exhaustive-deps`).

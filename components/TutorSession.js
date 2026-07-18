@@ -16,6 +16,7 @@ import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
+import { newSessionGreeting } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
@@ -206,15 +207,9 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
   const anyDone = hasScaffold && scaffold.components.some(p => p.status === 'complete')
 
   if (!hasScaffold) {
-    const g = {
-      deon: `Hey ${name}. I've read the assignment. Have you started writing anything? Paste it below if so — if not, we'll build from scratch.`,
-      zoe:    `Hi ${name}! I've read your assignment — have you written anything yet? Paste it below, or if you're starting fresh, no worries at all — we'll figure it out together!`,
-      alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Before we begin — have you written anything so far? Paste it below if you have. If not, no matter — we'll work through it.`,
-      matilda:   `Hi ${name} — I'm Tilly, lovely to meet you. I've read through your assignment. Have you started anything yet? That's completely fine if not — we'll find our way in together.`,
-      owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. There's no rush — we'll just take this one step at a time. Have you written anything so far? If not, that's totally okay.`,
-      jade: `hey ${name}! okay I read the assignment — have you started anything yet? paste it below if you have. if not, no stress at all, we'll just figure it out together.`,
-    }
-    return g[persona] ?? g.owen
+    // Single source of truth (lib/greeting.js) — same text the server persists as
+    // the first assistant message on session creation, so display can't drift.
+    return newSessionGreeting(persona, name)
   }
 
   if (allDone) {
@@ -955,11 +950,16 @@ export default function TutorSession({
     hasGreeted.current = true
     if (initialMessages.length > 0) {
       setPhase('listening')
-      // The onboarding greeting is persisted server-side, so it arrives in
-      // initialMessages even on first load. Speak it once in the background — the
-      // student still hears Owen open, but the input is live immediately (no waiting
-      // on audio, which previously gated the whole session behind the greeting clip).
-      if (onboarding && initialMessages.length === 1 && initialMessages[0]?.role === 'assistant') {
+      // The opening greeting is now persisted server-side for BOTH onboarding and
+      // regular assignment sessions (app/api/sessions), so a brand-new session's
+      // first load arrives with exactly one assistant message and no student turn
+      // yet. Speak it once in the background — the student hears the coach open, but
+      // the input is live immediately (no waiting on audio, which previously gated
+      // the whole session behind the greeting clip). Guarded by greetedSessions so a
+      // remount can't re-speak; length===1 + assistant-role means it can only fire on
+      // the true first load (any student reply makes length >= 2). A pre-change
+      // session with no stored opener has a user-role first message, so it's skipped.
+      if (initialMessages.length === 1 && initialMessages[0]?.role === 'assistant') {
         greetedSessions.add(session.id)
         replayAudioOnly(initialMessages[0].content, resolvePersona(session.persona))
       }

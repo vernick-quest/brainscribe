@@ -4,6 +4,7 @@ import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { canUseCoach, coachGateResponse } from '@/lib/coppa'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
+import { newSessionGreeting } from '@/lib/greeting'
 
 const anthropic = new Anthropic()
 
@@ -188,6 +189,24 @@ export async function POST(request) {
       console.error('[sessions POST] Supabase insert error:', error)
       return Response.json({ error: error.message }, { status: 500 })
     }
+
+    // Persist the coach's opening line as the first message so it survives reloads,
+    // resumes, and shows in transcripts — the client otherwise delivered it locally
+    // and never saved it (absent from DB-backed history). A brand-new session has no
+    // scaffold, so the deterministic "no written work yet" opener is correct. Text is
+    // single-sourced in lib/greeting.js so it can't drift from the client fallback.
+    // Best-effort (same posture as the onboarding branch): log on error, never fail
+    // session creation. /api/messages force-sets role:'user', so this MUST be written
+    // server-side. Not backfilled for pre-change sessions (acceptable; historical).
+    const { data: greetProfile } = await supabase
+      .from('profiles').select('full_name').eq('id', user.id).single()
+    const greetName = greetProfile?.full_name?.split(' ')[0] ?? 'there'
+    const { error: greetErr } = await supabase.from('messages').insert({
+      session_id: data.id,
+      role: 'assistant',
+      content: newSessionGreeting(persona, greetName),
+    })
+    if (greetErr) console.error('[sessions POST] greeting insert failed:', greetErr.message)
 
     await supabase.from('sessions').update({ outline, title, assignment_summary: summary }).eq('id', data.id)
 
