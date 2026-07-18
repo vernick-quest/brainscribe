@@ -1605,3 +1605,49 @@ path) so a coach-suggested but unconfirmed candidate line is never persisted as 
 Gate: `essay` is the only research-relevant prose type in the scaffold vocabulary
 (`narrative|essay|personal_statement|custom`); if coach-ai later adds a `research`/
 `argumentative` scaffold type, update the `assignment_type === 'essay'` gate in TutorSession.
+
+## 2026-07-17 — Admin cost-retention: deleted/unattributed bucket + email-hash re-merge (focus/admin)
+
+**Files:** `app/api/admin/usage/route.js`, `components/AdminDashboard.js` (UsageTab),
+`lib/usage.js`, `supabase/migrations/043_api_usage_email_hash.sql`.
+
+**Build:** `npx next build --webpack` — GREEN (default Turbopack build fails only on the
+sandbox Google-fonts network fetch, unrelated to this change; use the `--webpack` path here
+as noted in memory for this worktree's node_modules layout).
+
+### Part 1 — "Deleted / unattributed" row (no migration; ships immediately)
+- The Usage & Cost tab's **Cost Per User** card now sums orphaned `api_usage` rows
+  (`user_id IS NULL`, last 30d) directly via the service client and renders a dashed
+  "Deleted / unattributed" row plus a **Total (reconciled)** line = attributed users +
+  orphans. Zero PII (no identity remains on orphan rows).
+- **Manual checks (live, admin account):**
+  1. Open /admin → Usage & Cost. With no deleted users, the "Deleted / unattributed" row is
+     absent and the reconciled total equals the sum of user rows.
+  2. Delete (or COPPA-auto-delete) a user who had spend → their per-user row disappears
+     (usage_by_user filters NULLs) but the "Deleted / unattributed" row appears with their
+     spend and the reconciled total is unchanged. This is the reconciliation the feature adds.
+  3. Row count text ("N orphaned rows") matches the number of surviving null-user rows.
+
+### Part 2 — email_hash re-merge groundwork (REQUIRES migration + env flag)
+- **Migration `043_api_usage_email_hash.sql` is PROVISIONAL — infra assigns the real number
+  and hand-applies it in the Supabase SQL Editor.** It adds a nullable `email_hash text`
+  column + index. No backfill (raw emails for already-deleted users are gone by design).
+- `lib/usage.js` writes `SHA-256(lower(trim(email)))` (Node `crypto`) onto every new usage
+  row, looked up by `userId` at insert time. **Gated by `USAGE_EMAIL_HASH_ENABLED=1`** so the
+  column key is omitted from inserts until the flag is set — safe to deploy in either order
+  vs. the migration (pre-migration/pre-flag = no-op, usage logging never breaks).
+- **Apply order (apply-before-deploy):** (a) infra applies 043, (b) set
+  `USAGE_EMAIL_HASH_ENABLED=1` in Vercel, (c) verify a fresh session writes a 64-char hex
+  `email_hash` on new `api_usage` rows (admin/SQL spot check). With the flag OFF, confirm
+  `email_hash` is NULL and inserts still succeed.
+- **Deferred:** the admin re-merge VIEW/UI (grouping orphaned spend back to a live user by
+  matching `email_hash`) is NOT built — only the retention plumbing, so no future spend is
+  lost. Also deferred: threading email from callers (currently a per-insert profiles lookup,
+  fine in the background `after()` path); historical backfill (intentionally none).
+
+### COPPA / PII notes for conductor scrutiny
+- The hash is one-way and never reverse-mapped to identity; intended purpose is cost
+  aggregation only. Confirm this squares with the COPPA deletion promise — a stable
+  per-person hash *surviving deletion* is the point (re-merge), so verify legal treats a
+  salt-less SHA-256 of an email as non-PII for this use. If a pepper/salt is wanted, it must
+  be a server-only constant (else re-merge across the deletion boundary breaks).
