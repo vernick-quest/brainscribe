@@ -1,7 +1,7 @@
 ---
 title: "Why we call it a coach, not a tutor"
 date: 2026-07-11
-summary: "Tutor" and "coach" sound interchangeable, but they name two different jobs — and the difference is the whole reason BrainScribe works the way it does.
+summary: '"Tutor" and "coach" sound interchangeable, but they name two different jobs — and the difference is the whole reason BrainScribe works the way it does.'
 tag: How it works
 ---
 
