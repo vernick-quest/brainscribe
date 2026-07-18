@@ -1,0 +1,87 @@
+-- NNN — SECURITY DEFINER / anon-exposure hardening (broad sweep follow-up to 041)
+-- File: NNN_security_definer_hardening.sql · Date: 2026-07-17
+--
+-- ⚠️⚠️ INFRA: this file carries a PLACEHOLDER number (NNN). Assign the real next
+--    number (042 is the last file today, so likely 043 — but CONFIRM there is no
+--    other queued 043) and rename BEFORE it is applied by hand. ⚠️⚠️
+--
+-- ⚠️ Apply BY HAND in the Supabase SQL Editor for project lakozspeyxsuunogfant
+--    (NOT qqxgfg… — check the project switcher). Conductor security-reviews first.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CONTEXT — broad SECURITY DEFINER / anon-exposure audit over ALL migrations
+-- (focus/auth-coppa, 2026-07-17). Findings + citations in
+-- docs/specs/security-definer-audit-findings.md.
+--
+-- The audit found the definer surface is ALREADY fully hardened: after 041 pinned
+-- handle_new_user() + is_admin(), all 7 SECURITY DEFINER functions pin
+-- `search_path = public`, and every data-returning definer RPC has had its default
+-- EXECUTE-to-PUBLIC revoked (024, 029, 034). This migration closes the two small
+-- residuals below. Both are safe, verbatim-scoped config/policy changes — NO
+-- function body is altered.
+--
+-- Idempotent throughout (ALTER … SET is a no-op if already set; DROP … IF EXISTS).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- FINDING F1 (MEDIUM) — api_usage: dead permissive INSERT policy = pure attack
+-- surface. 009 created:
+--   create policy "authenticated insert api_usage" on api_usage
+--     for insert with check (auth.uid() is not null);
+-- Every LEGITIMATE api_usage write goes through the service-role client
+-- (lib/usage.js -> createServiceClient().from('api_usage').insert(...); verified
+-- as the ONLY insert path in app/ + lib/). Service-role BYPASSES RLS, so this
+-- permissive policy serves no legitimate caller — it only lets any holder of the
+-- browser-shipped anon key (once authenticated) POST /rest/v1/api_usage to
+-- fabricate cost rows or attribute spend to an arbitrary user_id, polluting the
+-- admin cost/usage dashboards. Same class as the 034 rate_limits and 023 invites
+-- findings (an object left open by a Postgres/Supabase default). Dropping the
+-- policy is ZERO functional loss (mirrors 034's reasoning).
+--
+-- NOTE: do NOT `revoke … on api_usage from authenticated` — admins read this table
+-- through the authenticated role via the "admin read api_usage" SELECT policy, so a
+-- blanket table revoke would break the admin dashboard. Dropping ONLY the INSERT
+-- policy leaves admin reads intact while denying all client writes.
+drop policy if exists "authenticated insert api_usage" on api_usage;
+
+-- FINDING F2 (LOW) — update_updated_at() (001) has a mutable search_path. It is a
+-- SECURITY INVOKER trigger function (NOT definer), so there is no privilege-
+-- escalation vector — but Supabase's database linter flags mutable search_path on
+-- ALL functions (`function_search_path_mutable`), and pinning is free. Pure config
+-- change; the body is untouched.
+alter function public.update_updated_at() set search_path = public;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Post-apply verification (run in the same SQL editor; paste results back).
+--
+-- 1) F1 — no client INSERT policy remains on api_usage:
+--      select polname, cmd, permissive
+--      from pg_policies where tablename = 'api_usage';
+--    EXPECT: only "admin read api_usage" (SELECT). No INSERT policy.
+--    (Service-role inserts keep working — they bypass RLS.)
+--
+-- 2) F2 — update_updated_at search_path is pinned:
+--      select proname, proconfig
+--      from pg_proc where proname = 'update_updated_at';
+--    EXPECT: proconfig contains 'search_path=public'.
+--
+-- 3) DRIFT RE-CHECK (migrations are authoritative per CLAUDE.md, but confirm no
+--    NEW live-only definer function or permissive policy exists that no migration
+--    captures — the audit could only see migration files):
+--    a) every SECURITY DEFINER function pins search_path:
+--         select n.nspname, p.proname, p.proconfig
+--         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--         where p.prosecdef and n.nspname = 'public';
+--       EXPECT every row's proconfig to contain 'search_path=public'.
+--       (Rows: handle_new_user, is_admin, anthropic_usage_daily, usage_by_user,
+--        usage_by_category, check_rate_limit, sample_unaudited_sessions.)
+--       Any row with NULL proconfig = a live-only unpinned definer fn → reconcile.
+--    b) no table has RLS disabled:
+--         select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+--         where n.nspname='public' and c.relkind='r' and not c.relrowsecurity;
+--       EXPECT: 0 rows.
+--    c) no unexpected permissive policy is `using (true)` / world-open:
+--         select tablename, polname, cmd, qual, with_check
+--         from pg_policies where schemaname='public'
+--         order by tablename, polname;
+--       Eyeball for any `qual = true` / `with_check = true` on a sensitive table.
+-- ─────────────────────────────────────────────────────────────────────────────
