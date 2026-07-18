@@ -1718,3 +1718,31 @@ policies were already dropped (`023`) + backstopped (`035`). Two small residuals
 2. Paste the SQL into the Supabase SQL Editor for project `lakozspeyxsuunogfant`.
 3. Run the migration's post-apply verification block (`pg_policies`, `pg_proc.proconfig`) and the
    drift re-check SQL to confirm no live-only unpinned definer fn / world-open policy exists.
+
+---
+
+## 2026-07-17 — Admin cost-retention: deleted/unattributed cost bucket (focus/admin)
+
+**Files:** `app/api/admin/usage/route.js`, `components/AdminDashboard.js` (UsageTab).
+(Part 2 — the email-hash re-merge — was DROPPED per Robert 2026-07-17: unverified accounts
+incur no cost, so re-merge adds COPPA/PII surface for little payoff; Part 1's reconciliation
+covers the real need. `lib/usage.js` + the email_hash migration were not merged.)
+
+### Part 1 — "Deleted / unattributed" row (no migration; ships immediately)
+- The Usage & Cost tab's **Cost Per User** card now sums orphaned `api_usage` rows
+  (`user_id IS NULL`, last 30d) directly via the service client and renders a dashed
+  "Deleted / unattributed" row plus a **Total (reconciled)** line = attributed users +
+  orphans. Zero PII (no identity remains on orphan rows).
+- **Manual checks (live, admin account):**
+  1. Open /admin → Usage & Cost. With no deleted users, the "Deleted / unattributed" row is
+     absent and the reconciled total equals the sum of user rows.
+  2. Delete (or COPPA-auto-delete) a user who had spend → their per-user row disappears
+     (usage_by_user filters NULLs) but the "Deleted / unattributed" row appears with their
+     spend and the reconciled total is unchanged. This is the reconciliation the feature adds.
+  3. Row count text ("N orphaned rows") matches the number of surviving null-user rows.
+
+### Part 2 — email_hash re-merge — DROPPED (not shipped)
+Per Robert 2026-07-17: unverified/unconsented accounts can't reach the coach so they incur
+no cost; Part 1's reconciliation already makes the cost totals accurate. Attributing orphaned
+spend to a *specific* deleted person added COPPA/PII surface (a salt-less email hash surviving
+deletion) for little payoff, so it was not merged.

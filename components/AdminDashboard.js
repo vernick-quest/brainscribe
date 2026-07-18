@@ -951,7 +951,7 @@ function UsageTab() {
     <p className="text-sm text-center py-12" style={{ color: 'var(--status-error, #dc2626)' }}>Failed to load: {error}</p>
   )
 
-  const { anthropic, elevenlabs, byCategory, byUser } = data ?? {}
+  const { anthropic, elevenlabs, byCategory, byUser, unattributed } = data ?? {}
 
   // Cost buckets — collapse the api_usage categories into 3 display rows.
   // user → Users · testing → Testing · internal+other → Other / Internal.
@@ -1134,7 +1134,7 @@ function UsageTab() {
           <span className="text-[10px]" style={{ color: 'var(--text-subtle)' }}>ElevenLabs is an allocated estimate</span>
         </div>
 
-        {!byUser || byUser.length === 0 ? (
+        {(!byUser || byUser.length === 0) && !unattributed ? (
           <p className="text-sm italic" style={{ color: 'var(--text-subtle)' }}>No per-user usage yet. Appears once users run sessions after this update.</p>
         ) : (
           <div className="space-y-1">
@@ -1145,7 +1145,7 @@ function UsageTab() {
               <span className="w-20 text-right">ElevenLabs</span>
               <span className="w-20 text-right font-bold">Total</span>
             </div>
-            {byUser.map(u => (
+            {(byUser ?? []).map(u => (
               <div key={u.userId} className="flex items-center gap-3 text-xs py-1.5">
                 <span className="flex-1 min-w-0">
                   <span className="font-semibold block truncate" style={{ color: 'var(--text-strong)' }}>{u.fullName ?? 'Unknown'}</span>
@@ -1156,6 +1156,40 @@ function UsageTab() {
                 <span className="w-20 text-right font-bold" style={{ color: 'var(--text-strong)' }}>${u.totalCost.toFixed(4)}</span>
               </div>
             ))}
+
+            {/* Deleted / unattributed — orphaned spend (user_id nulled on delete,
+                migration 013). Surfaced so the per-user rows reconcile with the total. */}
+            {unattributed && (
+              <div className="flex items-center gap-3 text-xs py-1.5"
+                style={{ borderTop: '1px dashed var(--border-default)' }}>
+                <span className="flex-1 min-w-0">
+                  <span className="font-semibold block truncate italic" style={{ color: 'var(--text-muted)' }}>Deleted / unattributed</span>
+                  <span className="block truncate" style={{ color: 'var(--text-subtle)' }}>
+                    {unattributed.rowCount} orphaned row{unattributed.rowCount !== 1 ? 's' : ''} — deleted accounts, no PII
+                  </span>
+                </span>
+                <span className="w-20 text-right" style={{ color: 'var(--text-muted)' }}>${unattributed.anthropicCost.toFixed(4)}</span>
+                <span className="w-20 text-right" style={{ color: 'var(--text-muted)' }}>${unattributed.elevenlabsCost.toFixed(4)}</span>
+                <span className="w-20 text-right font-bold" style={{ color: 'var(--text-strong)' }}>${unattributed.totalCost.toFixed(4)}</span>
+              </div>
+            )}
+
+            {/* Reconciled total = attributed users + unattributed orphans */}
+            {(() => {
+              const attributedTotal = (byUser ?? []).reduce((s, u) => s + u.totalCost, 0)
+              const grandTotal = attributedTotal + (unattributed?.totalCost ?? 0)
+              return (
+                <div className="flex items-center gap-3 text-xs pt-2 mt-1"
+                  style={{ borderTop: '1px solid var(--border-default)' }}>
+                  <span className="flex-1 font-bold uppercase tracking-wide text-[10px]" style={{ color: 'var(--text-subtle)' }}>
+                    Total (reconciled)
+                  </span>
+                  <span className="w-20 text-right" />
+                  <span className="w-20 text-right" />
+                  <span className="w-20 text-right font-black" style={{ color: 'var(--text-strong)' }}>${grandTotal.toFixed(4)}</span>
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>

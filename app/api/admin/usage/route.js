@@ -84,6 +84,43 @@ export async function GET() {
     elevenlabsChars: Number(r.elevenlabs_chars) || 0,
   }))
 
+  // Deleted / unattributed spend. api_usage.user_id is ON DELETE SET NULL
+  // (migration 013), so a deleted user's rows survive with user_id IS NULL —
+  // and usage_by_user filters those out (WHERE user_id IS NOT NULL). Without
+  // this bucket the per-user rows silently under-count the true total. We sum
+  // the orphaned rows directly (service-role, admin-gated above) so the Cost
+  // Per User table reconciles. Zero PII: by definition no identity remains on
+  // these rows. Orphan rows are bounded by the number of deleted users, so a
+  // client-side sum is fine. (The 30-day window uses server time here vs. the
+  // RPC's DB now() — an immaterial sub-second drift for a cost display.)
+  const sinceIso = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  let unattributed = null
+  {
+    const { data: orphanRows, error: orphanError } = await svc
+      .from('api_usage')
+      .select('service, cost_usd, characters')
+      .is('user_id', null)
+      .gte('created_at', sinceIso)
+    if (orphanError) {
+      console.error('[usage] unattributed query failed:', orphanError.message)
+    } else if (orphanRows && orphanRows.length) {
+      let anthropicCost = 0, elevenlabsCost = 0, anthropicCalls = 0, elevenlabsChars = 0
+      for (const r of orphanRows) {
+        const cost = Number(r.cost_usd) || 0
+        if (r.service === 'anthropic') { anthropicCost += cost; anthropicCalls += 1 }
+        else if (r.service === 'elevenlabs') { elevenlabsCost += cost; elevenlabsChars += Number(r.characters) || 0 }
+      }
+      unattributed = {
+        anthropicCost,
+        elevenlabsCost,
+        totalCost: anthropicCost + elevenlabsCost,
+        anthropicCalls,
+        elevenlabsChars,
+        rowCount: orphanRows.length,
+      }
+    }
+  }
+
   return Response.json({
     anthropic: {
       totalCost,
@@ -98,5 +135,6 @@ export async function GET() {
     elevenlabs,
     byCategory,
     byUser,
+    unattributed,
   })
 }
