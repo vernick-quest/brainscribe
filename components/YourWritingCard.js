@@ -50,7 +50,8 @@ function WritingRow({ session }) {
           {title}
         </p>
         <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {coach.name} · <RowDate dateStr={session.updated_at} />
+          {/* Done → completion time; active → last-touched (see SessionsList note). */}
+          {coach.name} · <RowDate dateStr={done && session.completed_at ? session.completed_at : (session.updated_at ?? session.created_at)} />
         </p>
       </div>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, font: 'var(--type-meta)', color: done ? 'var(--status-success)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>

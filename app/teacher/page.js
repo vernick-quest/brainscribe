@@ -39,7 +39,7 @@ export default async function TeacherDashboardPage() {
   if (sessionIds.length > 0) {
     const { data: sessionData } = await service
       .from('sessions')
-      .select('id, title, assignment_text, status, persona, created_at, updated_at, student_id, subject, subject_custom_label, requirements')
+      .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, student_id, subject, subject_custom_label, requirements')
       .in('id', sessionIds)
       .order('updated_at', { ascending: false })
       .limit(100)

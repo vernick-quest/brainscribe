@@ -771,7 +771,15 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       <StatusBadge status={session.status} />
 
       <span className="text-xs shrink-0" style={{ color: 'var(--text-subtle)' }}>
-        {formatDate(session.updated_at ?? session.created_at)}
+        {/* Completed sessions show WHEN they were finished (completed_at), not when
+            the row was last touched — a profile recompute/backfill bumps updated_at
+            (BEFORE UPDATE trigger) and would otherwise make a done essay read as
+            freshly completed. Active sessions keep updated_at (last-activity). */}
+        {formatDate(
+          (session.status === 'complete' && session.completed_at)
+            ? session.completed_at
+            : (session.updated_at ?? session.created_at)
+        )}
       </span>
 
       <span className="text-xs opacity-0 group-hover:opacity-100 transition shrink-0"
