@@ -25,7 +25,7 @@ function formatPhone(input) {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
 }
 
-export default function ProfileForm({ profile, user, impersonating = false }) {
+export default function ProfileForm({ profile, email, impersonating = false }) {
   const [name, setName] = useState(profile?.full_name ?? '')
   const [phone, setPhone] = useState(formatPhone(profile?.phone ?? ''))
   const [saving, setSaving] = useState(false)
@@ -68,7 +68,7 @@ export default function ProfileForm({ profile, user, impersonating = false }) {
             '13plus'); a student stays fail-closed on their real bracket (an under-13's
             avatar_url is nulled anyway). Mirrors Navbar.js. */}
         <Avatar
-          name={name || user?.email}
+          name={name || email}
           avatarUrl={profile?.avatar_url}
           ageBracket={profile?.role === 'student' ? profile?.age_bracket : '13plus'}
           size={64}
@@ -76,9 +76,9 @@ export default function ProfileForm({ profile, user, impersonating = false }) {
         />
         <div>
           <p className="font-bold text-base" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display)' }}>
-            {name || user?.email}
+            {name || email}
           </p>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>{email}</p>
           <span
             className="text-xs font-semibold rounded-full px-2.5 py-0.5 inline-block mt-1.5"
             style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
@@ -130,7 +130,7 @@ export default function ProfileForm({ profile, user, impersonating = false }) {
               color: 'var(--text-subtle)',
             }}
           >
-            {user?.email}
+            {email}
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--text-subtle)' }}>
             Managed by Google — change it there.

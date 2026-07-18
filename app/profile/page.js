@@ -29,7 +29,7 @@ export default async function ProfilePage() {
 
   const { data: profile } = await db
     .from('profiles')
-    .select('role, full_name, avatar_url, age_bracket, writing_profile_aggregate, phone')
+    .select('role, full_name, avatar_url, age_bracket, writing_profile_aggregate, phone, email')
     .eq('id', targetId)
     .single()
 
@@ -123,7 +123,10 @@ export default async function ProfilePage() {
             boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <ProfileForm profile={profile} user={user} impersonating={!!imp} />
+          {/* Email comes from the profile being VIEWED (the impersonated user when
+              remoted in), not the admin's auth session. Falls back to the auth email
+              for the normal self-view. */}
+          <ProfileForm profile={profile} email={imp ? (profile?.email ?? '') : user.email} impersonating={!!imp} />
         </div>
 
         {/* Parents section — students only */}

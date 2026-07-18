@@ -114,7 +114,10 @@ export default async function DashboardPage() {
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
       {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
 
-      <Navbar user={user} profile={adminProfile} />
+      {/* While impersonating, the navbar shows the IMPERSONATED user (avatar + role
+          nav), so a troubleshooting admin sees what the user sees. `user` stays the
+          admin's real auth session (the cross-tab identity guard keys on it). */}
+      <Navbar user={user} profile={imp ? profile : adminProfile} />
 
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
         <PendingInviteBanner invites={pendingInvites} />

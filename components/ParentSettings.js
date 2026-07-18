@@ -187,7 +187,7 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             Your account
           </h2>
 
-          {impersonating ? <IdentityCard profile={profile} /> : <ProfileForm profile={profile} user={user} />}
+          {impersonating ? <IdentityCard profile={profile} /> : <ProfileForm profile={profile} email={user?.email} />}
 
           <div className="pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
             <div className="pt-4">
