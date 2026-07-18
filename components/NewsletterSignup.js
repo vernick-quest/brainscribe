@@ -2,10 +2,20 @@
 
 import { useState } from 'react'
 
-// "Get new posts" email capture. Posts to /api/subscribe (service-role insert,
-// validated + rate-limited). `source` records where the signup happened so we can
-// see which surface converts. Brand: navy ink + warm orange spark on cream.
-export default function NewsletterSignup({ source = 'blog', compact = false }) {
+// Email capture. Posts to /api/subscribe (service-role insert, validated +
+// rate-limited). `source` records where the signup happened so we can see which
+// surface converts. Copy is configurable so the same component serves both the
+// blog ("get new posts") and the landing waitlist ("get early access"). Brand:
+// navy ink + warm orange spark on cream.
+export default function NewsletterSignup({
+  source = 'blog',
+  compact = false,
+  title = 'Get new posts',
+  subtitle = 'Practical writing help for kids who freeze at the blank page — a couple of times a week. No spam.',
+  cta = 'Subscribe',
+  successTitle = "You're in — thanks!",
+  successBody = "We'll send new posts as they go up. No spam, unsubscribe anytime.",
+}) {
   const [email, setEmail] = useState('')
   const [state, setState] = useState('idle') // idle | sending | done | error
   const [error, setError] = useState('')
@@ -30,9 +40,9 @@ export default function NewsletterSignup({ source = 'blog', compact = false }) {
     return (
       <div className="rounded-2xl px-5 py-4 text-center"
         style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)' }}>
-        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)', margin: 0 }}>You&apos;re in — thanks!</p>
+        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)', margin: 0 }}>{successTitle}</p>
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', margin: '4px 0 0' }}>
-          We&apos;ll send new posts as they go up. No spam, unsubscribe anytime.
+          {successBody}
         </p>
       </div>
     )
@@ -47,10 +57,10 @@ export default function NewsletterSignup({ source = 'blog', compact = false }) {
       {!compact && (
         <>
           <p className="font-bold" style={{ font: 'var(--type-subhead)', color: 'var(--text-strong)', margin: 0 }}>
-            Get new posts
+            {title}
           </p>
           <p className="text-sm" style={{ color: 'var(--text-muted)', margin: '4px 0 var(--space-4)' }}>
-            Practical writing help for kids who freeze at the blank page — a couple of times a week. No spam.
+            {subtitle}
           </p>
         </>
       )}
@@ -72,7 +82,7 @@ export default function NewsletterSignup({ source = 'blog', compact = false }) {
           disabled={state === 'sending' || !email.trim()}
           className="shrink-0 text-sm font-bold rounded-xl px-5 py-2.5 text-white transition disabled:opacity-50"
           style={{ backgroundColor: 'var(--accent)' }}>
-          {state === 'sending' ? 'Signing up…' : 'Subscribe'}
+          {state === 'sending' ? 'Signing up…' : cta}
         </button>
       </form>
       {error && <p className="text-xs mt-2" style={{ color: 'var(--status-error)' }}>{error}</p>}

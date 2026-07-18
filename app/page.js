@@ -260,7 +260,14 @@ function Landing() {
       {/* ── Newsletter ── */}
       <section style={{ ...sectionWrap, paddingTop: 8, paddingBottom: 8 }}>
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
-          <NewsletterSignup source="landing" />
+          <NewsletterSignup
+            source="waitlist"
+            title="Get early access"
+            subtitle="BrainScribe is invite-only while we're in early access. Join the list and we'll send you an invite as we open up more spots."
+            cta="Request an invite"
+            successTitle="You're on the list!"
+            successBody="We'll email you an invite as we open up more spots — keep an eye on your inbox."
+          />
         </div>
       </section>
 
