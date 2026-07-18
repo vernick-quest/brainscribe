@@ -155,6 +155,7 @@ export async function POST(request) {
           title: `Practice — ${prompt?.label ?? 'warm-up'}`,
           is_onboarding: true,
           onboarding_prompt_key: onboardingPromptKey,
+          last_active_at: new Date().toISOString(),
         })
         .select()
         .single()
@@ -191,6 +192,10 @@ export async function POST(request) {
           persona,
           subject,
           subject_custom_label: subject === 'other' ? (subjectCustomLabel || null) : null,
+          // Seed last-active at creation so a brand-new session (no messages yet)
+          // sorts to the TOP of the assignment list (ordered by last_active_at) and
+          // shows "just now" — otherwise it's null and sorts last.
+          last_active_at: new Date().toISOString(),
         })
         .select()
         .single()

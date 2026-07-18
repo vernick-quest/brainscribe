@@ -62,20 +62,20 @@ export default async function DashboardPage() {
   // deploy window: if the gym_session_id column isn't present yet (migration 025 not
   // applied), fall back to the unfiltered query — pre-migration there are no gym
   // sessions anyway, so nothing is hidden.
-  const baseCols = 'id, assignment_text, status, persona, created_at, updated_at, completed_at, title, subject, subject_custom_label, is_onboarding, requirements'
+  const baseCols = 'id, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, title, subject, subject_custom_label, is_onboarding, requirements'
   let sessionsRes = await service
     .from('sessions')
     .select(baseCols)
     .eq('student_id', targetId)
     .is('gym_session_id', null)
-    .order('updated_at', { ascending: false })
+    .order('last_active_at', { ascending: false, nullsFirst: false })
     .limit(50)
   if (sessionsRes.error) {
     sessionsRes = await service
       .from('sessions')
       .select(baseCols)
       .eq('student_id', targetId)
-      .order('updated_at', { ascending: false })
+      .order('last_active_at', { ascending: false, nullsFirst: false })
       .limit(50)
   }
   const sessions = sessionsRes.data

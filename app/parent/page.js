@@ -40,9 +40,9 @@ export default async function ParentDashboardPage() {
     const [{ data: profileData }, { data: sessionData }] = await Promise.all([
       service.from('profiles').select('id, full_name, email, avatar_url, age_bracket, birthdate').in('id', studentIds),
       service.from('sessions')
-        .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, student_id, writing_profile, subject, subject_custom_label, requirements')
+        .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, student_id, writing_profile, subject, subject_custom_label, requirements')
         .in('student_id', studentIds)
-        .order('updated_at', { ascending: false })
+        .order('last_active_at', { ascending: false, nullsFirst: false })
         .limit(100),
     ])
     children = profileData ?? []
@@ -78,9 +78,9 @@ export default async function ParentDashboardPage() {
   // children's work, and excluding any practice/onboarding run.
   const { data: ownSessionData } = await service
     .from('sessions')
-    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, is_onboarding, subject, subject_custom_label, requirements')
+    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, is_onboarding, subject, subject_custom_label, requirements')
     .eq('student_id', targetId)
-    .order('updated_at', { ascending: false })
+    .order('last_active_at', { ascending: false, nullsFirst: false })
     .limit(20)
   const ownSessions = (ownSessionData ?? []).filter(s => !s.is_onboarding)
 

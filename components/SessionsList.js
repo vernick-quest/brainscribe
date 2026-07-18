@@ -147,11 +147,12 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, font: 'var(--type-meta)', color: 'var(--text-subtle)', minWidth: 0 }}>
               <span style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                 {subjectLabel && <><SubjectIcon value={session.subject} size={12} style={{ color: 'var(--text-subtle)' }} />{subjectLabel} · </>}
-                {/* Done items show completion time (completed_at), not last-touched
-                    (updated_at) — a profile recompute/backfill bumps updated_at via the
-                    sessions BEFORE UPDATE trigger and would otherwise make a finished
-                    essay read as freshly done. Active items keep updated_at. */}
-                {meta.name} · <ClientDate dateStr={(session.status === 'complete' && session.completed_at) ? session.completed_at : (session.updated_at ?? session.created_at)} />
+                {/* Done items show completion time (completed_at); active items show
+                    last GENUINE activity (last_active_at — touched only on real coach/
+                    student turns), NOT updated_at, which any background write (a
+                    requirements snapshot, a migration backfill) bumps via the sessions
+                    BEFORE UPDATE trigger — that made every essay read as freshly worked-on. */}
+                {meta.name} · <ClientDate dateStr={(session.status === 'complete' && session.completed_at) ? session.completed_at : (session.last_active_at ?? session.updated_at ?? session.created_at)} />
               </span>
               <span aria-hidden="true" style={{ flexShrink: 0, color: 'var(--border-strong)' }}>·</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, whiteSpace: 'nowrap' }}>
