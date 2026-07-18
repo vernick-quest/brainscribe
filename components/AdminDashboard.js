@@ -1184,6 +1184,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
         {/* Demo persona seeder — preview parent/teacher views via Remote in */}
         <DemoDataControl seeded={demoSeeded} />
 
+        {/* Maintenance: re-analyze completed essays missing a writing profile */}
+        <BackfillWritingProfiles />
+
         {/* Stats — icon chips mirror the login landing page */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
