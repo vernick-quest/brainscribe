@@ -83,7 +83,7 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [], pendingInvites = [] }) {
+export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [], pendingInvites = [], impersonating = false }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -93,7 +93,7 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
 
-        <PendingInviteBanner invites={pendingInvites} />
+        <PendingInviteBanner invites={pendingInvites} readOnly={impersonating} />
 
         {/* Greeting. (The old top-right "Account & children" button is gone — the
             Navbar avatar now links straight to /parent/settings, and adding a

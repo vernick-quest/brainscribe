@@ -25,7 +25,7 @@ export default async function TeacherDashboardPage() {
   const service = imp ? createServiceClient() : supabase
 
   const { data: profile } = await service
-    .from('profiles').select('role, full_name, avatar_url, age_bracket').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, avatar_url, age_bracket, email').eq('id', targetId).single()
 
   // All session IDs this teacher has been added to
   const { data: teacherLinks } = await service
@@ -75,7 +75,8 @@ export default async function TeacherDashboardPage() {
   // Pending connection invites (e.g. a student added this teacher — who already
   // had an account — to an assignment). Surfaced as a confirmation banner; Accept
   // routes through /invite which runs the real claim guards. Not while impersonating.
-  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+  // Impersonating → show the target's pending invites read-only (troubleshooting).
+  const pendingInvites = await getPendingInvitesForEmail(imp ? profile?.email : user.email)
 
   return (
     <>
@@ -88,6 +89,7 @@ export default async function TeacherDashboardPage() {
         notifications={notifications ?? []}
         ownSessions={ownSessions}
         pendingInvites={pendingInvites}
+        impersonating={!!imp}
       />
     </>
   )

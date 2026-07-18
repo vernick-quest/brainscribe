@@ -26,7 +26,12 @@ function copyFor(inv) {
   return ROLE_COPY[inv.role] ?? 'invited you to connect'
 }
 
-export default function PendingInviteBanner({ invites = [] }) {
+// readOnly = an admin is remoted into this user, viewing their pending invites to
+// troubleshoot ("did my invite land?"). The invites belong to the impersonated
+// user, so accepting would run the claim as the WRONG identity — the action is
+// suppressed and replaced with a "Pending" marker. View-only, mirrors the
+// remote-in view+link posture.
+export default function PendingInviteBanner({ invites = [], readOnly = false }) {
   const [dismissed, setDismissed] = useState([])
   const visible = invites.filter(i => !dismissed.includes(i.token))
   if (!visible.length) return null
@@ -41,20 +46,27 @@ export default function PendingInviteBanner({ invites = [] }) {
             <span style={{ fontWeight: 'var(--fw-bold)' }}>{inv.inviterName}</span>{' '}
             {copyFor(inv)}.
           </p>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setDismissed(d => [...d, inv.token])}
-              className="text-sm font-semibold rounded-full px-3 py-1.5 transition"
-              style={{ color: 'var(--text-muted)', border: '1px solid var(--border-strong)', background: 'transparent' }}>
-              Not now
-            </button>
-            <a
-              href={`/invite?token=${inv.token}`}
-              className="text-sm rounded-full px-4 py-1.5 transition hover:opacity-90"
-              style={{ fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}>
-              Accept
-            </a>
-          </div>
+          {readOnly ? (
+            <span className="text-xs font-semibold rounded-full px-3 py-1.5 shrink-0 self-start sm:self-auto"
+              style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+              Pending · awaiting this user
+            </span>
+          ) : (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setDismissed(d => [...d, inv.token])}
+                className="text-sm font-semibold rounded-full px-3 py-1.5 transition"
+                style={{ color: 'var(--text-muted)', border: '1px solid var(--border-strong)', background: 'transparent' }}>
+                Not now
+              </button>
+              <a
+                href={`/invite?token=${inv.token}`}
+                className="text-sm rounded-full px-4 py-1.5 transition hover:opacity-90"
+                style={{ fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}>
+                Accept
+              </a>
+            </div>
+          )}
         </div>
       ))}
     </div>

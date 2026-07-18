@@ -189,7 +189,7 @@ function StudentBlock({ student, sessions, defaultOpen }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────
-export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [], pendingInvites = [] }) {
+export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [], pendingInvites = [], impersonating = false }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -199,7 +199,7 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
 
-        <PendingInviteBanner invites={pendingInvites} />
+        <PendingInviteBanner invites={pendingInvites} readOnly={impersonating} />
 
         {/* Greeting + notifications */}
         <div className="flex items-start justify-between gap-4">

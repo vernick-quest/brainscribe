@@ -84,7 +84,10 @@ export default async function DashboardPage() {
   // already having an account, so the signup trigger never auto-claimed them and
   // (if they didn't get/open the email) they'd otherwise stay unlinked. Surfaced
   // as a confirmation banner; Accept routes through /invite to run the real claim.
-  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+  // While impersonating, show the IMPERSONATED user's pending invites (read-only)
+  // so an admin can troubleshoot "did my invite land?" without logging in as them.
+  // Keyed on the target's email, not the admin's; Accept is suppressed in the banner.
+  const pendingInvites = await getPendingInvitesForEmail(imp ? profile?.email : user.email)
 
   // Zero assignments ever → skip the empty list and drop them straight on the
   // new-assignment page. But keep them here if they have a pending invite to
@@ -115,7 +118,7 @@ export default async function DashboardPage() {
       <Navbar user={user} profile={imp ? profile : adminProfile} />
 
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-12">
-        <PendingInviteBanner invites={pendingInvites} />
+        <PendingInviteBanner invites={pendingInvites} readOnly={!!imp} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-6)' }}>
           <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>

@@ -26,7 +26,7 @@ export default async function ParentDashboardPage() {
 
   // Fetch the profile we're viewing as
   const { data: profile } = await service
-    .from('profiles').select('role, full_name, birthdate, avatar_url').eq('id', targetId).single()
+    .from('profiles').select('role, full_name, birthdate, avatar_url, email').eq('id', targetId).single()
 
   const { data: rels } = await service
     .from('relationships').select('student_id').eq('watcher_id', targetId)
@@ -86,7 +86,8 @@ export default async function ParentDashboardPage() {
 
   // Pending connection invites (e.g. a student invited this parent, who already
   // had an account). Surfaced as a confirmation banner. Not while impersonating.
-  const pendingInvites = !imp ? await getPendingInvitesForEmail(user.email) : []
+  // Impersonating → show the target's pending invites read-only (troubleshooting).
+  const pendingInvites = await getPendingInvitesForEmail(imp ? profile?.email : user.email)
 
   return (
     <>
@@ -100,6 +101,7 @@ export default async function ParentDashboardPage() {
         teachersBySession={teachersBySession}
         ownSessions={ownSessions}
         pendingInvites={pendingInvites}
+        impersonating={!!imp}
       />
     </>
   )
