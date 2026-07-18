@@ -221,7 +221,7 @@ export default function TeacherDashboard({ user, profile, students, sessions, no
         </div>
 
         {/* Your own writing — teachers can use the coaches too */}
-        <YourWritingCard ownSessions={ownSessions} />
+        <YourWritingCard ownSessions={ownSessions} impersonating={impersonating} />
 
         {/* No students */}
         {students.length === 0 && <EmptyState />}

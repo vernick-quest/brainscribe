@@ -1,77 +1,20 @@
 'use client'
 
 // Entry point for a parent/teacher (or any account) to write their own piece with
-// a coach, plus a compact list of what they've already written. Shown on the parent
-// and teacher dashboards. The rows mirror the student assignment list's visual
-// language (persona avatar + coach·date meta + status dot) so this reads as a
-// smaller sibling of that list, not a foreign element — and the list is capped so a
-// heavy account never turns it into a wall.
+// a coach, plus their own writing list. Shown on the parent and teacher dashboards.
+// The list uses the SAME SessionsList component as the student/child assignments —
+// In progress / Done tabs and identical cards — so a watcher's own writing reads as
+// the same surface as the work they review, not a lesser sibling. The only chrome
+// unique to this section is the title + "Write your own" primary action.
 
-import { useState, useEffect } from 'react'
-import { getPersona, PersonaAvatar } from '@/lib/personas'
+import SessionsList from '@/components/SessionsList'
 
-const PREVIEW_COUNT = 3
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const diffDays = Math.floor((new Date() - date) / 86400000)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'long' })
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// Client-computed so the relative label ("Today"/"Yesterday") can't cause a
-// server/client hydration mismatch.
-function RowDate({ dateStr }) {
-  const [label, setLabel] = useState('')
-  useEffect(() => { setLabel(formatDate(dateStr)) }, [dateStr])
-  return <span suppressHydrationWarning>{label}</span>
-}
-
-function WritingRow({ session }) {
-  const done = session.status === 'complete'
-  const coach = getPersona(session.persona)
-  const title = session.title || session.assignment_text?.slice(0, 70) || 'Untitled'
+export default function YourWritingCard({ ownSessions = [], impersonating = false }) {
   return (
-    <a
-      href={done ? `/transcript/${session.id}` : `/assignment/${session.id}`}
-      className="flex items-center transition"
-      style={{
-        gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)',
-        backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)',
-        boxShadow: 'var(--shadow-xs)', borderRadius: 'var(--radius-md)',
-      }}
-    >
-      <PersonaAvatar personaId={session.persona} size={32} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {title}
-        </p>
-        <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {/* Done → completion time; active → last-touched (see SessionsList note). */}
-          {coach.name} · <RowDate dateStr={done && session.completed_at ? session.completed_at : (session.updated_at ?? session.created_at)} />
-        </p>
-      </div>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, font: 'var(--type-meta)', color: done ? 'var(--status-success)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: done ? 'var(--status-success)' : 'var(--navy-500)' }} />
-        {done ? 'Complete' : 'In progress'}
-      </span>
-    </a>
-  )
-}
-
-export default function YourWritingCard({ ownSessions = [] }) {
-  const [expanded, setExpanded] = useState(false)
-  const shown = expanded ? ownSessions : ownSessions.slice(0, PREVIEW_COUNT)
-  const overflow = ownSessions.length - PREVIEW_COUNT
-
-  return (
-    // No boxed wrapper — this reads as a plain titled list, matching the student
-    // "Your assignments" page (title + primary action + cards on the page bg).
+    // No boxed wrapper — a plain titled list on the page bg, matching the student
+    // "Your assignments" page (title + primary action + cards).
     <section>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-5)' }}>
         <div className="min-w-0">
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-strong)', margin: 0 }}>Your writing</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
@@ -86,18 +29,14 @@ export default function YourWritingCard({ ownSessions = [] }) {
       </div>
 
       {ownSessions.length > 0 && (
-        <div className="mt-4 flex flex-col" style={{ gap: 'var(--space-2)' }}>
-          {shown.map(s => <WritingRow key={s.id} session={s} />)}
-
-          {overflow > 0 && (
-            <button
-              onClick={() => setExpanded(e => !e)}
-              className="self-start transition"
-              style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 2px' }}>
-              {expanded ? 'Show less' : `Show all ${ownSessions.length} →`}
-            </button>
-          )}
-        </div>
+        // Own writing → the writer manages their own pieces (rename/delete, open the
+        // live session for in-progress work). canInvite off: no teacher chip on your
+        // own writing. canManage off while an admin is remoted in (view-only).
+        <SessionsList
+          sessions={ownSessions}
+          canManage={!impersonating}
+          canInvite={false}
+        />
       )}
     </section>
   )

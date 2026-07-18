@@ -112,7 +112,7 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
         </div>
 
         {/* Your own writing — parents can use the coaches too */}
-        <YourWritingCard ownSessions={ownSessions} />
+        <YourWritingCard ownSessions={ownSessions} impersonating={impersonating} />
 
         {/* No children */}
         {children.length === 0 && <EmptyState />}

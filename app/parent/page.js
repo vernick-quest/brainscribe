@@ -78,7 +78,7 @@ export default async function ParentDashboardPage() {
   // children's work, and excluding any practice/onboarding run.
   const { data: ownSessionData } = await service
     .from('sessions')
-    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, is_onboarding')
+    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, is_onboarding, subject, subject_custom_label, requirements')
     .eq('student_id', targetId)
     .order('updated_at', { ascending: false })
     .limit(20)
