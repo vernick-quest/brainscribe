@@ -1690,3 +1690,31 @@ BLOCKED while impersonating — not re-attributed. Non-impersonated behavior is 
    expect **403** with the exit-remote-in error; confirm NO new session row was created.
 4. Exit remote-in → `/assignment/new` loads the form and creation works as normal (regression check).
 5. Non-admin student (never impersonating) → creation works exactly as before (unaffected).
+
+---
+
+## 2026-07-17 — SECURITY DEFINER / anon-exposure audit (focus/auth-coppa)
+
+Broad security-hygiene sweep over all migrations `001`–`042` (source of truth = migration
+files; live DB not queried). Findings doc: `docs/specs/security-definer-audit-findings.md`
+(local-only, beyond the symlinked docs/ tree). No app runtime change — `npm run build` stays
+green (analysis + SQL only).
+
+**Result:** the SECURITY DEFINER surface is already fully hardened. All 7 definer functions
+pin `search_path = public` (after `041`); every data-returning definer RPC has EXECUTE revoked
+from public/anon/authenticated (024/029/034). All tables have RLS enabled; over-permissive
+policies were already dropped (`023`) + backstopped (`035`). Two small residuals found:
+
+- **F1 (MEDIUM)** — `api_usage` carries a dead permissive INSERT policy (`009:17`) that lets any
+  authenticated user forge/mis-attribute cost rows (admin-read-only table; no PII leak). The only
+  real writer is the service-role client (`lib/usage.js`), so dropping the policy is zero
+  functional loss.
+- **F2 (LOW)** — `update_updated_at()` (a SECURITY INVOKER trigger fn, no escalation risk) has a
+  mutable `search_path`; pinned for linter cleanliness.
+
+**Apply step (BY HAND, after conductor security review):**
+1. Infra assigns the real number to `supabase/migrations/NNN_security_definer_hardening.sql`
+   (042 is last today → likely 043) and renames it.
+2. Paste the SQL into the Supabase SQL Editor for project `lakozspeyxsuunogfant`.
+3. Run the migration's post-apply verification block (`pg_policies`, `pg_proc.proconfig`) and the
+   drift re-check SQL to confirm no live-only unpinned definer fn / world-open policy exists.
