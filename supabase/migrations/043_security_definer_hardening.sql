@@ -50,7 +50,7 @@ alter function public.update_updated_at() set search_path = public;
 -- Post-apply verification (run in the same SQL editor; paste results back).
 --
 -- 1) F1 — no client INSERT policy remains on api_usage:
---      select polname, cmd, permissive
+--      select policyname, cmd, permissive
 --      from pg_policies where tablename = 'api_usage';
 --    EXPECT: only "admin read api_usage" (SELECT). No INSERT policy.
 --    (Service-role inserts keep working — they bypass RLS.)
@@ -76,8 +76,8 @@ alter function public.update_updated_at() set search_path = public;
 --         where n.nspname='public' and c.relkind='r' and not c.relrowsecurity;
 --       EXPECT: 0 rows.
 --    c) no unexpected permissive policy is `using (true)` / world-open:
---         select tablename, polname, cmd, qual, with_check
+--         select tablename, policyname, cmd, qual, with_check
 --         from pg_policies where schemaname='public'
---         order by tablename, polname;
+--         order by tablename, policyname;
 --       Eyeball for any `qual = true` / `with_check = true` on a sensitive table.
 -- ─────────────────────────────────────────────────────────────────────────────
