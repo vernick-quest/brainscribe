@@ -383,6 +383,52 @@ function BackfillWritingProfiles() {
   )
 }
 
+// Maintenance: reconstruct the coach's opening greeting for historical sessions
+// that predate greeting persistence (the opener used to be client-side-only, absent
+// from transcripts). Deterministic reconstruction, idempotent.
+function BackfillGreetings() {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  async function run() {
+    setBusy(true); setError(''); setResult(null)
+    try {
+      const res = await fetch('/api/admin/backfill-greetings', { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); setBusy(false); return }
+      setResult(json)
+    } catch { setError('Network error.') }
+    setBusy(false)
+  }
+
+  return (
+    <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+      style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>Backfill opening greetings</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          Reconstruct the coach&apos;s opening line for historical transcripts that predate greeting
+          persistence (deterministic — reproduces the exact opener). Idempotent — safe to run anytime.
+        </p>
+        {result && (
+          <p className="text-xs mt-1" style={{ color: 'var(--status-success)' }}>
+            Scanned {result.scanned} · backfilled {result.backfilled} · skipped {result.skipped}.
+          </p>
+        )}
+        {error && <p className="text-xs mt-1" style={{ color: 'var(--status-error)' }}>{error}</p>}
+      </div>
+      <div className="shrink-0">
+        <button onClick={run} disabled={busy}
+          className="text-xs font-bold rounded-full px-4 py-2 disabled:opacity-60"
+          style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+          {busy ? 'Running…' : 'Run backfill'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Transcript guardrail audit ────────────────────────────────
 // Coach-only trust-and-safety review (brainscribe-transcript-audit). "Run audit"
 // samples N never-audited completed transcripts server-side; a Sonnet judge flags
@@ -1194,6 +1240,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
 
         {/* Maintenance: re-analyze completed essays missing a writing profile */}
         <BackfillWritingProfiles />
+
+        {/* Maintenance: reconstruct opening greetings for historical transcripts */}
+        <BackfillGreetings />
 
         {/* Stats — icon chips mirror the login landing page */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
