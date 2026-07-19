@@ -138,8 +138,9 @@ export default async function InvitePage({ searchParams }) {
     // relationship, so they never see the Beta Circle code step. Set on the same
     // write; column added by migration 045.
     await service.from('profiles').update({ role: invite.role, role_confirmed: true, access_granted: true }).eq('id', user.id)
-    // …and take a Beta Circle slot too, up to the fluid cap of 100 (Robert: anyone
-    // who joins during beta counts). Best-effort — never blocks the invite claim.
+    // …and, if this invitee is a STUDENT, take a Beta Circle slot up to the fluid cap
+    // of 100 (the cohort counts students only; maybeGrantBetaCircle no-ops for an
+    // invited parent/teacher). Best-effort — never blocks the invite claim.
     await maybeGrantBetaCircle(service, user.id)
 
     // Account-level co-parent claim: tether B to the primary parent A and inherit

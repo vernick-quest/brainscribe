@@ -1199,12 +1199,46 @@ function UsageTab() {
 }
 
 // ── Main ───────────────────────────────────────────────────────
+// ── Beta Circle counter — how many of the 100 locked-rate STUDENT slots are used ──
+// Counts profiles.is_beta_circle (students only; parents/teachers/demo never count —
+// see lib/access.js + migration 046). Read-only; the flag is granted server-side on
+// code redemption / invite-accept / consent.
+const BETA_CIRCLE_CAP = 100
+function BetaCircleCard({ count }) {
+  const pct = Math.min(100, Math.round((count / BETA_CIRCLE_CAP) * 100))
+  const remaining = Math.max(0, BETA_CIRCLE_CAP - count)
+  return (
+    <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)', gap: 'var(--space-3)' }}>
+        <div>
+          <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>Beta Circle</h3>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+            Locked-rate student slots · code <code style={{ fontFamily: 'monospace', color: 'var(--accent-text)' }}>unblock</code>
+          </p>
+        </div>
+        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+          <span style={{ font: 'var(--type-title)', color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}> / {BETA_CIRCLE_CAP}</span>
+        </div>
+      </div>
+      <div role="progressbar" aria-valuenow={count} aria-valuemin={0} aria-valuemax={BETA_CIRCLE_CAP}
+        style={{ height: 8, borderRadius: 'var(--radius-pill)', background: 'var(--surface-sunken)', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 'var(--radius-pill)', transition: 'width .3s ease' }} />
+      </div>
+      <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 'var(--space-2) 0 0' }}>
+        {remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} left` : 'Cap reached — new students get access but not the locked rate'}
+      </p>
+    </div>
+  )
+}
+
 // ── Tools tab — admin utilities kept out of the main flow ──────
 // Demo persona seeder + idempotent maintenance backfills. Lives behind the Tools
 // tab so it doesn't consume prime real estate above the roster.
-function ToolsTab({ demoSeeded }) {
+function ToolsTab({ demoSeeded, betaCircleCount }) {
   return (
     <div className="space-y-4">
+      <BetaCircleCard count={betaCircleCount} />
       <DemoDataControl seeded={demoSeeded} />
       <BackfillWritingProfiles />
       <BackfillGreetings />
@@ -1224,6 +1258,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const students = profiles.filter(p => p.role === 'student')
   const parents  = profiles.filter(p => p.role === 'parent')
   const teachers = profiles.filter(p => p.role === 'teacher')
+  // Beta Circle = students holding the locked-rate flag (parents/teachers/demo never
+  // count — enforced server-side; this is just the display total for the Tools card).
+  const betaCircleCount = profiles.filter(p => p.is_beta_circle).length
 
   // Demo persona present if all three demo accounts exist.
   const demoSeeded = DEMO_EMAILS.every(email =>
@@ -1450,7 +1487,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
           {tab === 'usage' && <UsageTab />}
 
           {/* ── Tools ── */}
-          {tab === 'tools' && <ToolsTab demoSeeded={demoSeeded} />}
+          {tab === 'tools' && <ToolsTab demoSeeded={demoSeeded} betaCircleCount={betaCircleCount} />}
 
           {/* ── All Sessions ── */}
           {tab === 'sessions' && (
