@@ -14,7 +14,7 @@ export default async function AdminPage() {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (profile?.role !== 'admin') redirect('/folder')
 
   // Use service client to bypass RLS — admin sees everything
   const service = createServiceClient()

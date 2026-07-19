@@ -21,8 +21,8 @@ export default async function CoppaPendingPage() {
     .single()
 
   // If consent isn't required or already given, send to dashboard
-  if (!profile?.coppa_consent_required) redirect('/dashboard')
-  if (profile?.coppa_consent_given) redirect('/dashboard')
+  if (!profile?.coppa_consent_required) redirect('/folder')
+  if (profile?.coppa_consent_given) redirect('/folder')
 
   // Fetch the most recent pending record
   const { data: pending } = await service

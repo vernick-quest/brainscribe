@@ -42,7 +42,7 @@ export default async function TranscriptPage({ params, searchParams }) {
     .single()
 
   if (!session) {
-    const dest = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
+    const dest = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/folder'
     redirect(dest)
   }
 
@@ -105,7 +105,7 @@ export default async function TranscriptPage({ params, searchParams }) {
   const reqLine = reqTargets.length
     ? reqTargets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')
     : null
-  const backHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
+  const backHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/folder'
   const backLabel = profile?.role === 'parent' ? 'Parent dashboard' : profile?.role === 'teacher' ? 'Teacher dashboard' : 'Dashboard'
   const coachPersona = getPersona(session.persona)
   const subjectLabel = getSubjectLabel(session)
@@ -336,10 +336,10 @@ export default async function TranscriptPage({ params, searchParams }) {
               <Icon name="pencil" size={16} />
               Start another assignment
             </a>
-            <a href="/dashboard"
+            <a href="/folder"
               className="inline-flex items-center gap-2 text-sm font-semibold rounded-full px-5 py-2.5"
               style={{ color: 'var(--text-body)', border: '1px solid var(--border-strong)' }}>
-              Back to dashboard
+              Back to folder
             </a>
           </section>
         )}

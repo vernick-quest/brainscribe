@@ -24,7 +24,7 @@ export async function POST(request) {
   if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
   const role = target.role
-  const dest = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/dashboard'
+  const dest = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/folder'
   const response = NextResponse.json({ dest, role, name: target.full_name })
 
   response.cookies.set('bs_impersonate', JSON.stringify({ userId, role, name: target.full_name }), {

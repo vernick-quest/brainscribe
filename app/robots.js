@@ -12,7 +12,7 @@ import { CANONICAL_URL } from '@/lib/site'
 const DISALLOW = [
   '/api/',
   '/write',
-  '/dashboard',
+  '/folder',
   '/parent',
   '/teacher',
   '/profile',

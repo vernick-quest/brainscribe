@@ -91,7 +91,7 @@ export default function OnboardingComplete({ studentName = 'there', practiceSess
               style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}>
               Start my first assignment →
             </button>
-            <button onClick={() => go('/dashboard')}
+            <button onClick={() => go('/folder')}
               className="block w-full text-center text-sm font-semibold hover:underline"
               style={{ color: 'var(--text-muted)' }}>
               Go to my dashboard

@@ -23,7 +23,7 @@ export const metadata = {
 // The marketing landing page. `/` is public (see lib/supabase/middleware.js) so
 // cold campaign traffic lands on the pitch, not a Google sign-in wall. Logged-in
 // users are sent straight to their home — mirroring the redirect in
-// app/(auth)/login/layout.js so a teacher/parent/admin isn't dumped on /dashboard.
+// app/(auth)/login/layout.js so a teacher/parent/admin isn't dumped on /folder.
 export default async function Home() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -38,7 +38,7 @@ export default async function Home() {
     const dest = profile?.role === 'admin' ? '/admin'
       : profile?.role === 'teacher' ? '/teacher'
       : profile?.role === 'parent' ? '/parent'
-      : '/dashboard'
+      : '/folder'
 
     redirect(dest)
   }

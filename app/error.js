@@ -27,7 +27,7 @@ export default function Error({ error, reset }) {
             style={{ backgroundColor: 'var(--accent)' }}>
             Try again
           </button>
-          <a href="/dashboard"
+          <a href="/folder"
             className="w-full rounded-2xl py-3 font-semibold transition"
             style={{ border: '1.5px solid var(--border-strong)', color: 'var(--text-body)' }}>
             Back to dashboard

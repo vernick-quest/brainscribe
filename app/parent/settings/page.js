@@ -19,7 +19,7 @@ export default async function ParentSettingsPage() {
   const imp = await getImpersonation(adminProfile)
   const targetId = imp?.userId ?? user.id
 
-  if (!imp && adminProfile?.role !== 'parent' && adminProfile?.role !== 'admin') redirect('/dashboard')
+  if (!imp && adminProfile?.role !== 'parent' && adminProfile?.role !== 'admin') redirect('/folder')
 
   const service = imp ? createServiceClient() : supabase
 

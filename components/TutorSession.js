@@ -1712,7 +1712,7 @@ export default function TutorSession({
   async function exitPractice() {
     stopCurrentAudio()
     try { await fetch('/api/onboarding/complete', { method: 'POST' }) } catch (e) { console.error(e) }
-    router.push('/dashboard')
+    router.push('/folder')
   }
 
   // ── Nugget panel actions ─────────────────────────────────────────────────────
@@ -2162,19 +2162,19 @@ export default function TutorSession({
           <div className="flex items-center gap-0 px-3 py-2.5" style={{ minHeight: 52 }}>
 
             {/* Back to the assignments list — replaces the old in-workspace sidebar.
-                Role-aware: students land on /dashboard, parents/teachers on their home.
+                Role-aware: students land on /folder, parents/teachers on their home.
                 Gym sessions use the "Leave" link in the gym banner instead. */}
             {!onboarding && !gym && (
-              <a href={profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'}
+              <a href={profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/folder'}
                 className="-ml-1 mr-1 flex items-center gap-1.5 h-9 px-2 rounded-lg shrink-0 text-xs font-medium transition"
                 style={{ color: 'var(--text-muted)' }}
                 onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-muted)'}
                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                title="My assignments">
+                title="Folder">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
-                <span className="hidden sm:inline">My assignments</span>
+                <span className="hidden sm:inline">Folder</span>
               </a>
             )}
 

@@ -51,7 +51,7 @@ export default async function StudentProfilePage({ params }) {
   }
 
   if (!allowed) {
-    redirect(viewerRole === 'teacher' ? '/teacher' : viewerRole === 'parent' ? '/parent' : '/dashboard')
+    redirect(viewerRole === 'teacher' ? '/teacher' : viewerRole === 'parent' ? '/parent' : '/folder')
   }
 
   // ── Data ─────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ export default async function StudentProfilePage({ params }) {
     .filter(([key]) => key !== 'Unspecified')
     .sort((a, b) => b[1] - a[1])
 
-  const backHref = viewerRole === 'teacher' ? '/teacher' : viewerRole === 'parent' ? '/parent' : '/dashboard'
+  const backHref = viewerRole === 'teacher' ? '/teacher' : viewerRole === 'parent' ? '/parent' : '/folder'
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>

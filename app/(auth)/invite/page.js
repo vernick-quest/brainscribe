@@ -223,7 +223,7 @@ export default async function InvitePage({ searchParams }) {
   }
 
   // Route to the right dashboard
-  const destination = invite.role === 'parent' ? '/parent' : invite.role === 'teacher' ? '/teacher' : '/dashboard'
+  const destination = invite.role === 'parent' ? '/parent' : invite.role === 'teacher' ? '/teacher' : '/folder'
   redirect(destination)
 }
 

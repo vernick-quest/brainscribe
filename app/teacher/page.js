@@ -17,7 +17,7 @@ export default async function TeacherDashboardPage() {
   const imp = await getImpersonation(adminProfile)
   const targetId = imp?.userId ?? user.id
 
-  if (!imp && adminProfile?.role !== 'teacher' && adminProfile?.role !== 'admin') redirect('/dashboard')
+  if (!imp && adminProfile?.role !== 'teacher' && adminProfile?.role !== 'admin') redirect('/folder')
 
   // First-time teacher: run them through onboarding once (they can opt out of the practice).
   if (!imp && adminProfile?.role === 'teacher' && !adminProfile?.onboarding_complete) redirect('/onboarding')

@@ -39,7 +39,7 @@ export default async function AssignmentPage({ params }) {
 
   // If RLS blocked the session fetch or user has no valid claim to this page
   if (!session) {
-    redirect(role === 'teacher' ? '/teacher' : role === 'parent' ? '/parent' : '/dashboard')
+    redirect(role === 'teacher' ? '/teacher' : role === 'parent' ? '/parent' : '/folder')
   }
   // A gym practice session reuses a sessions row but belongs on the gym surface —
   // send it to its gym session page instead of rendering it as an assignment.
@@ -48,7 +48,7 @@ export default async function AssignmentPage({ params }) {
     redirect(`/gym/session/${session.gym_session_id}`)
   }
   if (!isOwner && !isAdmin && !isTeacher) {
-    redirect('/dashboard')
+    redirect('/folder')
   }
 
   // ── Teacher read-only view ───────────────────────────────────

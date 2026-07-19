@@ -21,7 +21,7 @@ export default function NotFound() {
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           The link may be broken or the page may have moved.
         </p>
-        <a href="/dashboard"
+        <a href="/folder"
           className="inline-block w-full rounded-2xl py-3 font-semibold text-white transition"
           style={{ backgroundColor: 'var(--accent)' }}>
           Back to dashboard

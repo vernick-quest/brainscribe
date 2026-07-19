@@ -10,14 +10,14 @@ import Avatar from '@/components/Avatar'
 function sectionLabel(pathname) {
   if (!pathname) return ''
   if (pathname.startsWith('/parent/settings')) return 'Account & children'
-  if (pathname === '/parent' || pathname === '/teacher') return 'Dashboard'
-  if (pathname === '/dashboard') return 'Assignments'
-  if (pathname === '/profile') return 'Profile'
-  if (pathname.startsWith('/gym')) return 'Skill Studio'
+  // Home = the "Folder" — the container for all assignments. Student /folder plus
+  // the parent/teacher home dashboards (their folder of their kids' work).
+  if (pathname === '/folder' || pathname === '/parent' || pathname === '/teacher') return 'Folder'
+  if (pathname.startsWith('/profile')) return 'Profile'
   if (pathname.startsWith('/admin')) return 'Admin'
-  // Individual assignment/transcript pages already have their own in-page back
-  // link (e.g. "← Assignments"), so no breadcrumb here — a "Assignment" crumb
-  // next to an "Assignments" back arrow just reads as a confusing duplicate.
+  if (pathname.startsWith('/gym')) return 'Skill Studio'
+  if (pathname.startsWith('/assignment')) return 'Assignment'
+  if (pathname.startsWith('/transcript')) return 'Transcript'
   return ''
 }
 
@@ -28,7 +28,7 @@ export default function Navbar({ user, profile }) {
   const isParent = profile?.role === 'parent'
   const homeHref = profile?.role === 'teacher' ? '/teacher'
     : profile?.role === 'parent' ? '/parent'
-    : '/dashboard'
+    : '/folder'
   // Clicking the avatar goes straight to the account page — where the user edits
   // their details and signs out. Parents get /parent/settings ("Account &
   // children"); everyone else gets /profile. (Replaces the old dropdown menu: one

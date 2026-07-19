@@ -15,7 +15,7 @@ export default async function LoginLayout({ children }) {
     const dest = profile?.role === 'admin' ? '/admin'
       : profile?.role === 'teacher' ? '/teacher'
       : profile?.role === 'parent' ? '/parent'
-      : '/dashboard'
+      : '/folder'
 
     redirect(dest)
   }

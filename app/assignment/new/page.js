@@ -30,7 +30,7 @@ export default async function NewAssignmentPage({ searchParams }) {
   // cookie for a real admin.
   const imp = await getImpersonation(profile)
   if (imp) {
-    const home = imp.role === 'parent' ? '/parent' : imp.role === 'teacher' ? '/teacher' : '/dashboard'
+    const home = imp.role === 'parent' ? '/parent' : imp.role === 'teacher' ? '/teacher' : '/folder'
     redirect(home)
   }
 
@@ -70,7 +70,7 @@ export default async function NewAssignmentPage({ searchParams }) {
   }
 
   // Where the back-link returns to — the role's assignments home.
-  const listHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/dashboard'
+  const listHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/folder'
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
@@ -83,7 +83,7 @@ export default async function NewAssignmentPage({ searchParams }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6"/>
             </svg>
-            Assignments
+            Folder
           </a>
           <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '0 0 4px' }}>Start a new assignment</h1>
           <p style={{ font: 'var(--type-lead)', color: 'var(--text-muted)', margin: 0 }}>

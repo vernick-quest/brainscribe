@@ -9,8 +9,8 @@ export async function GET(request) {
   const code = searchParams.get('code')
   // Sanitize `next` to a local path only — a value like `//evil.com` or `/\evil.com`
   // would otherwise produce an off-site redirect (open-redirect phishing).
-  const rawNext = searchParams.get('next') ?? '/dashboard'
-  const next = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/dashboard'
+  const rawNext = searchParams.get('next') ?? '/folder'
+  const next = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/folder'
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`)
@@ -74,7 +74,7 @@ export async function GET(request) {
 
     // First-touch attribution capture (set-once, service-role, channel/UTM only —
     // lib/attribution.js is the whitelist privacy rail). Placed before every
-    // routing branch below so admin/welcome/dashboard signups all capture it.
+    // routing branch below so admin/welcome/folder signups all capture it.
     // Service-role on purpose: profiles is deny-by-default for `authenticated`
     // (migration 020), so the column stays non-client-writable (anti-spoofing).
     const capture = attributionToCapture(profile, cookieStore.get('bs_attribution')?.value)
@@ -120,7 +120,7 @@ export async function GET(request) {
 
     // New or not-yet-confirmed users — INCLUDING a profile the DB trigger hasn't
     // created yet — go to /welcome (a public path). Never fall through to the gated
-    // /dashboard, which can bounce a still-settling session straight to /login.
+    // /folder, which can bounce a still-settling session straight to /login.
     if (!profile || !profile.role_confirmed) {
       response.headers.set('location', `${origin}/welcome?next=${encodeURIComponent(next)}`)
       return response

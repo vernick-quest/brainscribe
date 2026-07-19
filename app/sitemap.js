@@ -3,7 +3,7 @@ import { CANONICAL_URL } from '@/lib/site'
 import { USE_CASE_SLUGS } from '@/lib/useCases'
 
 // Generates /sitemap.xml. Lists only the publicly indexable marketing surfaces —
-// the app surfaces (/write, /dashboard, …) are kept out of the index via
+// the app surfaces (/write, /folder, …) are kept out of the index via
 // app/robots.js. Post `lastModified` comes from each post's frontmatter date.
 // ISR (revalidate) so a SCHEDULED post enters the sitemap on its publish date —
 // matching the ISR blog pages — so Google discovers it promptly without a rebuild.

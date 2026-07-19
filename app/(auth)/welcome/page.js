@@ -152,8 +152,8 @@ function WelcomeContent() {
       setLoading(false)
       return
     }
-    const destinations = { student: '/dashboard', parent: '/parent', teacher: '/teacher' }
-    router.push(destinations[role] ?? '/dashboard')
+    const destinations = { student: '/folder', parent: '/parent', teacher: '/teacher' }
+    router.push(destinations[role] ?? '/folder')
     // keep the spinner up until navigation
   }
 

@@ -24,7 +24,7 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   // Parents/teachers are mainly here to watch — they see the explanation, then can
   // opt out of the practice paragraph. Students are driven through it.
   const isWatcher = role === 'parent' || role === 'teacher'
-  const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/dashboard'
+  const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/folder'
 
   const [stage, setStage]       = useState('intro')   // 'intro' | 'prompts' | 'plan'
   const [selected, setSelected] = useState(null)
