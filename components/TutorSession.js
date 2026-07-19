@@ -2905,10 +2905,23 @@ export default function TutorSession({
                                     style={{ backgroundColor: sc.dot }} />
                                 )}
                                 <div className="flex-1 min-w-0">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
-                                    {item.label}
-                                    {!isComplete && (item.status === 'confirmed' ? ' ✓' : item.status === 'working' ? ' →' : item.status === 'candidate' ? ' ◆' : '')}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
+                                      {item.label}
+                                      {!isComplete && (item.status === 'confirmed' ? ' ✓' : item.status === 'working' ? ' →' : item.status === 'candidate' ? ' ◆' : '')}
+                                    </span>
+                                    {/* Revise sits right after the ✓ on a locked-in part (was far-right, too detached). */}
+                                    {isConfirmed && itemText && !isEditingThis && (
+                                      <button
+                                        onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
+                                        title="Revise this"
+                                        className="transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
+                                        style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                      >
+                                        Revise
+                                      </button>
+                                    )}
+                                  </div>
 
                                   {/* Confirmed item — editable */}
                                   {isConfirmed && itemText && (
@@ -2941,19 +2954,9 @@ export default function TutorSession({
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="relative mt-0.5 pr-10">
-                                        <p className="text-xs leading-snug" style={{ color: sc.text }}>
-                                          "{itemText}"
-                                        </p>
-                                        <button
-                                          onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
-                                          title="Revise this"
-                                          className="absolute top-0 right-0 transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
-                                          style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
-                                        >
-                                          Revise
-                                        </button>
-                                      </div>
+                                      <p className="text-xs leading-snug mt-0.5" style={{ color: sc.text }}>
+                                        "{itemText}"
+                                      </p>
                                     )
                                   )}
 
@@ -3048,7 +3051,7 @@ export default function TutorSession({
                                 className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
                                 style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
                               >
-                                {sessionComplete ? '✓ Finished' : '✓ Finish — all parts locked in'}
+                                {sessionComplete ? '✓ Finished' : 'Lock in all parts'}
                               </button>
                             ) : (
                               <button
