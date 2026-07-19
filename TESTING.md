@@ -1834,3 +1834,77 @@ admins and unconsented under-13s, so test as a real 13+/consented student):
    /assignment/<id>. Empty assignment keeps the CTA disabled.
 6. Head Grader prefill (?revise=<id>&gap=<i>) still shows the "Working on this again"
    focus banner above Step 1 and rides along on submit (unchanged).
+
+---
+
+## 2026-07-18 — Coach visual identity (illustrations + color tokens) — `focus/coach-visuals`
+
+Replaced coach INITIALS avatar with the six illustration PNGs and added a per-coach
+color-token system (`lib/coachColors.js`). No migration. Conductor merges/deploys.
+
+### Files changed
+- **NEW** `lib/coachColors.js` — `COACH_COLORS` + `getCoachColor(key)` (default → owen).
+  Single source of truth for coach hex. Keys: owen/deon/zoe/alistair/tilly/jade.
+- **NEW** `components/PersonaAvatar.js` (`'use client'`) — extracted from personas.js so
+  personas.js stays server-importable (it exports non-component helpers). Renders
+  `<img src="/coaches/{asset}.png">` circular-cropped with a 2px `base`-color ring;
+  `onError` → initials-on-`base` fallback via `useState(failed)`. NO COPPA gate
+  (coaches are fictional; the gate in Avatar.js is only for real human photos).
+- `lib/personas.js` — added `asset` field to each persona; removed the old initials
+  `PersonaAvatar`; re-exports the client `PersonaAvatar` (all 10 call sites untouched).
+- `components/NewSessionForm.js` — picker cards + reveal box now use tokens.
+
+### KEY GOTCHA (surprise): persona key `matilda` ≠ asset/color key `tilly`
+The PERSONAS key for Tilly is `matilda`, but the image file and color key are `tilly`
+(`/coaches/tilly.png`). Bridged via a new `asset` field on each persona
+(matilda→tilly, all others identity). `PersonaAvatar` and the picker read `p.asset`
+for BOTH image src and `getCoachColor`, so `matilda` no longer mis-renders as a broken
+`/coaches/matilda.png` or default-Owen color. Legacy ids (isla/verity) are normalized
+to `matilda` upstream (greeting.js / TutorSession) before reaching the avatar.
+
+### 10 PersonaAvatar consumers to spot-check (all inherit the illustration for free)
+1. `components/ConversationLog.js:28` — persona from message
+2. `components/OnboardingComplete.js:36` — hardcoded "owen"
+3. `components/OnboardingFlow.js:125` (owen) & `:292` (all `Object.keys(PERSONAS)` incl. matilda)
+4. `components/AdminDashboard.js:524, :800` — `finding.persona ?? 'owen'`
+5. `components/NewSessionForm.js:159, :286, :300` — focus banner, picker cards, reveal box
+6. `components/TeacherAssignmentView.js:192` — `session.persona`
+7. `components/TutorSession.js` (NOT edited — out of scope; inherits illustration)
+8. `app/folder/page.js` — folder cards
+9. `app/transcript/[id]/page.js:171` — `session.persona`
+10. `lib/personas.js` — re-export point
+   → Spot-check especially OnboardingFlow:292 (renders matilda → must show tilly.png +
+     teal ring, not a broken image).
+
+### Fallback test (reasoned + must-run in live pass)
+Break an image path (e.g. rename tilly.png or throw in Network tab) → `onError` flips
+`failed=true` → renders initials letter (`p.initial`) on `base` bg, white text. Cannot
+render blank: img has fixed w/h and the fallback span always has a bg + letter. For an
+unknown persona id, `getPersona` → owen, `asset='owen'`, so still a valid image/color.
+
+### Picker selected-state
+Selected card → border `base`, bg `tint`, name + style text `shade` (never `base`-on-
+`tint`, AA-safe). Unselected → neutral (`--border-default` / `--surface-muted`,
+`--text-strong` / `--text-subtle`); coach `base` appears only on hover. `pickerIntro`
+click-to-reveal behavior unchanged; reveal box border = `base`, "Meet X" text = `shade`.
+
+### "No hardcoded coach hex" grep — PASS
+`grep` for all 18 base/tint/shade hex across app/components/lib (excl. node_modules and
+lib/coachColors.js) → NONE. All coach color comes from `getCoachColor`.
+
+### Build — GREEN
+`npm run build` → "✓ Compiled successfully", no errors/warnings. Re-export of a client
+component through the server module `lib/personas.js` compiles cleanly (no circular-import
+break: `getPersona` is used only at render time).
+
+### SKIPPED — Task 4 progress dots
+No coach-tied progress dots exist OUTSIDE `TutorSession.js`. The only dots found are
+`CoachDemo.js:203` (marketing carousel STEP dot, not coach-tied) and
+`TutorSession.js:2444` (tab notification dot). Per the hard constraint, `TutorSession.js`
+is fragile voice territory owned by `focus/coaching-session` and was NOT edited.
+Active-session header accent also intentionally out of scope.
+
+### Not done here (needs live/authed pass by conductor + Robert)
+OAuth pages can't be authed-rendered headlessly. Static build + code reasoning done;
+conductor/Robert do the live picker/folder/transcript visual pass and the broken-image
+fallback eyeball.

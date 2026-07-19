@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PERSONAS as PERSONA_DATA, PersonaAvatar } from '@/lib/personas'
+import { getCoachColor } from '@/lib/coachColors'
 import WritingFormChooser from '@/components/WritingFormChooser'
 import { getForm } from '@/lib/sampleLibrary'
 
@@ -272,20 +273,25 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         <div className="grid grid-cols-2 sm:grid-cols-3" style={{ gap: 'var(--space-2)' }}>
           {PERSONAS.map(p => {
             const on = persona === p.id
+            const c = getCoachColor(p.asset)
+            // Selected → border `base`, bg `tint`, name/style text `shade` (never
+            // `base`-on-`tint`). Unselected → neutral, coach color only on hover.
             return (
               <button key={p.id} type="button" onClick={() => setPersona(p.id)} aria-pressed={on}
                 className="text-left transition"
+                onMouseEnter={e => { if (!on) e.currentTarget.style.borderColor = c.base }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.borderColor = 'var(--border-default)' }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer',
                   borderRadius: 'var(--radius-md)',
-                  background: on ? 'var(--surface-card)' : 'var(--surface-muted)',
-                  border: `1.5px solid ${on ? p.color : 'var(--border-default)'}`,
-                  boxShadow: on ? `0 0 0 3px color-mix(in srgb, ${p.color} 20%, transparent)` : 'none',
+                  background: on ? c.tint : 'var(--surface-muted)',
+                  border: `1.5px solid ${on ? c.base : 'var(--border-default)'}`,
+                  boxShadow: on ? `0 0 0 3px color-mix(in srgb, ${c.base} 20%, transparent)` : 'none',
                 }}>
                 <PersonaAvatar personaId={p.id} size={28} />
                 <span style={{ minWidth: 0 }}>
-                  <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', display: 'block' }}>{p.name}</span>
-                  <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', color: p.color, display: 'block', marginTop: 1 }}>{p.style}</span>
+                  <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: on ? c.shade : 'var(--text-strong)', display: 'block' }}>{p.name}</span>
+                  <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', color: on ? c.shade : 'var(--text-subtle)', display: 'block', marginTop: 1 }}>{p.style}</span>
                 </span>
               </button>
             )
@@ -295,10 +301,10 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         {/* Click-to-reveal intro for the selected coach — updates as the student taps
             different cards. Copy is display-only metadata (personas.js pickerIntro). */}
         {(selected?.pickerIntro || selected?.desc) && (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 'var(--space-3)', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-muted)', border: `1px solid ${selected?.color ?? 'var(--border-default)'}` }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 'var(--space-3)', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-muted)', border: `1px solid ${getCoachColor(selected?.asset).base}` }}>
             <PersonaAvatar personaId={persona} size={24} />
             <span style={{ minWidth: 0 }}>
-              <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', display: 'block' }}>Meet {selected?.name}</span>
+              <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: getCoachColor(selected?.asset).shade, display: 'block' }}>Meet {selected?.name}</span>
               <span style={{ font: 'var(--type-meta)', color: 'var(--text-body)', display: 'block', marginTop: 2 }}>{selected?.pickerIntro ?? selected?.desc}</span>
             </span>
           </div>
