@@ -1746,3 +1746,36 @@ Per Robert 2026-07-17: unverified/unconsented accounts can't reach the coach so 
 no cost; Part 1's reconciliation already makes the cost totals accurate. Attributing orphaned
 spend to a *specific* deleted person added COPPA/PII surface (a salt-less email hash surviving
 deletion) for little payoff, so it was not merged.
+
+# Mic half-duplex fix — 2026-07-18 (focus/coaching-session)
+
+Fixes the live-reported voice bug: after a student uses the mic in a coaching
+session, the mic stayed open, the input didn't clear, and the coach's own
+read-aloud (TTS) got captured back into the input box (feedback loop).
+
+Changed: `components/TutorSession.js` — `ReplyComposer.submit()` now stops the mic
+on every send; added a `coachBusy`-driven backstop that closes the mic whenever the
+coach becomes busy. No changes to `MicButton.js` or `useCoachVoice.js`.
+
+Status key: ✅ verified · 🔧 fixed today, needs (re)test · ⬜ not yet tested
+
+**⚠️ Cannot be verified in the headless worktree** — the mic/Scribe WebSocket/TTS
+pipeline needs a real browser + live ElevenLabs sockets. Robert must run this LIVE.
+
+## Listening composer (normal conversation turn)
+- [ ] 🔧 Tap mic → speak → words appear live in the input box
+- [ ] 🔧 Press **Send** (button) → mic turns OFF immediately (red halo gone, icon back to mic), input box is **empty**
+- [ ] 🔧 Coach replies and reads aloud → **nothing** from the coach's speech appears in the input box (no feedback loop)
+- [ ] 🔧 Re-tap the mic after the coach finishes → mic reopens and transcribes normally (manual barge-in preserved)
+- [ ] 🔧 Same three checks using **Enter** to send (not the button)
+- [ ] 🔧 OS mic indicator (browser tab dot / macOS orange dot) turns OFF after Send — the getUserMedia stream is released, not just muted
+
+## Dictation composer (speak a paragraph → scribe)
+- [ ] 🔧 Enter dictation mode → tap mic → speak → press **Add to essay →** → mic OFF, box cleared, scribe confirm plays with the mic closed (coach read-back not re-transcribed)
+- [ ] 🔧 Tap the mic itself to stop (mic-final path) → paragraph submits, mic OFF (unchanged behavior, confirm still works)
+
+## Regressions to watch (already-fixed bugs that must NOT return)
+- [ ] 🔧 Final transcript still lands in the writing **input field**, not only under the mic button
+- [ ] 🔧 No noisy `1006` console error on normal mic stop (suppression intact)
+- [ ] 🔧 No AudioContext double-close error; no UI freeze/latency right after speaking
+- [ ] 🔧 Typing (manual edit) still pauses the mic; clearing the box re-arms live dictation

@@ -556,6 +556,17 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     if (recoveredText) { editingRef.current = true; setText(recoveredText) }
   }, [recoveredText])
 
+  // Half-duplex backstop: whenever the coach becomes busy (thinking, then speaking),
+  // make sure the mic is CLOSED so the coach's read-aloud can't be captured by an
+  // open mic and transcribed back into the box (the reported feedback loop). This
+  // covers coach turns triggered OUTSIDE this composer's own Send — e.g. a scaffold
+  // lock-in action or a persona switch. It only ever CLOSES the mic, never reopens
+  // it, so manual barge-in (the student re-tapping to speak) is preserved. In
+  // dictating mode coachBusy is unset (defaults false) so this is a no-op there.
+  useEffect(() => {
+    if (coachBusy) micRef.current?.stop()
+  }, [coachBusy])
+
   function resetHeight() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
@@ -566,10 +577,16 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
     if (coachBusy) return
     const t = text.trim()
     if (!t) return
-    // Keep the mic LIVE after Send (continuous dictation is intended) but shut the
-    // door on the trailing STT interim/final for a beat, so the box we're about to
-    // clear can't be refilled by the tail of the utterance we just sent. Reset
-    // editingRef so live dictation resumes cleanly for the next message.
+    // Half-duplex voice: CLOSE the mic on every send. We already hold the text (`t`),
+    // so stop() silently tears down the Scribe WebSocket + mic stream WITHOUT firing
+    // onFinal (no double-submit). This is the core fix for the reported feedback loop:
+    // the mic must be OFF while the coach speaks, or its read-aloud gets transcribed
+    // back into the box. The student re-taps the mic when they want to talk again.
+    // justSubmittedRef still shuts the door on a committed-transcript event that may
+    // already have been queued when the socket closed, so the box we're about to clear
+    // can't be refilled by the tail of the utterance we just sent. Reset editingRef so
+    // a fresh mic start resumes clean live dictation for the next message.
+    micRef.current?.stop()
     editingRef.current = false
     justSubmittedRef.current = true
     setTimeout(() => { justSubmittedRef.current = false }, 600)
