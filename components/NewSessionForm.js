@@ -282,16 +282,19 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
                 onMouseEnter={e => { if (!on) e.currentTarget.style.borderColor = c.base }}
                 onMouseLeave={e => { if (!on) e.currentTarget.style.borderColor = 'var(--border-default)' }}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', cursor: 'pointer',
                   borderRadius: 'var(--radius-md)',
                   background: on ? c.tint : 'var(--surface-muted)',
                   border: `1.5px solid ${on ? c.base : 'var(--border-default)'}`,
                   boxShadow: on ? `0 0 0 3px color-mix(in srgb, ${c.base} 20%, transparent)` : 'none',
                 }}>
-                <PersonaAvatar personaId={p.id} size={28} />
+                <PersonaAvatar personaId={p.id} size={56} />
                 <span style={{ minWidth: 0 }}>
                   <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: on ? c.shade : 'var(--text-strong)', display: 'block' }}>{p.name}</span>
-                  <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', color: on ? c.shade : 'var(--text-subtle)', display: 'block', marginTop: 1 }}>{p.style}</span>
+                  {/* Traits stacked one-per-line for a consistent Name / Trait 1 / Trait 2 layout. */}
+                  {p.style.split('·').map((trait, i) => (
+                    <span key={i} style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', color: on ? c.shade : 'var(--text-subtle)', display: 'block', marginTop: 1, lineHeight: 1.35 }}>{trait.trim()}</span>
+                  ))}
                 </span>
               </button>
             )
