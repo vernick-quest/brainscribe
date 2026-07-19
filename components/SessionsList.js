@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPersona, PersonaAvatar } from '@/lib/personas'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { chipState } from '@/lib/requirements'
@@ -21,6 +20,24 @@ function formatDate(dateStr) {
 function ClientDate({ dateStr }) {
   const [label, setLabel] = useState('')
   useEffect(() => { setLabel(formatDate(dateStr)) }, [dateStr])
+  return <span suppressHydrationWarning>{label}</span>
+}
+
+// "Last modified" label: WEEKDAY + time within the last week (e.g. "WED, 9:00 pm"),
+// switching to the actual date once it's older than a week (e.g. "Jul 10, 9:00 pm").
+function formatLastModified(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const diffDays = Math.floor((new Date() - date) / 86400000)
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
+  if (diffDays < 7) return `${date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}, ${time}`
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`
+}
+
+// Client-computed (locale/timezone dependent) so it can't cause a hydration mismatch.
+function ClientLastModified({ dateStr }) {
+  const [label, setLabel] = useState('')
+  useEffect(() => { setLabel(formatLastModified(dateStr)) }, [dateStr])
   return <span suppressHydrationWarning>{label}</span>
 }
 
@@ -64,7 +81,6 @@ function MenuItem({ label, color = 'var(--text-body)', icon, onClick }) {
 
 function AssignmentRow({ session, teachers, canManage, canInvite = canManage, watcherHref = '/transcript', onDeleted, onRenamed }) {
   const router = useRouter()
-  const meta = getPersona(session.persona)
   const [menu, setMenu] = useState(false)
   const [picking, setPicking] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -90,6 +106,10 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
   const displayTitle = session.title || session.assignment_text?.slice(0, 90) + (session.assignment_text?.length > 90 ? '…' : '')
   const subjectInfo = session.subject && session.subject !== 'unspecified' ? getSubject(session.subject) : null
   const subjectLabel = session.subject === 'other' ? (session.subject_custom_label || 'Other') : subjectInfo?.label
+  const hasTargets = session.requirements?.targets?.length > 0
+  // "Last modified" = when the work actually last changed: completion time for done
+  // items, genuine last-activity (last_active_at) for in-progress ones.
+  const lastModifiedDate = (done && session.completed_at) ? session.completed_at : (session.last_active_at ?? session.updated_at ?? session.created_at)
 
   function close() { setMenu(false); setPicking(false) }
   // The writer (canManage) opens the active-writing view for in-progress work and
@@ -126,90 +146,63 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
   return (
     <div style={{
       backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)',
-      borderRadius: 'var(--radius-md)', padding: 'var(--space-4) var(--space-5)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)', position: 'relative',
+      borderRadius: 'var(--radius-md)', padding: 'var(--space-4) var(--space-5)', position: 'relative',
     }}>
-      <PersonaAvatar personaId={session.persona} size={40} />
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {renaming ? (
-          <div className="flex items-center gap-2">
-            <input ref={renameRef} value={draft} onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false) }}
-              onBlur={saveRename}
-              style={{ flex: 1, font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--ring)', outline: 'none' }} />
-            <button onClick={saveRename} aria-label="Save name" style={{ display: 'flex', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: 7, cursor: 'pointer' }} title="Save">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      {renaming ? (
+        <div className="flex items-center gap-2" style={{ paddingRight: 40 }}>
+          <input ref={renameRef} value={draft} onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false) }}
+            onBlur={saveRename}
+            style={{ flex: 1, font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--ring)', outline: 'none' }} />
+          <button onClick={saveRename} aria-label="Save name" style={{ display: 'flex', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: 7, cursor: 'pointer' }} title="Save">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Title (up to 2 lines) + meta. Right padding clears the top-right menu;
+              bottom padding reserves the bottom-right status corner. */}
+          <div style={{ paddingRight: 40, paddingBottom: 22 }}>
+            <button onClick={open} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+              <p style={{ font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 'var(--leading-snug)' }}>{displayTitle}</p>
             </button>
-          </div>
-        ) : (
-          <button onClick={open} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-            <p style={{ font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', margin: '0 0 4px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 'var(--leading-snug)' }}>{displayTitle}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, font: 'var(--type-meta)', color: 'var(--text-subtle)', minWidth: 0 }}>
-              <span style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                {subjectLabel && <><SubjectIcon value={session.subject} size={12} style={{ color: 'var(--text-subtle)' }} />{subjectLabel} · </>}
-                {/* Done items show completion time (completed_at); active items show
-                    last GENUINE activity (last_active_at — touched only on real coach/
-                    student turns), NOT updated_at, which any background write (a
-                    requirements snapshot, a migration backfill) bumps via the sessions
-                    BEFORE UPDATE trigger — that made every essay read as freshly worked-on. */}
-                {meta.name} · <ClientDate dateStr={(session.status === 'complete' && session.completed_at) ? session.completed_at : (session.last_active_at ?? session.updated_at ?? session.created_at)} />
-              </span>
-              <span aria-hidden="true" style={{ flexShrink: 0, color: 'var(--border-strong)' }}>·</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor }} />{statusLabel}
-              </span>
-              {/* High-level progress against the stated targets — neutral, desktop-only
-                  to keep the mobile row uncrowded. Uses the persisted requirements.actual. */}
-              {session.requirements?.targets?.length > 0 && (
-                <>
-                  <span aria-hidden="true" className="hidden sm:inline" style={{ flexShrink: 0, color: 'var(--border-strong)' }}>·</span>
-                  <span className="hidden sm:inline-flex" style={{ alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '4px 0 0' }}>
+              Last modified: <ClientLastModified dateStr={lastModifiedDate} />
+            </p>
+            {(subjectLabel || hasTargets) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '3px 0 0' }}>
+                {subjectLabel && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <SubjectIcon value={session.subject} size={12} style={{ color: 'var(--text-subtle)' }} />{subjectLabel}
+                  </span>
+                )}
+                {subjectLabel && hasTargets && <span aria-hidden="true" style={{ color: 'var(--border-strong)' }}>·</span>}
+                {hasTargets && (
+                  <span style={{ whiteSpace: 'nowrap' }}>
                     {session.requirements.targets.map(t => chipState(t, session.requirements.actual)?.full).filter(Boolean).join(' · ')}
                   </span>
-                </>
-              )}
-            </div>
-          </button>
-        )}
-      </div>
+                )}
+              </div>
+            )}
+          </div>
 
-      {/* Teacher chip. Gated by canInvite (not canManage): an impersonating admin
-          can link/change a teacher while troubleshooting even though delete/rename
-          (canManage) stay off. */}
-      {teacher ? (
-        <button onClick={() => canInvite && (setPicking(p => !p), setMenu(false))} title={teacher.name}
-          aria-label={`Teacher: ${teacher.name}${canInvite ? ' — change' : ''}`}
-          aria-haspopup={canInvite ? 'menu' : undefined} aria-expanded={canInvite ? picking : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0, cursor: canInvite ? 'pointer' : 'default', background: 'var(--surface-muted)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '4px 14px 4px 5px' }}>
-          <span style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-            <TeacherAvatar name={teacher.name} />
-            <GoogleBadge />
-          </span>
-          {/* Name + "Teacher" label hidden on phones — avatar-only chip there to
-              avoid crowding the row; full chip returns at >=640px. */}
-          <span className="hidden sm:block" style={{ textAlign: 'left' }}>
-            <span style={{ display: 'block', font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', whiteSpace: 'nowrap' }}>{teacher.name}</span>
-            <span style={{ display: 'block', font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Teacher</span>
-          </span>
-        </button>
-      ) : canInvite ? (
-        <button onClick={() => { setPicking(p => !p); setMenu(false) }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer', font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-muted)', background: 'var(--surface-card)', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-pill)', padding: '7px 14px' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          <span className="hidden sm:inline">Add teacher</span>
-        </button>
-      ) : null}
+          {/* Overflow menu — top-right (Rename / Assign teacher / Open / Delete). */}
+          {canManage && (
+            <button onClick={() => { setMenu(m => !m); setPicking(false) }} aria-label="More actions" aria-haspopup="menu" aria-expanded={menu}
+              style={{ position: 'absolute', top: 'var(--space-3)', right: 'var(--space-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 'var(--radius-pill)', border: 'none', background: menu ? 'var(--surface-muted)' : 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
+                <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
+                <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
+              </span>
+            </button>
+          )}
 
-      {/* Overflow */}
-      {canManage && (
-        <button onClick={() => { setMenu(m => !m); setPicking(false) }} aria-label="More actions" aria-haspopup="menu" aria-expanded={menu}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 'var(--radius-pill)', border: 'none', background: menu ? 'var(--surface-muted)' : 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
-            <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
-            <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor' }} />
+          {/* Status — bottom-right corner. */}
+          <span style={{ position: 'absolute', right: 'var(--space-5)', bottom: 'var(--space-4)', display: 'inline-flex', alignItems: 'center', gap: 5, font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: done ? 'var(--status-success)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor }} />{statusLabel}
           </span>
-        </button>
+        </>
       )}
 
       {(menu || picking) && <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
@@ -259,15 +252,15 @@ const SHOW_USAGE_METER = false
 
 export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true, canInvite = canManage, watcherHref = '/transcript' }) {
   const [sessions, setSessions] = useState(initial)
-  // Two tabs only (no "All"). Default to "In progress" when there's active work,
-  // else "Done" — so the default view is never empty (e.g. a parent viewing a
-  // child whose assignments are all complete lands on Done).
+  // Three tabs. Default to "In progress" when there's active work, else "Done" — so
+  // the default view is never empty (e.g. a parent viewing a child whose assignments
+  // are all complete lands on Done).
   const [filter, setFilter] = useState(() => initial.some(s => s.status !== 'complete') ? 'active' : 'complete')
 
   const visible = sessions.filter(s =>
-    filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
+    filter === 'all' ? true : filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
   )
-  const filters = [['active', 'In progress'], ['complete', 'Done']]
+  const filters = [['active', 'In progress'], ['complete', 'Done'], ['all', 'All']]
 
   return (
     <section>
