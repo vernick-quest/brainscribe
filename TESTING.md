@@ -1741,6 +1741,29 @@ covers the real need. `lib/usage.js` + the email_hash migration were not merged.
      spend and the reconciled total is unchanged. This is the reconciliation the feature adds.
   3. Row count text ("N orphaned rows") matches the number of surviving null-user rows.
 
+## 2026-07-18 — Admin panel: Tools tab + clickable stat tiles (focus/admin)
+
+**File:** `components/AdminDashboard.js` only — pure UI reorg, no backend/route/schema change.
+- **Tools tab:** the 3 admin utility cards (Demo persona seeder, Backfill writing profiles,
+  Backfill opening greetings) moved off the top of the page into a new **Tools** tab
+  (`ToolsTab`), so they no longer occupy prime real estate above the roster.
+- **Clickable stat tiles:** the 4 tiles (Students / Parents / Teachers / Assignments) are now
+  `<button>`s that select their list view (students / parents / teachers / sessions) — the tile
+  IS that view's tab button. Active tile = navy (`--primary`) border + `--shadow-sm` + stronger
+  label; hover lift; `type=button`, `aria-pressed`, `aria-label`, `focus-visible` ring.
+- **Slimmed pill bar:** `TABS` now carries only the tile-less views — **Audit · Usage & Cost ·
+  Tools** — removing the duplicate Students/Parents/Teachers/All Sessions pill buttons the tiles
+  replace. `selectTab` shared by tiles + pills (resets search on switch).
+- **Search box** renders only on the four `LIST_TABS`; hidden on Audit / Usage / Tools.
+
+Manual check (authed admin — can't automate, Google OAuth):
+- [ ] Each tile click opens its list AND highlights that tile (navy border); pill bar shows none active.
+- [ ] Audit / Usage & Cost / Tools reachable from the pill bar; tiles all de-highlight when one is active.
+- [ ] Tools tab renders all 3 utilities; Refresh demo / Remove / Run backfill still function.
+- [ ] Search appears only on the 4 list tabs; tiles show a visible keyboard focus ring on Tab.
+
+Build green; lint no new errors (pre-existing `no-unused-expressions` warnings unrelated).
+
 ### Part 2 — email_hash re-merge — DROPPED (not shipped)
 Per Robert 2026-07-17: unverified/unconsented accounts can't reach the coach so they incur
 no cost; Part 1's reconciliation already makes the cost totals accurate. Attributing orphaned

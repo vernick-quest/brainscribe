@@ -1199,6 +1199,24 @@ function UsageTab() {
 }
 
 // ── Main ───────────────────────────────────────────────────────
+// ── Tools tab — admin utilities kept out of the main flow ──────
+// Demo persona seeder + idempotent maintenance backfills. Lives behind the Tools
+// tab so it doesn't consume prime real estate above the roster.
+function ToolsTab({ demoSeeded }) {
+  return (
+    <div className="space-y-4">
+      <DemoDataControl seeded={demoSeeded} />
+      <BackfillWritingProfiles />
+      <BackfillGreetings />
+    </div>
+  )
+}
+
+// The four roster/session views are selected by the clickable stat tiles above,
+// not the pill bar — the tiles ARE their tab buttons. Keep this list in sync with
+// the tiles' tabId and the search-box visibility.
+const LIST_TABS = ['students', 'parents', 'teachers', 'sessions']
+
 export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers }) {
   const [tab, setTab] = useState('students')
   const [search, setSearch] = useState('')
@@ -1251,14 +1269,24 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
     )
   })
 
+  // Students/Parents/Teachers/All Sessions are driven by the clickable stat tiles
+  // above (no duplicate pill button). The pill bar carries only the views without
+  // a tile.
   const TABS = [
-    { id: 'students',  label: `Students (${students.length})` },
-    { id: 'parents',   label: `Parents (${parents.length})` },
-    { id: 'teachers',  label: `Teachers (${teachers.length})` },
-    { id: 'sessions',  label: `All Sessions (${sessions.length})` },
     { id: 'audit',     label: 'Audit' },
     { id: 'usage',     label: 'Usage & Cost' },
+    { id: 'tools',     label: 'Tools' },
   ]
+
+  // Stat tiles double as the primary tab selectors — tabId maps a tile to its view.
+  const STAT_TILES = [
+    { label: 'Students',    tabId: 'students', value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',          iconColor: 'var(--navy-700)' },
+    { label: 'Parents',     tabId: 'parents',  value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)', iconColor: 'var(--status-success)' },
+    { label: 'Teachers',    tabId: 'teachers', value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',     iconColor: 'var(--accent)' },
+    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: '#EEF2FF',                  iconColor: '#4338CA' },
+  ]
+
+  const selectTab = t => { setTab(t); setSearch('') }
 
   const sessionById = Object.fromEntries(sessions.map(s => [s.id, s]))
 
@@ -1269,49 +1297,49 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
 
       <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
 
-        {/* Demo persona seeder — preview parent/teacher views via Remote in */}
-        <DemoDataControl seeded={demoSeeded} />
-
-        {/* Maintenance: re-analyze completed essays missing a writing profile */}
-        <BackfillWritingProfiles />
-
-        {/* Maintenance: reconstruct opening greetings for historical transcripts */}
-        <BackfillGreetings />
-
-        {/* Stats — icon chips mirror the login landing page */}
+        {/* Stats double as the primary tab selectors — click a tile to open its
+            list below (the tile IS its tab button; active tile = navy border). */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Students',    value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',           iconColor: 'var(--navy-700)' },
-            { label: 'Parents',     value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)',  iconColor: 'var(--status-success)' },
-            { label: 'Teachers',    value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',      iconColor: 'var(--accent)' },
-            { label: 'Assignments', value: sessions.length, Icon: IconAssignments, iconBg: '#EEF2FF',                   iconColor: '#4338CA' },
-          ].map(s => (
-            <div key={s.label} className="rounded-2xl p-5 text-center"
-              style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xs)' }}>
-              <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2"
-                style={{ backgroundColor: s.iconBg, color: s.iconColor }}>
-                <s.Icon />
-              </div>
-              <p className="text-3xl font-black" style={{ color: 'var(--text-strong)' }}>{s.value}</p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
-            </div>
-          ))}
+          {STAT_TILES.map(s => {
+            const isActive = tab === s.tabId
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => selectTab(s.tabId)}
+                aria-pressed={isActive}
+                aria-label={`Show ${s.label}`}
+                className="rounded-2xl p-5 text-center transition cursor-pointer outline-none hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--primary)]"
+                style={{
+                  backgroundColor: 'var(--surface-card)',
+                  border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border-default)'}`,
+                  boxShadow: isActive ? 'var(--shadow-sm)' : 'var(--shadow-xs)',
+                }}>
+                <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2"
+                  style={{ backgroundColor: s.iconBg, color: s.iconColor }}>
+                  <s.Icon />
+                </div>
+                <p className="text-3xl font-black" style={{ color: 'var(--text-strong)' }}>{s.value}</p>
+                <p className="text-xs mt-1" style={{ color: isActive ? 'var(--text-strong)' : 'var(--text-muted)' }}>{s.label}</p>
+              </button>
+            )
+          })}
         </div>
 
         {/* Tabbed view */}
         <div className="space-y-4">
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-            <TabBar tabs={TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <div className="w-full sm:w-64">
-              <SearchBar
-                value={search}
-                onChange={setSearch}
-                placeholder={
-                  tab === 'sessions' ? 'Search sessions…' : 'Search by name or email…'
-                }
-              />
-            </div>
+            <TabBar tabs={TABS} active={tab} onChange={selectTab} />
+            {LIST_TABS.includes(tab) && (
+              <div className="w-full sm:w-64">
+                <SearchBar
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={tab === 'sessions' ? 'Search sessions…' : 'Search by name or email…'}
+                />
+              </div>
+            )}
           </div>
 
           {/* ── Students ── */}
@@ -1420,6 +1448,9 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
 
           {/* ── Usage & Cost ── */}
           {tab === 'usage' && <UsageTab />}
+
+          {/* ── Tools ── */}
+          {tab === 'tools' && <ToolsTab demoSeeded={demoSeeded} />}
 
           {/* ── All Sessions ── */}
           {tab === 'sessions' && (
