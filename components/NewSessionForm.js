@@ -167,10 +167,16 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         </div>
       )}
 
-      {/* Your assignment */}
-      <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>
-        Your assignment
+      {/* ── Step 1 — Your assignment (the primary section: what are you writing?) ── */}
+      <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 'var(--space-1)' }}>
+        Step 1 · Your assignment
       </span>
+      <h2 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: '0 0 var(--space-1)' }}>
+        What are you writing?
+      </h2>
+      <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '0 0 var(--space-3)' }}>
+        Paste or type it, snap a photo, or browse writing ideas to get started.
+      </p>
       <textarea
         ref={textareaRef}
         value={assignment}
@@ -244,13 +250,23 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         )}
       </div>
 
-      {/* Coach for this assignment */}
-      <div style={{ marginTop: 'var(--space-5)' }}>
+      {/* Browse Ideas — belongs WITH the assignment: it helps the student fill Step 1 in. */}
+      <button onClick={() => setChooserOpen(true)} type="button"
+        className="inline-flex items-center gap-1.5"
+        style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, marginTop: 'var(--space-2)' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+        </svg>
+        Need an idea? Browse writing forms →
+      </button>
+
+      {/* ── Step 2 — Pick your coach (secondary: default is pre-picked so this never blocks) ── */}
+      <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-5)', borderTop: '1px solid var(--border-default)' }}>
         <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
-          Coach for this assignment
+          Step 2 · Pick your coach <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--fw-medium)', color: 'var(--text-subtle)' }}>— optional</span>
         </span>
         <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '0 0 var(--space-3)' }}>
-          Pick whoever fits this one — you can choose a different coach for every assignment.
+          {selected?.name ?? 'Owen'} is ready to go — or tap another coach to see how they work. You can switch for any assignment.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3" style={{ gap: 'var(--space-2)' }}>
@@ -276,8 +292,16 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
           })}
         </div>
 
-        {selected?.desc && (
-          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 'var(--space-3) 0 0' }}>{selected.desc}</p>
+        {/* Click-to-reveal intro for the selected coach — updates as the student taps
+            different cards. Copy is display-only metadata (personas.js pickerIntro). */}
+        {(selected?.pickerIntro || selected?.desc) && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 'var(--space-3)', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-muted)', border: `1px solid ${selected?.color ?? 'var(--border-default)'}` }}>
+            <PersonaAvatar personaId={persona} size={24} />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', display: 'block' }}>Meet {selected?.name}</span>
+              <span style={{ font: 'var(--type-meta)', color: 'var(--text-body)', display: 'block', marginTop: 2 }}>{selected?.pickerIntro ?? selected?.desc}</span>
+            </span>
+          </div>
         )}
       </div>
 
@@ -300,14 +324,6 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
           )}
-        </button>
-        <button onClick={() => setChooserOpen(true)} type="button"
-          className="inline-flex items-center gap-1.5"
-          style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
-          </svg>
-          Need an idea? Browse writing forms →
         </button>
       </div>
 
