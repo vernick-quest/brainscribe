@@ -8,6 +8,7 @@ import WritingProfileCard from '@/components/WritingProfileCard'
 import InviteParentForm from '@/components/InviteParentForm'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import { getImpersonation } from '@/lib/impersonation'
+import { MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { getSubject } from '@/lib/subjects'
 
 export default async function ProfilePage() {
@@ -168,9 +169,17 @@ export default async function ProfilePage() {
                     </div>
                   )
                 })}
-                <div className="pt-1">
-                  <InviteParentForm />
-                </div>
+                {/* A student can have at most MAX_PARENTS_PER_CHILD parents — hide the
+                    invite once they're at the cap (the server also enforces it). */}
+                {parents.length < MAX_PARENTS_PER_CHILD ? (
+                  <div className="pt-1">
+                    <InviteParentForm />
+                  </div>
+                ) : (
+                  <p className="text-xs pt-1" style={{ color: 'var(--text-subtle)' }}>
+                    You&apos;ve connected the maximum of {MAX_PARENTS_PER_CHILD} parents.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-4">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/Avatar'
@@ -24,6 +24,7 @@ function sectionLabel(pathname) {
 export default function Navbar({ user, profile }) {
   const renderedUserId = user?.id ?? null
   const section = sectionLabel(usePathname())
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const isParent = profile?.role === 'parent'
   const homeHref = profile?.role === 'teacher' ? '/teacher'
@@ -84,11 +85,42 @@ export default function Navbar({ user, profile }) {
       }}>
 
       <div className="flex items-center gap-3">
+        {/* Hamburger menu — primary nav: Folder / Skill Studio / Profile.
+            Links are role-aware (Folder + Profile resolve to the right home/account
+            for students vs parents/teachers). */}
+        <div className="relative">
+          <button onClick={() => setMenuOpen(o => !o)}
+            aria-label="Menu" aria-haspopup="menu" aria-expanded={menuOpen}
+            className="flex items-center justify-center rounded-lg transition"
+            style={{ width: 36, height: 36, border: '1px solid var(--border-default)', background: menuOpen ? 'var(--surface-muted)' : 'transparent', color: 'var(--text-muted)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 6h18M3 12h18M3 18h18"/>
+            </svg>
+          </button>
+          {menuOpen && (
+            <>
+              <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+              <div className="absolute left-0 mt-2"
+                style={{ zIndex: 40, width: 200, background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: 6 }}>
+                {[['Folder', homeHref], ['Skill Studio', '/gym'], ['Profile', accountHref]].map(([label, href]) => (
+                  <a key={href} href={href} onClick={() => setMenuOpen(false)}
+                    className="block rounded-md transition"
+                    style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-body)', padding: '9px 12px', textDecoration: 'none' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-muted)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    {label}
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         <a href={homeHref}>
           <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
         </a>
         {/* Section breadcrumb — the word next to the logo names the section the
-            current URL is in (Profile, Assignments, Skill Studio, …). */}
+            current URL is in (Folder, Assignment, Profile, …). */}
         {section && (
           <span className="hidden sm:flex items-center gap-3">
             <span aria-hidden="true" style={{ color: 'var(--border-strong)' }}>|</span>
@@ -99,13 +131,19 @@ export default function Navbar({ user, profile }) {
         )}
       </div>
 
-      {/* Avatar links straight to the account page (profile / settings). */}
+      {/* Name + avatar → the account page (profile / settings). */}
       <a
         href={accountHref}
         aria-label={accountLabel}
-        className="rounded-full transition hover:opacity-90"
-        style={{ padding: '4px', display: 'inline-flex' }}
+        className="flex items-center gap-2.5 rounded-full transition hover:opacity-90"
+        style={{ padding: '4px 4px 4px 12px' }}
       >
+        {name && (
+          <span className="hidden sm:inline"
+            style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {name}
+          </span>
+        )}
         <Avatar
           name={name}
           avatarUrl={profile?.avatar_url}
