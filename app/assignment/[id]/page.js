@@ -45,7 +45,7 @@ export default async function AssignmentPage({ params }) {
   // send it to its gym session page instead of rendering it as an assignment.
   // (Column absent pre-migration 025 → undefined → no redirect, harmless.)
   if (session.gym_session_id) {
-    redirect(`/gym/session/${session.gym_session_id}`)
+    redirect(`/skill-studio/session/${session.gym_session_id}`)
   }
   if (!isOwner && !isAdmin && !isTeacher) {
     redirect('/folder')

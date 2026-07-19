@@ -141,7 +141,7 @@ export default async function DashboardPage() {
             Warm --surface-spark card = soft brand color; navy button ≠ the orange
             "New assignment" primary CTA, so it's prominent-but-secondary, not competing. */}
         {!imp && (
-          <a href="/gym"
+          <a href="/skill-studio"
             className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition hover:opacity-95"
             style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)', borderRadius: 'var(--radius-md)', padding: 'var(--space-5)', marginBottom: 'var(--space-5)', textDecoration: 'none' }}>
             <div className="flex items-center gap-3">

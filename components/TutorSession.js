@@ -822,7 +822,7 @@ export default function TutorSession({
   const [readAloud, setReadAloud] = useState(profile?.coach_read_aloud !== false)
   const readAloudRef              = useRef(profile?.coach_read_aloud !== false)
   const [savingVoicePref, setSavingVoicePref] = useState(false)
-  // Auto-mute offer: fires at most once per session, never during onboarding/gym,
+  // Auto-mute offer: fires at most once per session, never during onboarding/skill-studio,
   // and never again once the student has permanently dismissed it.
   const [showVoiceOffer, setShowVoiceOffer]   = useState(false)
   const audioEventsRef        = useRef([])                  // ordered per-turn audio outcomes
@@ -2148,7 +2148,7 @@ export default function TutorSession({
                   </span>
                 ))}
               </span>
-              <a href={gym.backHref ?? '/gym'} className="ml-auto font-semibold hover:underline shrink-0" style={{ color: 'var(--text-muted)' }}>
+              <a href={gym.backHref ?? '/skill-studio'} className="ml-auto font-semibold hover:underline shrink-0" style={{ color: 'var(--text-muted)' }}>
                 Leave
               </a>
             </div>
@@ -2540,7 +2540,7 @@ export default function TutorSession({
 
           {/* Auto-mute offer — fires at most once per session, only on a genuine
               "reading ahead" pattern (deduceVoiceSuggestion), never during
-              onboarding/gym, and never again once dismissed. Sits above the composer. */}
+              onboarding/skill-studio, and never again once dismissed. Sits above the composer. */}
           {showVoiceOffer && (
             <div className="mx-4 mb-2 rounded-2xl px-4 py-3 flex flex-col gap-2.5"
               style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
@@ -2700,11 +2700,11 @@ export default function TutorSession({
                     <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
                     <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
                     <div className="flex items-center gap-3 mt-2">
-                      <a href={gym.portfolioHref ?? '/gym/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                      <a href={gym.portfolioHref ?? '/skill-studio/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
                         See your portfolio →
                       </a>
-                      <a href={gym.backHref ?? '/gym'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
-                        Back to the Gym
+                      <a href={gym.backHref ?? '/skill-studio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                        Back to Skill Studio
                       </a>
                     </div>
                   </>

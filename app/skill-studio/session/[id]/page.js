@@ -23,14 +23,14 @@ export default async function GymSessionPage({ params }) {
   // Ownership + existence. (Watchers get read-only gym surfaces later; P1 is the
   // student's own practice only.)
   if (!gymSession || gymSession.student_id !== user.id || !gymSession.session_id) {
-    redirect('/gym')
+    redirect('/skill-studio')
   }
 
   const [{ data: session }, { data: profile }] = await Promise.all([
     supabase.from('sessions').select('*').eq('id', gymSession.session_id).single(),
     supabase.from('profiles').select('full_name, role, avatar_url, age_bracket, coach_read_aloud, voice_prompt_dismissed_at').eq('id', user.id).single(),
   ])
-  if (!session) redirect('/gym')
+  if (!session) redirect('/skill-studio')
 
   const [{ data: messages }, { data: paragraphs }, { data: scaffoldData }] = await Promise.all([
     supabase.from('messages').select('role, content').eq('session_id', session.id).order('created_at'),
@@ -59,8 +59,8 @@ export default async function GymSessionPage({ params }) {
         skillKey: gymSession.skill_key,
         skillLabel: skill?.label ?? 'Practice',
         tier: gymSession.tier,
-        backHref: '/gym',
-        portfolioHref: '/gym/portfolio',
+        backHref: '/skill-studio',
+        portfolioHref: '/skill-studio/portfolio',
       }}
     />
   )

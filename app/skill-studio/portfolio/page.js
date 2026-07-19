@@ -80,10 +80,10 @@ export default async function GymPortfolioPage() {
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
       <Navbar user={user} profile={profile} />
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-10">
-        <a href="/gym" style={{ font: 'var(--type-meta)', color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>← Back to the Gym</a>
+        <a href="/skill-studio" style={{ font: 'var(--type-meta)', color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>← Back to Skill Studio</a>
         <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '8px 0 4px' }}>Your portfolio</h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', marginBottom: 24 }}>
-          Everything you've made in the Gym — proof of how your writing is growing.
+          Everything you've made in Skill Studio — proof of how your writing is growing.
         </p>
 
         {list.length === 0 ? (

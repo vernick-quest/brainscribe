@@ -83,7 +83,7 @@ export async function POST(request) {
     }
     const { error: linkErr } = await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
     if (linkErr) {
-      // Without the back-link, /gym/session/[id] redirects away (unreachable session).
+      // Without the back-link, /skill-studio/session/[id] redirects away (unreachable session).
       // Roll both rows back so a retry starts clean rather than stranding the student.
       console.error('[gym/sessions] warmup back-link failed:', linkErr.message)
       await supabase.from('sessions').delete().eq('id', session.id)
@@ -150,7 +150,7 @@ export async function POST(request) {
   // 3) close the loop: gym_sessions.session_id → the writing session.
   const { error: linkErr } = await supabase.from('gym_sessions').update({ session_id: session.id }).eq('id', gymSession.id)
   if (linkErr) {
-    // Back-link is load-bearing: /gym/session/[id] redirects away when session_id is
+    // Back-link is load-bearing: /skill-studio/session/[id] redirects away when session_id is
     // null. Roll both rows back so the student's retry is clean, not a dead session.
     console.error('[gym/sessions] back-link failed:', linkErr.message)
     await supabase.from('sessions').delete().eq('id', session.id)

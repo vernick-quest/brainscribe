@@ -15,7 +15,7 @@ function sectionLabel(pathname) {
   if (pathname === '/folder' || pathname === '/parent' || pathname === '/teacher') return 'Folder'
   if (pathname.startsWith('/profile')) return 'Profile'
   if (pathname.startsWith('/admin')) return 'Admin'
-  if (pathname.startsWith('/gym')) return 'Skill Studio'
+  if (pathname.startsWith('/skill-studio')) return 'Skill Studio'
   if (pathname.startsWith('/assignment')) return 'Assignment'
   if (pathname.startsWith('/transcript')) return 'Transcript'
   return ''
@@ -102,7 +102,7 @@ export default function Navbar({ user, profile }) {
               <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
               <div className="absolute left-0 mt-2"
                 style={{ zIndex: 40, width: 200, background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: 6 }}>
-                {[['Folder', homeHref], ['Skill Studio', '/gym'], ['Profile', accountHref]].map(([label, href]) => (
+                {[['Folder', homeHref], ['Skill Studio', '/skill-studio'], ['Profile', accountHref]].map(([label, href]) => (
                   <a key={href} href={href} onClick={() => setMenuOpen(false)}
                     className="block rounded-md transition"
                     style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-body)', padding: '9px 12px', textDecoration: 'none' }}

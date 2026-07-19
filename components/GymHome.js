@@ -301,7 +301,7 @@ export default function GymHome({
     setStarting(true); setError(null)
     try {
       const data = await post({ skillKey, persona: 'owen' })
-      router.push(`/gym/session/${data.gymSessionId}`)
+      router.push(`/skill-studio/session/${data.gymSessionId}`)
     } catch (e) {
       console.error(e); setError(e.message ?? 'Something went wrong.'); setStarting(false)
     }
@@ -312,7 +312,7 @@ export default function GymHome({
     setStarting(true); setError(null)
     try {
       const data = await post({ warmup: true, persona: 'owen' })
-      router.push(`/gym/session/${data.gymSessionId}`)
+      router.push(`/skill-studio/session/${data.gymSessionId}`)
     } catch (e) {
       console.error(e); setError(e.message ?? 'Something went wrong.'); setStarting(false)
     }
@@ -397,7 +397,7 @@ export default function GymHome({
         <section className="mb-8">
           <h2 style={{ font: 'var(--type-subhead)', color: 'var(--text-strong)', margin: '0 0 4px' }}>Your badges</h2>
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 16px' }}>
-            <a href="/gym/portfolio" style={{ color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>See your portfolio →</a>
+            <a href="/skill-studio/portfolio" style={{ color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>See your portfolio →</a>
           </p>
           <div className="flex flex-wrap" style={{ gap: 16 }}>
             {badgeSkills.map(s => <SkillBadge key={s.key} skill={s} state={skillStates[s.key]} />)}
