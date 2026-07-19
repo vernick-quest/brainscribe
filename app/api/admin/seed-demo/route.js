@@ -62,12 +62,17 @@ async function ensureUser(service, spec) {
   }
 
   // Authoritative demo state — role, name, 13+ bracket, onboarding done, no photo.
+  // access_granted so the demo trio works without a code; is_beta_circle=false so
+  // admin-generated demo accounts NEVER consume one of the 100 Beta Circle slots
+  // (Robert). Set explicitly on every re-seed so a grandfathered demo row is corrected.
   const { error: upErr } = await service.from('profiles').update({
     full_name: spec.full_name,
     role: spec.role,
     age_bracket: '13plus',
     onboarding_complete: true,
     avatar_url: null,
+    access_granted: true,
+    is_beta_circle: false,
   }).eq('id', id)
   if (upErr) throw new Error(`updateProfile(${spec.email}): ${upErr.message}`)
 

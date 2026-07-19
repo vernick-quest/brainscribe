@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createNotification } from '@/lib/notifications'
 import InviteAgeGate from '@/components/InviteAgeGate'
 import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
+import { maybeGrantBetaCircle } from '@/lib/access'
 
 export default async function InvitePage({ searchParams }) {
   const params = await searchParams
@@ -134,10 +135,12 @@ export default async function InvitePage({ searchParams }) {
     //
     // Beta-launch access-gate inheritance: an invited user (parent, teacher, student,
     // or co-parent — every branch of this claim) inherits coach ACCESS through the
-    // relationship, so they never see the Beta Circle code step. Access ONLY — NOT a
-    // Beta Circle slot (that comes from redeeming the code or grandfathering). Set on
-    // the same write; column added by migration 045.
+    // relationship, so they never see the Beta Circle code step. Set on the same
+    // write; column added by migration 045.
     await service.from('profiles').update({ role: invite.role, role_confirmed: true, access_granted: true }).eq('id', user.id)
+    // …and take a Beta Circle slot too, up to the fluid cap of 100 (Robert: anyone
+    // who joins during beta counts). Best-effort — never blocks the invite claim.
+    await maybeGrantBetaCircle(service, user.id)
 
     // Account-level co-parent claim: tether B to the primary parent A and inherit
     // ALL of A's current children as a read-only watcher (future children auto-link

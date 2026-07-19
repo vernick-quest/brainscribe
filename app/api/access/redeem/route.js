@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { maybeGrantBetaCircle } from '@/lib/access'
 
 // POST /api/access/redeem — redeem a Beta Circle access code.
 //
@@ -9,7 +10,6 @@ import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 // slot (profiles.is_beta_circle=true). Authed + rate-limited; ALL writes go through
 // the service role (access_codes is RLS-enabled with no client policies, and the gate
 // columns on profiles are service-role territory). Requires migration 045.
-const BETA_CIRCLE_CAP = 100
 
 export async function POST(request) {
   const supabase = await createClient()
@@ -54,31 +54,15 @@ export async function POST(request) {
     return Response.json({ error: 'Something went wrong unlocking your account. Please try again.' }, { status: 500 })
   }
 
-  // Beta Circle: granted only while fewer than 100 LIVE members hold it. The cap is
-  // fluid (a deleted member frees their slot — we count live rows each time). A small
-  // TOCTOU race at exactly the cap is acceptable per product (the cap isn't a hard
-  // legal limit, just a cohort size), so we don't lock/serialize here.
+  // Beta Circle: granted only while the fluid cap of 100 LIVE members isn't reached
+  // (shared cap logic in lib/access.js — same helper the invite/consent paths use).
+  // A small TOCTOU race at exactly the cap is acceptable (the cap is a cohort size,
+  // not a hard limit), so we don't lock/serialize.
   let betaCircle = false
   let capReached = false
   if (accessCode.grants_beta_circle) {
-    const { count } = await service
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_beta_circle', true)
-    if ((count ?? 0) < BETA_CIRCLE_CAP) {
-      const { error: betaErr } = await service
-        .from('profiles')
-        .update({ is_beta_circle: true })
-        .eq('id', user.id)
-      if (betaErr) {
-        // Access already granted — a Beta Circle write miss shouldn't fail the redeem.
-        console.error('[access/redeem] beta circle grant failed:', betaErr.message)
-      } else {
-        betaCircle = true
-      }
-    } else {
-      capReached = true
-    }
+    betaCircle = await maybeGrantBetaCircle(service, user.id)
+    capReached = !betaCircle
   }
 
   // Bump the code's usage counter (best-effort telemetry; never fail the redeem on
