@@ -130,8 +130,18 @@ export async function POST(request) {
   // same predicate, so a sessions row inserted client-side (RLS allows it) still
   // can't reach a model or the voice pipeline.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
+    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given, access_granted').eq('id', user.id).single()
   if (!canUseCoach(gate)) return coachGateResponse()
+
+  // Beta-launch access gate (additive + independent of the COPPA gate above). One
+  // shared code grants access; existing users are grandfathered and invited users
+  // inherit it, so a true value is the norm — only a fresh, un-invited, un-redeemed
+  // self-signup is blocked here. Block ONLY on an explicit non-true value so an odd
+  // row never crashes session creation. Requires migration 045 (access_granted
+  // column) — deploy AFTER it is applied or this select throws.
+  if (gate?.access_granted !== true) {
+    return Response.json({ error: 'Enter your Beta Circle code to start writing with a coach.', code: 'access_code_required' }, { status: 403 })
+  }
 
   const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
           isOnboarding = false, onboardingPromptKey = null } = await request.json()
