@@ -52,9 +52,18 @@ export async function POST(request) {
   // assertion or completed consent. /api/gym/tutor + /api/scribe* re-check it too.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, age_bracket, coppa_consent_required, coppa_consent_given, birthdate')
+    .select('role, age_bracket, coppa_consent_required, coppa_consent_given, birthdate, access_granted')
     .eq('id', user.id).single()
   if (!canUseCoach(profile)) return coachGateResponse()
+
+  // Beta-launch access gate (additive + independent of the COPPA gate above). Same
+  // enforcement as POST /api/sessions: block only a fresh, un-invited, un-redeemed
+  // self-signup. Block ONLY on an explicit non-true value so an odd row never crashes
+  // session creation. Requires migration 045 (access_granted column) — deploy AFTER
+  // it is applied or this select throws.
+  if (profile?.access_granted !== true) {
+    return Response.json({ error: 'Enter your Beta Circle code to start writing with a coach.', code: 'access_code_required' }, { status: 403 })
+  }
 
   const { skillKey, persona = 'owen', warmup = false } = await request.json()
 

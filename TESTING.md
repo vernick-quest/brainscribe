@@ -1955,3 +1955,71 @@ build + code reasoning per the handoff.
 ### Not done here
 - Live authed picker render (OAuth) — conductor/Robert do the in-app pass: tap each coach
   to confirm the real ElevenLabs clip plays and the typewriter tracks the voice.
+
+## 2026-07-19 — Access gate + Beta Circle (focus/auth-coppa)
+
+Beta-launch access control: one shared code (`unblock`) grants coach access AND marks
+the Beta Circle cohort (fluid cap 100, admins excluded from the count). Existing users
+are grandfathered; invited/consent-linked users inherit access (NOT Beta Circle);
+no-code + no-invite self-signups are gated at coach session creation.
+
+### ⚠️ SEQUENCING — migration MUST be applied first
+- Migration `supabase/migrations/045_access_gate.sql` adds `profiles.access_granted /
+  is_beta_circle / access_code_used / access_code_at`, creates `access_codes`
+  (RLS-enabled, NO client policies), seeds the `unblock` code, and grandfathers every
+  existing account (all → access_granted; every non-admin → is_beta_circle).
+- The gated code SELECTs `access_granted`. **If 045 is not applied, those selects throw.**
+  Robert applies 045, THEN the conductor deploys. Do not deploy this branch before 045 runs.
+
+### Enforcement (server, session-creation only — NOT canUseCoach)
+- [ ] Existing (grandfathered) user → POST `/api/sessions` and `/api/gym/sessions` create a
+      session normally (access_granted=true). No gate visible anywhere.
+- [ ] Fresh self-signup with access_granted=false → POST `/api/sessions` returns
+      `403 {code:'access_code_required'}`; POST `/api/gym/sessions` returns the same.
+      The COPPA age gate (canUseCoach) still runs first and is unchanged.
+- [ ] Admin → passes (grandfathered access_granted=true by the migration).
+- [ ] An odd/missing row never crashes the route — guard is `access_granted !== true` only.
+
+### Redeem endpoint `/api/access/redeem` (authed, service-role writes)
+- [ ] Unauthed → 401. Rate limit: >10 attempts/hour per user → 429.
+- [ ] Body `{code:'unblock'}` (any case / whitespace, normalized to lowercase) → sets
+      access_granted=true + access_code_used + access_code_at; if live is_beta_circle
+      count < 100 also sets is_beta_circle=true. Returns `{access_granted, beta_circle, cap_reached}`.
+- [ ] Bad/empty code → `400 {code:'invalid_code'}` with a friendly message; no writes.
+- [ ] At/over cap (>=100 live members) → access granted, `beta_circle:false, cap_reached:true`.
+- [ ] `access_codes` has NO anon/authenticated RLS policy — a normal client SELECT returns
+      nothing; only the service role reads/writes it.
+
+### Welcome code step `app/(auth)/welcome/page.js`
+- [ ] access_granted=true user (grandfathered / invited / already redeemed) → NEVER sees the
+      code step; flow is exactly as before (name-nudge → age → role/consent).
+- [ ] Fresh self-signup, access_granted=false, no relationship → lands on the "You're almost
+      in / Enter your Beta Circle code" step FIRST. Redeeming `unblock` → advances to the
+      name-nudge (if flagged) else the age step. Bad code → inline friendly error, stays put.
+- [ ] Belt-and-suspenders: access_granted=false but a relationship already exists → treated as
+      linked, code step is skipped (server session gate remains the real enforcement).
+- [ ] Manual: sign in as a brand-new Google account, confirm the code step blocks, redeem
+      `unblock`, confirm the coach then works and (if under 100) Beta Circle is set.
+
+### Invite / consent inheritance (access only — NOT Beta Circle)
+- [ ] Parent/teacher/student/co-parent accepting an invite (`app/(auth)/invite/page.js`) →
+      profile update stamps access_granted=true alongside role/role_confirmed. They never see
+      the welcome code step.
+- [ ] COPPA consent completion (`lib/coppaConsent.js` grantConsentForPending) → the approved
+      student gets access_granted=true (so a consented under-13 can reach the coach without a
+      code) AND the consenting parent gets access_granted=true. Neither gets Beta Circle.
+- [ ] `app/api/invites/route.js` only CREATES the invite (no relationship row for an accepting
+      user) → intentionally unchanged; acceptance/inheritance happens in invite/page.js.
+
+### Untouched (verify no drift)
+- [ ] `git diff lib/coppa.js` is empty — canUseCoach / validateConsentBinding / evaluateGateEdit
+      / sticky under-13 are byte-for-byte unchanged. The access gate is additive + independent.
+- [ ] `components/AdminDashboard.js` untouched (admin Beta Circle counter is a separate lane).
+
+### Flagged for conductor/Robert
+- Non-invited under-13 self-signups with no code hit the Beta Circle gate BEFORE the parental-
+  consent flow (the code step is first). If Robert wants under-13s to reach consent without a
+  code, move/relax the gate. Current behavior matches the strict "no code + no invite = gated"
+  rule and invite-only posture.
+- Invited/consented users get ACCESS but NOT Beta Circle by design. If invited users should
+  also join the Beta Circle, that's a product decision — not made here.

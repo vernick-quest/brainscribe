@@ -76,25 +76,75 @@ function WelcomeContent() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [savingName, setSavingName] = useState(false)
+  // Beta Circle access gate (migration 045). A brand-new self-signup with no code and
+  // no invite lands on the code step FIRST; grandfathered + invited users have
+  // access_granted=true and never see it. nameNudge is remembered so a successful
+  // redeem lands on the right next step (name confirm, else age).
+  const [code, setCode] = useState('')
+  const [redeeming, setRedeeming] = useState(false)
+  const [nameNudge, setNameNudge] = useState(false)
 
   // Admins should never be here — redirect straight to /admin. Same fetch also
   // decides the name nudge. Pre-migration-040 this select errors on the missing
   // column → data is null → nudge silently stays off (fail-open by design).
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('profiles').select('role, full_name, display_name_confirmed').single().then(({ data }) => {
+    async function init() {
+      const { data } = await supabase
+        .from('profiles').select('role, full_name, display_name_confirmed, access_granted').single()
       if (!data) return
       if (data.role === 'admin') { router.replace('/admin'); return }
-      if (!data.display_name_confirmed && displayNameNeedsConfirm(data.full_name)) {
+
+      const nudge = !data.display_name_confirmed && displayNameNeedsConfirm(data.full_name)
+      if (nudge) {
         const words = (data.full_name ?? '').trim().split(/\s+/).filter(Boolean)
         setFirstName(words[0] ?? '')
         setLastName(words.slice(1).join(' '))
         setFlaggedName(data.full_name ?? '')
-        // Only jump in if the user hasn't already moved past the first step.
-        setStep(s => (s === 'age' ? 'name' : s))
+        setNameNudge(true)
       }
-    })
+
+      // Beta Circle access gate: only a fresh self-signup with no code AND no invite
+      // is gated. access_granted=true (grandfathered / invited / already-redeemed)
+      // skips this entirely. Belt-and-suspenders: if a relationship already exists but
+      // access somehow wasn't set (odd row), treat as linked and DON'T lock them out —
+      // the server-side session gate is the real enforcement. Pre-migration-045 the
+      // select errors → data is null → we returned above (gate stays off, fail-open).
+      if (data.access_granted !== true) {
+        const { count } = await supabase.from('relationships').select('id', { count: 'exact', head: true })
+        if (!count) { setStep('access-code'); return }
+      }
+
+      // Only jump in if the user hasn't already moved past the first step.
+      if (nudge) setStep(s => (s === 'age' ? 'name' : s))
+    }
+    init()
   }, [router])
+
+  // Redeem a Beta Circle code, then continue into onboarding (name confirm, else age).
+  async function handleRedeem() {
+    if (!code.trim()) return
+    setRedeeming(true)
+    setError('')
+    try {
+      const res = await fetch('/api/access/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body.error ?? "That code isn't valid. Check with whoever invited you.")
+        setRedeeming(false)
+        return
+      }
+      setStep(nameNudge ? 'name' : 'age')
+    } catch (e) {
+      console.error('[welcome] redeem error:', e)
+      setError('Something went wrong. Please try again.')
+    }
+    setRedeeming(false)
+  }
 
   // Save the confirmed/corrected name, then continue to the age step. Fail-open:
   // the nudge must never block signup, so any error still advances the flow.
@@ -177,6 +227,100 @@ function WelcomeContent() {
     }
 
     router.push('/coppa/pending')
+  }
+
+  // ── Step: Beta Circle access code (fresh self-signup, no code + no invite) ──
+  if (step === 'access-code') {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            backgroundColor: 'var(--surface-spark)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1rem',
+          }}>
+            <Icon name="sparkles" size={28} style={{ color: 'var(--accent)' }} />
+          </div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
+            You're almost in
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            BrainScribe is opening up through the <strong>Beta Circle</strong>. Enter the
+            code you were given to start writing with your coach.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--brand-navy)', marginBottom: 6 }}>
+              Beta Circle code
+            </label>
+            <input
+              type="text"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="Enter your code"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={redeeming}
+              style={{
+                width: '100%',
+                padding: '0.8rem 1rem',
+                borderRadius: 12,
+                border: '1.5px solid var(--border-strong)',
+                fontSize: '0.95rem',
+                color: 'var(--text-body)',
+                backgroundColor: 'var(--surface-card)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+              onKeyDown={e => { if (e.key === 'Enter' && code.trim()) handleRedeem() }}
+            />
+          </div>
+
+          {error && (
+            <p style={{
+              fontSize: '0.85rem',
+              color: 'var(--status-error)',
+              backgroundColor: 'var(--status-error-bg)',
+              padding: '10px 14px',
+              borderRadius: 10,
+            }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={handleRedeem}
+            disabled={!code.trim() || redeeming}
+            style={{
+              width: '100%',
+              padding: '1rem',
+              borderRadius: 14,
+              fontWeight: 700,
+              fontSize: '1rem',
+              color: '#fff',
+              backgroundColor: code.trim() && !redeeming ? 'var(--brand-orange)' : 'var(--border-strong)',
+              border: 'none',
+              cursor: code.trim() && !redeeming ? 'pointer' : 'not-allowed',
+              transition: 'background-color 0.15s',
+            }}
+          >
+            {redeeming ? 'Unlocking…' : 'Unlock →'}
+          </button>
+
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
+            Invited by a parent or teacher? You're already in — just sign in from your invite link.
+          </p>
+        </div>
+      </Card>
+    )
   }
 
   // ── Step: Role picker ─────────────────────────────────────────────────────

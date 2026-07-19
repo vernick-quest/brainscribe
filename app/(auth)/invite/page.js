@@ -131,7 +131,13 @@ export default async function InvitePage({ searchParams }) {
     // Update their profile role — mark confirmed since invite pre-assigns the role.
     // role/role_confirmed are gate columns REVOKEd from `authenticated` by migration
     // 020, so this write goes through the service client created above.
-    await service.from('profiles').update({ role: invite.role, role_confirmed: true }).eq('id', user.id)
+    //
+    // Beta-launch access-gate inheritance: an invited user (parent, teacher, student,
+    // or co-parent — every branch of this claim) inherits coach ACCESS through the
+    // relationship, so they never see the Beta Circle code step. Access ONLY — NOT a
+    // Beta Circle slot (that comes from redeeming the code or grandfathering). Set on
+    // the same write; column added by migration 045.
+    await service.from('profiles').update({ role: invite.role, role_confirmed: true, access_granted: true }).eq('id', user.id)
 
     // Account-level co-parent claim: tether B to the primary parent A and inherit
     // ALL of A's current children as a read-only watcher (future children auto-link
