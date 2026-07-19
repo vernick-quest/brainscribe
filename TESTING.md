@@ -1908,3 +1908,50 @@ Active-session header accent also intentionally out of scope.
 OAuth pages can't be authed-rendered headlessly. Static build + code reasoning done;
 conductor/Robert do the live picker/folder/transcript visual pass and the broken-image
 fallback eyeball.
+
+## 2026-07-19 — New-assignment two-screen flow + coach audio intros (focus/assignment-intake)
+
+Restructured `components/NewSessionForm.js` into a state-driven two-screen flow
+(`step: 'assignment' | 'coach'`, one component so the draft carries over — no route
+change). Screen 2 adds a blank "Meet the coach" panel, a static-clip audio intro that
+plays + typewriter-reveals on tap, and an explicit "Start with [Coach]" commit. Build:
+`npm run build` GREEN (Compiled successfully). Not authed-rendered (OAuth) — static
+build + code reasoning per the handoff.
+
+### Screen 1 — Your assignment (regression pass)
+- [ ] Textarea, upload/OCR, and Browse Ideas (WritingFormChooser) all work exactly as before.
+- [ ] Revision prefill: `initialAssignmentText`/`initialFocus` still land on Screen 1
+      (focus banner + prefilled textarea) from the Head Grader "work on this again" path.
+- [ ] Primary button reads "Next: choose your coach →". Empty assignment blocks advance
+      with the inline error ("Add your assignment first…"); non-empty advances to Screen 2.
+- [ ] Advancing scrolls to top (auto scroll if prefers-reduced-motion).
+- [ ] Uploading disables Next.
+
+### Screen 2 — Choose your coach
+- [ ] Fresh Screen 2: Meet panel shows the placeholder "Tap a coach below to meet them.",
+      NO coach pre-selected, Start button disabled ("Pick a coach to start").
+- [ ] Tap Owen → Meet panel fills: 56px PersonaAvatar, "Meet Owen" in Owen's shade color,
+      Owen's pickerIntro typewriter-reveals while `/coaches/audio/owen.mp3` plays; text
+      finishes ~0.3s before the clip ends (reveal head keyed to audio.currentTime).
+- [ ] Tap Deon mid-play → Owen's clip stops+resets, Deon's starts cleanly (one at a time,
+      no overlap); stale-callback guard (playGenRef) prevents Owen's typewriter from
+      writing over Deon's text.
+- [ ] Tap the already-selected coach (card or "▶ Replay") → replays from the top.
+- [ ] prefers-reduced-motion: full intro text shows immediately, audio still plays.
+- [ ] Selected card uses the existing selected styling (tint bg / base border / shade text);
+      grid keeps 56px headshot + stacked Name/Trait1/Trait2.
+- [ ] "Back to your assignment" returns to Screen 1 with the assignment preserved and
+      stops+tears down any playing clip.
+- [ ] Start enabled only after a pick; "Start with [Coach] →" runs the existing
+      `/api/sessions` POST verbatim with the selected persona id and navigates to
+      `/assignment/{id}`; audio is torn down on submit.
+- [ ] Coach colors come only from `getCoachColor(asset)` (no hardcoded hex); persona
+      `matilda` → asset `tilly` for avatar + audio filename + color.
+
+### Audio/timer cleanup
+- [ ] Leaving Screen 2 (Back or Start) and unmount both pause + drop the `<audio>` src and
+      cancel the rAF typewriter timer (no clip keeps buffering off-screen).
+
+### Not done here
+- Live authed picker render (OAuth) — conductor/Robert do the in-app pass: tap each coach
+  to confirm the real ElevenLabs clip plays and the typewriter tracks the voice.
