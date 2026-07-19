@@ -1746,3 +1746,36 @@ Per Robert 2026-07-17: unverified/unconsented accounts can't reach the coach so 
 no cost; Part 1's reconciliation already makes the cost totals accurate. Attributing orphaned
 spend to a *specific* deleted person added COPPA/PII surface (a salt-less email hash surviving
 deletion) for little payoff, so it was not merged.
+
+## 2026-07-18 — New-assignment page restructure (Step 1 assignment · Step 2 coach) + coach intros
+
+`app/assignment/new` → `components/NewSessionForm.js` was regrouped into two clearly
+stacked sections (no wizard — both visible at once, nothing gated):
+
+- **Step 1 · Your assignment (primary):** eyebrow "Step 1 · Your assignment" + heading
+  "What are you writing?" + the assignment textarea, the "Upload a photo or PDF"
+  affordance, and the **"Need an idea? Browse writing forms →"** button — the Browse
+  action now lives WITH the assignment (it moved out of the bottom action row) because
+  it helps the student fill Step 1 in.
+- **Step 2 · Pick your coach (secondary):** separated by a hairline top border and
+  labelled "Step 2 · Pick your coach — optional". Same 6 coach cards; **Owen stays
+  pre-selected so the flow never blocks.** Selecting a card reveals a "Meet <coach>"
+  intro card beneath the grid that updates as you tap different coaches. The intro copy
+  is a new **display-only** `pickerIntro` field on each persona in `lib/personas.js` —
+  it does NOT change any coach behaviour (prompts live in `lib/prompts.js`).
+- The bottom action row is now just the "Start writing with <coach>" primary CTA.
+
+Manual checks (student account — page is auth- + age-gated, redirects impersonating
+admins and unconsented under-13s, so test as a real 13+/consented student):
+1. Visit /assignment/new → Step 1 shows first with textarea + upload + Browse button;
+   Step 2 (coach picker) sits below a divider, visually secondary. Owen is preselected
+   and his "Meet Owen" intro shows by default.
+2. Tap each coach card → selection ring moves, the "Meet <coach>" intro card swaps to
+   that coach's `pickerIntro`, and the CTA label updates to "Start writing with <name>".
+3. Click "Need an idea? Browse writing forms →" → WritingFormChooser modal opens;
+   picking a form fills the textarea and shows the "Writing <form>" chip (unchanged).
+4. Upload a photo/PDF → OCR fills the textarea (unchanged vision path).
+5. With assignment text present, "Start writing…" creates the session and routes to
+   /assignment/<id>. Empty assignment keeps the CTA disabled.
+6. Head Grader prefill (?revise=<id>&gap=<i>) still shows the "Working on this again"
+   focus banner above Step 1 and rides along on submit (unchanged).
