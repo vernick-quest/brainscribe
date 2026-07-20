@@ -2023,3 +2023,48 @@ no-code + no-invite self-signups are gated at coach session creation.
   rule and invite-only posture.
 - Invited/consented users get ACCESS but NOT Beta Circle by design. If invited users should
   also join the Beta Circle, that's a product decision — not made here.
+
+## 2026-07-19 — Beta Circle management panel (focus/admin)
+
+New admin tooling: `GET/POST /api/admin/beta-circle` + a `BetaCircleManager` in the
+`/admin → Tools` tab (replaces the read-only `BetaCircleCard`). Additive only — does
+NOT touch the access gate (`/api/sessions`, `/api/access/redeem`, `lib/coppa.js`) or
+the cap logic in `lib/access.js` (imported, not duplicated). No migration.
+
+Status key: ✅ verified · 🔧 built, needs live test · ⬜ not yet tested
+
+**Build:** ✅ `npm run build` green; `/api/admin/beta-circle` registered as a route.
+**Auth:** admin (`brainscribe.io@gmail.com`); reason `/admin` can't be authed-rendered
+headlessly — build + code reasoning is the bar here, live click-through owed to Robert.
+
+### API (`app/api/admin/beta-circle/route.js`) — all requests `requireAdmin()`-gated
+- [ ] 🔧 Non-admin / logged-out → 401/403 (copied verbatim from `seed-demo`).
+- [ ] 🔧 `GET` → `{ count, cap, members, candidates, codes }`. `count` = live
+      `is_beta_circle=true` count; `cap` = `BETA_CIRCLE_CAP` (100). `members` = students
+      in circle (newest first); `candidates` = students NOT in circle (≤200); `codes` =
+      all `access_codes`.
+- [ ] 🔧 `POST add_member {userId}` → routes through `maybeGrantBetaCircle` (student-only
+      + cap in ONE place). On false, re-derives `reason: 'cap_reached' | 'not_student'`
+      for the UI. Returns fresh GET payload.
+- [ ] 🔧 `POST remove_member {userId}` → sets `is_beta_circle=false` (frees a slot);
+      does NOT touch `access_granted` (coach access is retained).
+- [ ] 🔧 `POST toggle_code {code, active}` → flips `access_codes.active`. Deactivating
+      pauses new redemptions (redeem already filters `active=true`).
+- [ ] 🔧 `POST create_code {code, label, grantsBetaCircle}` → normalizes lowercase,
+      validates charset `^[a-z0-9][a-z0-9_-]*$`, duplicate-safe (pre-check + 23505
+      catch → 409), inserts `active=true, uses=0`.
+- [ ] 🔧 Unknown/empty action → 400.
+
+### UI (`BetaCircleManager` in `components/AdminDashboard.js`)
+- [ ] 🔧 Fetches `GET` on mount, owns its state; every mutation adopts the returned
+      GET-shape payload → count + progress bar + all lists stay live (no manual reload).
+- [ ] 🔧 Members list (name · email · joined) with per-row Remove + inline confirm.
+- [ ] 🔧 Add-a-student `<select>` over candidates; hidden at cap ("free a slot first");
+      `cap_reached` / `not_student` denials surfaced as messages.
+- [ ] 🔧 Access-codes list (monospace code · uses · slot/access) with an Active
+      `role="switch"` toggle; Create-code row (code + optional label).
+- [ ] 🔧 Loading / disabled states on every mutating control; WCAG AA (labels, 44px
+      targets, `role="alert"`/`"status"`, `aria-checked`).
+- [ ] ⬜ Live click-through in `/admin` (Robert): add student → count +1; remove →
+      count −1 + slot freed; toggle `unblock` inactive then redeem is rejected; create
+      a new code and redeem with it.
