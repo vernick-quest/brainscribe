@@ -1204,30 +1204,245 @@ function UsageTab() {
 // see lib/access.js + migration 046). Read-only; the flag is granted server-side on
 // code redemption / invite-accept / consent.
 const BETA_CIRCLE_CAP = 100
-function BetaCircleCard({ count }) {
-  const pct = Math.min(100, Math.round((count / BETA_CIRCLE_CAP) * 100))
-  const remaining = Math.max(0, BETA_CIRCLE_CAP - count)
+// ── Beta Circle management panel (Tools tab) ──────────────────
+// Upgrades the old read-only count card into a live manager. Fetches GET
+// /api/admin/beta-circle on mount, owns its own state, and re-paints from the
+// authoritative payload every mutation returns — so count + lists stay in sync.
+// The server route (requireAdmin, service role) is the trust boundary; this is UI.
+// `initialCount` is only an instant-paint fallback until the fetch resolves.
+
+function personLabel(p) {
+  return p.full_name || p.email || 'Unnamed student'
+}
+
+function BetaCircleManager({ initialCount = 0 }) {
+  const [state, setState] = useState({ count: initialCount, cap: BETA_CIRCLE_CAP, members: [], candidates: [], codes: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')      // transient success/deny message
+  const [busyKey, setBusyKey] = useState('')     // which control is mid-flight
+  const [confirmId, setConfirmId] = useState('') // member pending remove-confirm
+  const [pick, setPick] = useState('')           // selected candidate id in the Add picker
+  const [newCode, setNewCode] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/admin/beta-circle')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Could not load the Beta Circle.'); setLoading(false); return }
+      setState({ count: json.count, cap: json.cap, members: json.members, candidates: json.candidates, codes: json.codes })
+    } catch { setError('Network error loading the Beta Circle.') }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  // Every mutation returns the fresh GET-shape payload; adopt it so count + lists
+  // stay live without a second round-trip. Returns the parsed json for callers that
+  // need to inspect ok/reason.
+  async function mutate(key, payload) {
+    setBusyKey(key); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/admin/beta-circle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); return json }
+      if (json.count != null) {
+        setState({ count: json.count, cap: json.cap, members: json.members, candidates: json.candidates, codes: json.codes })
+      }
+      return json
+    } catch {
+      setError('Network error.'); return {}
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const { count, cap, members, candidates, codes } = state
+  const pct = Math.min(100, Math.round((count / cap) * 100))
+  const remaining = Math.max(0, cap - count)
+  const atCap = count >= cap
+
+  async function addMember() {
+    if (!pick) return
+    const json = await mutate('add', { action: 'add_member', userId: pick })
+    if (json.ok) { setNotice('Student added to the Beta Circle.'); setPick('') }
+    else if (json.reason === 'cap_reached') setError('Cap reached — free a slot first.')
+    else if (json.reason === 'not_student') setError('That account is not a student, so it never takes a slot.')
+  }
+
+  async function removeMember(id) {
+    setConfirmId('')
+    const json = await mutate(`remove:${id}`, { action: 'remove_member', userId: id })
+    if (json.ok) setNotice('Student removed — a slot is now free.')
+  }
+
+  async function toggleCode(code, active) {
+    await mutate(`code:${code}`, { action: 'toggle_code', code, active })
+  }
+
+  async function createCode() {
+    const code = newCode.trim().toLowerCase()
+    if (!code) { setError('Enter a code.'); return }
+    const json = await mutate('createcode', { action: 'create_code', code, label: newLabel.trim(), grantsBetaCircle: true })
+    if (json.ok) { setNotice(`Code “${code}” created.`); setNewCode(''); setNewLabel('') }
+  }
+
+  const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
+  const sectionLabel = { font: 'var(--type-meta)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-muted)', margin: '0 0 var(--space-2)' }
+  const rowStyle = { display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-sunken)' }
+
   return (
-    <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+    <div style={cardStyle}>
+      {/* Header + progress (kept from the old card) */}
       <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)', gap: 'var(--space-3)' }}>
         <div>
           <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>Beta Circle</h3>
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-            Locked-rate student slots · code <code style={{ fontFamily: 'monospace', color: 'var(--accent-text)' }}>unblock</code>
+            Locked-rate student slots · manage members &amp; access codes
           </p>
         </div>
         <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
           <span style={{ font: 'var(--type-title)', color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums' }}>{count}</span>
-          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}> / {BETA_CIRCLE_CAP}</span>
+          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}> / {cap}</span>
         </div>
       </div>
-      <div role="progressbar" aria-valuenow={count} aria-valuemin={0} aria-valuemax={BETA_CIRCLE_CAP}
+      <div role="progressbar" aria-valuenow={count} aria-valuemin={0} aria-valuemax={cap} aria-label="Beta Circle slots used"
         style={{ height: 8, borderRadius: 'var(--radius-pill)', background: 'var(--surface-sunken)', overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 'var(--radius-pill)', transition: 'width .3s ease' }} />
       </div>
       <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 'var(--space-2) 0 0' }}>
         {remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} left` : 'Cap reached — new students get access but not the locked rate'}
       </p>
+
+      {/* Live status line */}
+      {error && <p role="alert" style={{ font: 'var(--type-meta)', color: 'var(--status-error)', margin: 'var(--space-3) 0 0' }}>{error}</p>}
+      {notice && !error && <p role="status" style={{ font: 'var(--type-meta)', color: 'var(--status-success)', margin: 'var(--space-3) 0 0' }}>{notice}</p>}
+
+      {loading && members.length === 0 && codes.length === 0 ? (
+        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 'var(--space-4) 0 0' }}>Loading…</p>
+      ) : (
+        <>
+          {/* ── Members ─────────────────────────────────────────── */}
+          <div style={{ marginTop: 'var(--space-5)' }}>
+            <p style={sectionLabel}>Members ({members.length})</p>
+            {members.length === 0 ? (
+              <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 0 }}>No students in the circle yet.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                {members.map(m => (
+                  <li key={m.id} style={rowStyle}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ font: 'var(--type-body)', color: 'var(--text-strong)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{personLabel(m)}</p>
+                      <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {m.email || '—'} · joined {formatDate(m.created_at)}
+                      </p>
+                    </div>
+                    {confirmId === m.id ? (
+                      <div className="flex items-center" style={{ gap: 'var(--space-2)', flexShrink: 0 }}>
+                        <button onClick={() => removeMember(m.id)} disabled={busyKey === `remove:${m.id}`}
+                          className="disabled:opacity-60"
+                          style={{ font: 'var(--type-meta)', fontWeight: 700, color: '#fff', background: 'var(--status-error)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer' }}>
+                          {busyKey === `remove:${m.id}` ? '…' : 'Confirm remove'}
+                        </button>
+                        <button onClick={() => setConfirmId('')} disabled={busyKey === `remove:${m.id}`}
+                          style={{ font: 'var(--type-meta)', fontWeight: 600, color: 'var(--text-muted)', background: 'transparent', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '8px 12px', minHeight: 44, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setConfirmId(m.id); setNotice(''); setError('') }} disabled={!!busyKey}
+                        aria-label={`Remove ${personLabel(m)} from the Beta Circle`}
+                        className="disabled:opacity-60"
+                        style={{ font: 'var(--type-meta)', fontWeight: 600, color: 'var(--status-error)', background: 'transparent', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* ── Add a student ───────────────────────────────────── */}
+          <div style={{ marginTop: 'var(--space-5)' }}>
+            <p style={sectionLabel}>Add a student</p>
+            {atCap ? (
+              <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 0 }}>Cap reached — free a slot first to add another student.</p>
+            ) : candidates.length === 0 ? (
+              <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 0 }}>Every student is already in the circle.</p>
+            ) : (
+              <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)' }}>
+                <label htmlFor="bc-add-pick" className="sr-only">Choose a student to add</label>
+                <select id="bc-add-pick" value={pick} onChange={e => setPick(e.target.value)} disabled={busyKey === 'add'}
+                  style={{ flex: '1 1 240px', minWidth: 0, minHeight: 44, font: 'var(--type-body)', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-3)' }}>
+                  <option value="">Select a student…</option>
+                  {candidates.map(c => (
+                    <option key={c.id} value={c.id}>{personLabel(c)}{c.email ? ` · ${c.email}` : ''}</option>
+                  ))}
+                </select>
+                <button onClick={addMember} disabled={!pick || busyKey === 'add'}
+                  className="disabled:opacity-60"
+                  style={{ font: 'var(--type-body)', fontWeight: 700, color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                  {busyKey === 'add' ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Access codes ────────────────────────────────────── */}
+          <div style={{ marginTop: 'var(--space-5)' }}>
+            <p style={sectionLabel}>Access codes</p>
+            {codes.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: '0 0 var(--space-3)', padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                {codes.map(c => (
+                  <li key={c.code} style={rowStyle}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <code style={{ fontFamily: 'monospace', font: 'var(--type-body)', color: 'var(--accent-text)' }}>{c.code}</code>
+                      <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>
+                        {c.label ? `${c.label} · ` : ''}{c.uses} use{c.uses === 1 ? '' : 's'}{c.grants_beta_circle ? ' · grants slot' : ' · access only'}
+                      </p>
+                    </div>
+                    <button onClick={() => toggleCode(c.code, !c.active)} disabled={busyKey === `code:${c.code}`}
+                      role="switch" aria-checked={c.active}
+                      aria-label={`${c.active ? 'Deactivate' : 'Activate'} code ${c.code}`}
+                      className="disabled:opacity-60"
+                      style={{ font: 'var(--type-meta)', fontWeight: 700, minHeight: 44, padding: '8px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', flexShrink: 0,
+                        color: c.active ? 'var(--status-success)' : 'var(--text-muted)',
+                        background: c.active ? 'var(--status-success-bg)' : 'var(--surface-muted)',
+                        border: `1px solid ${c.active ? 'var(--status-success)' : 'var(--border-default)'}` }}>
+                      {busyKey === `code:${c.code}` ? '…' : c.active ? 'Active' : 'Inactive'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* Create code row */}
+            <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)' }}>
+              <label htmlFor="bc-new-code" className="sr-only">New code</label>
+              <input id="bc-new-code" value={newCode} onChange={e => setNewCode(e.target.value)} placeholder="new-code"
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                style={{ flex: '1 1 140px', minWidth: 0, minHeight: 44, fontFamily: 'monospace', font: 'var(--type-body)', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-3)' }} />
+              <label htmlFor="bc-new-label" className="sr-only">Label (optional)</label>
+              <input id="bc-new-label" value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (optional)"
+                style={{ flex: '2 1 180px', minWidth: 0, minHeight: 44, font: 'var(--type-body)', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-3)' }} />
+              <button onClick={createCode} disabled={busyKey === 'createcode' || !newCode.trim()}
+                className="disabled:opacity-60"
+                style={{ font: 'var(--type-body)', fontWeight: 700, color: 'var(--text-strong)', background: 'var(--surface-muted)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                {busyKey === 'createcode' ? 'Creating…' : 'Create code'}
+              </button>
+            </div>
+            <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 'var(--space-2) 0 0' }}>
+              New codes grant a Beta Circle slot and go live immediately. Deactivating a code pauses new redemptions.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1238,7 +1453,7 @@ function BetaCircleCard({ count }) {
 function ToolsTab({ demoSeeded, betaCircleCount }) {
   return (
     <div className="space-y-4">
-      <BetaCircleCard count={betaCircleCount} />
+      <BetaCircleManager initialCount={betaCircleCount} />
       <DemoDataControl seeded={demoSeeded} />
       <BackfillWritingProfiles />
       <BackfillGreetings />
