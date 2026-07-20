@@ -533,7 +533,7 @@ function VoiceToggleButton({ readAloud, onToggle, saving = false }) {
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -541,6 +541,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // Briefly true right after Send so a trailing STT final can't repopulate the box
   // we just cleared (dictate-then-Send used to leave the spoken words behind).
   const justSubmittedRef = useRef(false)
+  // Fires onSpeechStart once per mic activation the moment REAL speech is transcribed,
+  // so the coach's read-aloud pauses when the student starts talking (not only on Send).
+  // Reset on each mic (re)start — onInterim('') — so the next utterance can fire again.
+  const spokeRef = useRef(false)
 
   useEffect(() => {
     const el = textareaRef.current
@@ -600,7 +604,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // (re)start fires onInterim('') which re-enables transcription.
   function handleInterim(t) {
     if (justSubmittedRef.current) return   // ignore the tail of the just-sent utterance
-    if (t === '') { editingRef.current = false; setText(''); return }
+    if (t === '') { editingRef.current = false; spokeRef.current = false; setText(''); return }
+    // First real words of this utterance → pause the coach's read-aloud (barge-in on
+    // speech, not just on Send). Once per activation; harmless if nothing is playing.
+    if (!spokeRef.current) { spokeRef.current = true; onSpeechStart?.() }
     if (!editingRef.current) setText(t)
   }
   // Any manual edit (typing or paste) silently stops the mic so it can't keep
@@ -2575,7 +2582,9 @@ export default function TutorSession({
               coach's text is committed, after which a send interrupts the read-aloud.
               Keeping the same instance mounted across phases preserves typed text. */}
           {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
-            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
+            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation}
+              onSpeechStart={() => { tutorRunRef.current++; stopCurrentAudio() }}
+              coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
           )}
 
           {phase === 'dictating' && (
@@ -2690,45 +2699,6 @@ export default function TutorSession({
             </div>
           )}
 
-          {sessionComplete && (
-            <div className="mx-4 mt-4 rounded-2xl px-5 py-4 flex items-start gap-3 shrink-0"
-              style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
-              <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
-              <div className="flex-1 min-w-0">
-                {gym ? (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <a href={gym.portfolioHref ?? '/skill-studio/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                        See your portfolio →
-                      </a>
-                      <a href={gym.backHref ?? '/skill-studio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
-                        Back to Skill Studio
-                      </a>
-                    </div>
-                  </>
-                ) : onboarding ? (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
-                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      See your opening line →
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done. Your full essay is below.</p>
-                    <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      View transcript →
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* ── Scaffold / essay body ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
 
@@ -2755,8 +2725,10 @@ export default function TutorSession({
               const assembledPara = paragraphs.find(p => (p.paragraph_index ?? p.position) === paraIdx)
               const isPending     = isCurrentPara && phase === 'preview' && pendingScribe?.sectionIndex === paraIdx
               const allConfirmed  = (para.items ?? []).length > 0 && (para.items ?? []).every(c => c.status === 'confirmed') && !assembledPara && !isPending
-              // Completed paragraphs collapse by default; toggled via header click
-              const isExpanded    = isComplete ? (expandedParas[paraIdx] === true) : true
+              // Completed sections stay EXPANDED by default — the finished work must
+              // not disappear the moment it locks in (only the green flip should signal
+              // "done"). Still collapsible via the header toggle for a long essay.
+              const isExpanded    = isComplete ? (expandedParas[paraIdx] !== false) : true
               const heading       = sectionHeading(para, paraIdx, scaffold.total_paragraphs)
 
               return (
@@ -2780,37 +2752,31 @@ export default function TutorSession({
                   {/* Paragraph header — clickable to collapse/expand when complete */}
                   <div
                     className={`px-4 pt-3 pb-2 flex items-center justify-between gap-2${isComplete ? ' cursor-pointer select-none' : ''}`}
-                    onClick={isComplete ? () => setExpandedParas(prev => ({ ...prev, [paraIdx]: !prev[paraIdx] })) : undefined}
+                    onClick={isComplete ? () => setExpandedParas(prev => ({ ...prev, [paraIdx]: !isExpanded })) : undefined}
                   >
+                    {/* Section header. No leading dot on the active/locked states — a
+                        bullet made "WRITING NOW" read as a list item, not a title
+                        (Robert). Colour + label carry the state; complete keeps its ✓. */}
                     <div className="flex items-center gap-2">
                       {isComplete ? (
                         <>
                           <span className="text-sm" style={{ color: 'var(--status-success)' }}>✓</span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
+                          <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
                             {heading || 'Done'}
                           </span>
                         </>
                       ) : isPending ? (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {heading ? `${heading} — confirming…` : 'Confirming…'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+                          {heading ? `${heading} — confirming…` : 'Confirming…'}
+                        </span>
                       ) : isCurrentPara ? (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {heading ? `${heading} — writing now` : 'Writing now'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+                          {heading ? `${heading} — writing now` : 'Writing now'}
+                        </span>
                       ) : (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--border-strong)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
-                            {heading || 'Locked'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
+                          {heading || 'Locked'}
+                        </span>
                       )}
                     </div>
                     {/* Collapse chevron for completed paragraphs */}
@@ -2880,7 +2846,7 @@ export default function TutorSession({
 
                       {/* Component items — for both complete (checklist) and current (in-progress) paragraphs */}
                       {!isPending && para.items?.length > 0 && (isComplete || isCurrentPara) && (
-                        <div className={`px-4 pb-3 space-y-1.5${assembledPara ? ' pt-2 border-t border-green-100 mt-0' : ''}`}>
+                        <div className={`px-4 pb-3 space-y-3${assembledPara ? ' pt-2 border-t border-green-100 mt-0' : ''}`}>
                           {para.items.map(item => {
                             const isConfirmed = item.status === 'confirmed'
                             // For completed paragraphs, skip items with no content to show
@@ -2906,17 +2872,19 @@ export default function TutorSession({
                                 )}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
                                       {item.label}
                                       {!isComplete && (item.status === 'confirmed' ? ' ✓' : item.status === 'working' ? ' →' : item.status === 'candidate' ? ' ◆' : '')}
                                     </span>
-                                    {/* Revise sits right after the ✓ on a locked-in part (was far-right, too detached). */}
+                                    {/* Revise = an orange filled button (white text) so it reads
+                                        as a tappable control, not a label (Robert). Orange = action
+                                        per the design system. */}
                                     {isConfirmed && itemText && !isEditingThis && (
                                       <button
                                         onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
                                         title="Revise this"
-                                        className="transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
-                                        style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                        className="transition text-[11px] font-semibold rounded-md px-2 py-0.5 hover:opacity-90"
+                                        style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}
                                       >
                                         Revise
                                       </button>
@@ -2954,7 +2922,7 @@ export default function TutorSession({
                                         </div>
                                       </div>
                                     ) : (
-                                      <p className="text-xs leading-snug mt-0.5" style={{ color: sc.text }}>
+                                      <p className="text-sm leading-relaxed mt-1" style={{ color: sc.text }}>
                                         "{itemText}"
                                       </p>
                                     )
@@ -3140,6 +3108,47 @@ export default function TutorSession({
                 Renders null when there are no sources (WorksCitedCard guards). */}
             {sourcesEnabled && (
               <WorksCitedCard sources={sources} style={citationStyle} onStyleChange={setCitationStyle} />
+            )}
+
+            {/* Completion card — lives at the BOTTOM of the draft, under the finished
+                work: everything above it builds to this. (Was pinned above the draft.) */}
+            {sessionComplete && (
+              <div className="rounded-2xl px-5 py-4 flex items-start gap-3"
+                style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
+                <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
+                <div className="flex-1 min-w-0">
+                  {gym ? (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <a href={gym.portfolioHref ?? '/skill-studio/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                          See your portfolio →
+                        </a>
+                        <a href={gym.backHref ?? '/skill-studio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                          Back to Skill Studio
+                        </a>
+                      </div>
+                    </>
+                  ) : onboarding ? (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
+                      <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                        See your opening line →
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done — your finished piece is right above.</p>
+                      <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                        View transcript →
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
