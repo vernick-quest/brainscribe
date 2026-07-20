@@ -2102,3 +2102,46 @@ leading user turn), so the model never sees the app's deterministic greeting and
 re-introduces every first turn. Fix = a coach-prompt rule "the app has already greeted the
 student by name — never open turn 1 with an introduction; respond directly." (Optionally a
 client `appGreeted` flag, but the prompt rule alone fixes it.)
+
+---
+
+# Testing checklist — 2026-07-19 (focus/coach-ai: fresh-session double-greeting fix)
+
+Change: added structural coaching **Rule 10b (FRESH-SESSION OPENING)** to
+`lib/prompts.js` — a companion to Rule 10 (SESSION RESUME). The app already delivers
+the deterministic by-name greeting (`lib/greeting.js` → `newSessionGreeting`) as the
+leading assistant message, which `/api/tutor` strips before the model call, so the
+coach never saw it and re-introduced on turn 1. Rule 10b tells the coach: on turn 1 do
+NOT open with an introduction / "I'm <name>" / "lovely to meet you"; respond directly
+to what the student said — same one-greeting-only rule as resume (Rule 10) and persona
+switch (Guardrail 8).
+
+Status key: ✅ verified · 🔧 changed today, needs (re)test · ⬜ not yet tested
+
+## Automated gate (this session)
+- [x] ✅ `npm run test:run` — 56/56 pass (greeting resolver + COPPA/OAuth/access invariants)
+- [x] ✅ `npm run build` — compiled successfully, all routes render
+
+## Fresh-session no-double-greeting (manual, per persona) — 🔧 needs live re-test
+For each persona, start a BRAND-NEW session (no prior scaffold), let the app deliver its
+by-name greeting, then send just "hi" as the first student message. The coach's turn-1
+reply must NOT re-introduce itself and must go straight into the first coaching step
+(settle topic → Rule 1 structure), with no second "I'm <name>" / "lovely/nice to meet you":
+- [ ] 🔧 Tilly (Matilda) — worst offender, greeting says "I'm Tilly, lovely to meet you"; turn 1 must not repeat it
+- [ ] 🔧 Owen — greeting says "I'm Owen"; turn 1 must not repeat it
+- [ ] 🔧 Alistair — greeting says "I'm Alistair"; turn 1 must not repeat it
+- [ ] 🔧 Deon — greeting is name-only ("Hey <name>"); turn 1 must not add an intro
+- [ ] 🔧 Zoe — greeting is name-only; turn 1 must not add an intro
+- [ ] 🔧 Jade — greeting is name-only ("hey <name>!"); turn 1 must not add an intro
+- [ ] 🔧 First message with real content (not "hi") → coach responds to the content, still no intro
+
+## Regression — resume still does NOT re-greet (Rule 10 unchanged) — ⬜ re-verify
+- [ ] ⬜ Resume a multi-paragraph essay from an earlier sitting → app delivers "welcome back"
+      line, coach picks up at the "Working on" paragraph, does NOT re-introduce or recap
+- [ ] ⬜ Onboarding warm-up (dynamic-tail rule) still opens without a re-introduction
+
+## Audit judge — no change required
+`lib/auditJudge.js:313` already treats "the coach is CORRECT to let the app deliver the
+welcome-back line rather than re-greeting" as CLEAN (never a breach). Rule 10b is
+consistent with that — it adds no new breach axis and contradicts nothing the judge keys
+on, so no auditJudge edit was made.
