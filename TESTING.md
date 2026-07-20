@@ -2068,3 +2068,37 @@ headlessly — build + code reasoning is the bar here, live click-through owed t
 - [ ] ⬜ Live click-through in `/admin` (Robert): add student → count +1; remove →
       count −1 + slot freed; toggle `unblock` inactive then redeem is rejected; create
       a new code and redeem with it.
+
+## 2026-07-19 — Coaching-session draft-panel polish + barge-in-on-speech (Robert live feedback) — focus/coaching-session
+
+All in components/TutorSession.js (build + test:run green, 56/56):
+- **Completion card moved to the BOTTOM of the draft**, under the finished work (was pinned
+  above it) — "everything above builds to it". Copy: "…your finished piece is right above."
+- **Completed sections stay EXPANDED** on completion (was auto-collapsing → the work
+  "disappeared"). Only the orange→green flip signals done; still collapsible via the header
+  toggle (toggle rewired to flip on `!isExpanded` so one click works with the new default).
+- **Section header de-bulleted**: the active/locked paragraph header no longer shows a
+  status dot (it read as a list bullet, not a title) — colour + label carry the state;
+  complete keeps its ✓. Header + component labels bumped 10px→11px.
+- **Component list spacing** increased (space-y-1.5 → space-y-3) and locked-line text
+  bumped text-xs→text-sm/leading-relaxed for legibility ("small and jammed").
+- **"Revise"** is now an orange filled button with white text (was orange text on a soft
+  chip → read as a label). Orange = action per the design system.
+- **Barge-in on speech**: the coach's read-aloud now pauses the moment the student's mic
+  transcribes REAL words (first non-empty interim), not only on Send — `onSpeechStart`
+  → `stopCurrentAudio()` + supersede the trailing clip (tutorRunRef++). Stop-only, fires
+  once per mic activation (reset on mic restart), never reopens the mic → cannot regress
+  the half-duplex feedback-loop fix. Only wired on the listening composer (no dictation-mode
+  change).
+
+Manual checks owed (live): (1) finish a haiku → the 3 lines STAY visible with a green
+card, and the "Assignment complete" card sits UNDER them; (2) tap the mic while the coach
+is reading aloud and speak → the coach audio stops promptly; (3) "Revise" reads as a button;
+(4) the completed-section header collapses/expands in one click.
+
+RELAYED to coach-ai (NOT fixed here — their lane): the DOUBLE self-introduction. Root cause
+is deterministic — /api/tutor:55-56 strips the leading assistant message (API needs a
+leading user turn), so the model never sees the app's deterministic greeting and
+re-introduces every first turn. Fix = a coach-prompt rule "the app has already greeted the
+student by name — never open turn 1 with an introduction; respond directly." (Optionally a
+client `appGreeted` flag, but the prompt rule alone fixes it.)
