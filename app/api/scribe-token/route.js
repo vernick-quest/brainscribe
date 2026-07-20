@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 export async function POST() {
   // Explicit auth — don't rely solely on the proxy middleware to gate this
@@ -11,12 +11,13 @@ export async function POST() {
 
   if (!await checkRateLimit(`scribe-token:${user.id}`, 30, 60)) return rateLimited()
 
-  // COPPA coach age gate (lib/coppa.js) — this token opens a live microphone
+  // Coach reachability gate (lib/access.js) — this token opens a live microphone
   // stream to ElevenLabs (a child's voice leaving the app), so an unconsented
-  // under-13 must never be issued one.
+  // under-13 OR an authed user with no Beta access must never be issued one.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) {

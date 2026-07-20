@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 import { newSessionGreeting } from '@/lib/greeting'
@@ -124,24 +124,17 @@ export async function POST(request) {
     return rateLimited("You've started a lot of sessions today — please try again tomorrow.")
   }
 
-  // Coach age gate — role-independent (lib/coppa.js). No one creates a coach
-  // session without a 13+ assertion (or completed parental consent). Backs up the
-  // UI entry points; /api/tutor, /api/scribe, and /api/scribe-token re-check the
-  // same predicate, so a sessions row inserted client-side (RLS allows it) still
-  // can't reach a model or the voice pipeline.
+  // Coach reachability gate — COPPA age gate AND the Beta access gate, in one
+  // shared helper (lib/access.js) so every model/voice endpoint enforces the same
+  // thing and it can't drift per-route. Backs up the UI entry points; /api/tutor,
+  // /api/scribe, and /api/scribe-token re-check the same predicate, so a sessions
+  // row inserted client-side (RLS allows it) still can't reach a model or the voice
+  // pipeline. Fails CLOSED on a missing/odd access_granted. Requires migration 045
+  // (access_granted column) — deploy AFTER it is applied or this select throws.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given, access_granted').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
-
-  // Beta-launch access gate (additive + independent of the COPPA gate above). One
-  // shared code grants access; existing users are grandfathered and invited users
-  // inherit it, so a true value is the norm — only a fresh, un-invited, un-redeemed
-  // self-signup is blocked here. Block ONLY on an explicit non-true value so an odd
-  // row never crashes session creation. Requires migration 045 (access_granted
-  // column) — deploy AFTER it is applied or this select throws.
-  if (gate?.access_granted !== true) {
-    return Response.json({ error: 'Enter your Beta Circle code to start writing with a coach.', code: 'access_code_required' }, { status: 403 })
-  }
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
           isOnboarding = false, onboardingPromptKey = null } = await request.json()

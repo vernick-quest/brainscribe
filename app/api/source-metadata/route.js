@@ -12,7 +12,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { isDisallowedUrl, classifyIp, canonicalizeStoredUrl } from '@/lib/ssrf'
 import { extractCitationMeta } from '@/lib/citationMeta'
 import dns from 'node:dns/promises'
@@ -130,9 +130,13 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Coach reachability gate (lib/access.js) — citation lookup is part of the coached
+  // research flow (and a server-side fetch on the student's behalf), so an unconsented
+  // under-13 OR an authed user with no Beta access must not reach it.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   // Tight limit — this reaches out to the public internet on the student's behalf.
   if (!await checkRateLimit(`source-metadata:${user.id}`, 15, 60)) return rateLimited()
