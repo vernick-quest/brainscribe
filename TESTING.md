@@ -2223,3 +2223,45 @@ access true — COPPA first), COPPA-pass+no-access→`access_code_required`.
 **Verify:** `npm run test:run` → 69 passed. `npm run build` → compiled successfully.
 `git diff lib/coppa.js` → empty. No migration (the `access_granted` column is migration 045,
 already required by the pre-existing create-route gate).
+
+---
+
+# Testing checklist — 2026-07-20 (focus/auth-coppa: gate 4 model endpoints the grep missed)
+
+**Follow-up to the same-day access-gate fix.** The first pass enumerated by `grep canUseCoach`,
+which STRUCTURALLY missed four model-invoking endpoints that never called `canUseCoach` (so they
+had no gate at all — grep couldn't surface them). Fable re-probe found them. Re-enumerated by
+MODEL/VOICE INVOCATION (`assembleParagraphText`, `analyzeWriting`, `gradeAgainstRubric`/`reviewRubric`,
+`scorePlacement`/`gymPlacement`, `new Anthropic`, `xi-api-key`/elevenlabs) instead. All four now use
+the same shared `coachGateFailure` / `COACH_GATE_COLUMNS` pattern (lib/access.js):
+
+1. 🔴 HIGH — `POST /api/assemble` — previously the ONLY check was `if (!user)`. It ran
+   `assembleParagraphText` (Haiku) on ARBITRARY body `components`, with `sessionId`/`userId` used
+   only for usage logging (no ownership), and the RLS `paragraphs` upsert happened AFTER the model
+   ran. Added: (a) `coachGateFailure(gate)` early-return BEFORE assembly; (b) a `sessionId` presence
+   check; (c) an OWNERSHIP check — RLS-read the session, and if the caller isn't the owner and
+   isn't an admin → `404 Not found.` BEFORE assembly (mirrors /api/tutor). Closes the
+   ghostwriting-on-arbitrary-text side door.
+2. 🔴 MED — `POST /api/sessions/[id]/analyze-writing` — RLS ownership OK but no gate; ran
+   `analyzeWriting` (Haiku). Added `coachGateFailure(gate)` right after the auth check (the caller's
+   previously-unused `role`-only profile select was widened to `COACH_GATE_COLUMNS`).
+3. 🔴 MED — `PATCH /api/sessions/[id]/complete` — owner-gated (`student_id!==user.id → 404`) but no
+   gate; runs `analyzeWriting` + `assembleParagraphText`. Added `coachGateFailure(gate)` after the
+   ownership check, BEFORE any model call.
+4. 🔴 MED — `PATCH /api/gym/complete/[id]` — owner-gated but no gate; runs `assembleParagraphText` +
+   `scorePlacement`. Added `coachGateFailure(gate)` after the ownership check, BEFORE any award or
+   model call.
+
+**Coverage proof (by model/voice invocation, not by grep canUseCoach).** Every app/api route that
+reaches a model or voice now returns `coachGateFailure` on a failed gate, EXCEPT the two admin
+routes, which are role-gated instead (out of scope): `/api/admin/usage` (`role !== 'admin' → 403`)
+and `/api/admin/backfill-writing-profiles` (`if (!isAdmin && !bearerOk) → 403`; also runnable via
+the CRON_SECRET bearer). Full gated set: speak, assemble, assemble-essay, parse-assignment,
+scribe, scribe-token, summary, review, rubric, analyze-writing, complete, tutor, sessions (create),
+gym/sessions (create), gym/tutor, gym/complete/[id]. No app/api route reaches a model via an
+un-listed lib helper (checked lib modules that call Anthropic/ElevenLabs: analyzeWriting,
+assembleParagraph, gradeAgainstRubric, gymPlacement, auditJudge — auditJudge has no app/api caller).
+
+**Constraints held:** `lib/coppa.js` byte-for-byte unchanged (empty diff); fail CLOSED on
+`access_granted !== true`; admin/impersonation preserved (assemble + tutor allow the admin body
+path); no migration. `npm run test:run` → 69 passed. `npm run build` → compiled successfully.
