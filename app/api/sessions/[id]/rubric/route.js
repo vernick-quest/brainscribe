@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 const anthropic = new Anthropic()
 
@@ -24,7 +24,7 @@ const ALLOWED_TYPES = {
 //   • JSON  { rubricText }  — pasted text (≤ RUBRIC_TEXT_MAX chars)
 //   • multipart form-data   — a photo/PDF, OCR'd with a rubric-specific Haiku
 //     prompt (same vision mechanics as /api/parse-assignment).
-// Owner-only, gated by canUseCoach, 10/day. Attaching clears any stale review
+// Owner-only, gated by the coach reachability gate, 10/day. Attaching clears any stale review
 // (rubrics.feedback_text) so a review always reflects the current rubric.
 export async function POST(request, { params }) {
   const { id } = await params
@@ -43,10 +43,12 @@ export async function POST(request, { params }) {
     return Response.json({ error: 'Only the student who owns this assignment can attach a rubric.' }, { status: 403 })
   }
 
-  // COPPA coach age gate — the rubric flow is part of the coached experience.
+  // Coach reachability gate (lib/access.js) — the rubric flow is part of the coached
+  // experience. Enforces BOTH COPPA and the Beta access gate.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   // Denial-of-wallet backstop (fails open). OCR is the expensive branch; cap
   // both branches under one daily key.
