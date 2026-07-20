@@ -130,8 +130,12 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
   }
   async function handleDelete() {
     close()
-    onDeleted(session.id)
+    onDeleted(session.id)                                        // optimistic local removal
     await fetch(`/api/sessions/${session.id}`, { method: 'DELETE' })
+    // Invalidate the App Router cache so the deletion sticks across navigation.
+    // Without this the folder re-renders from the client cache on back-nav and the
+    // deleted row reappears until a hard refresh (it was already gone server-side).
+    router.refresh()
   }
   async function sendInvite() {
     const email = inviteEmail.trim()
