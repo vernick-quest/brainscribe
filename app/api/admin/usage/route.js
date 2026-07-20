@@ -96,27 +96,39 @@ export async function GET() {
   const sinceIso = new Date(Date.now() - 30 * 86_400_000).toISOString()
   let unattributed = null
   {
-    const { data: orphanRows, error: orphanError } = await svc
-      .from('api_usage')
-      .select('service, cost_usd, characters')
-      .is('user_id', null)
-      .gte('created_at', sinceIso)
-    if (orphanError) {
-      console.error('[usage] unattributed query failed:', orphanError.message)
-    } else if (orphanRows && orphanRows.length) {
-      let anthropicCost = 0, elevenlabsCost = 0, anthropicCalls = 0, elevenlabsChars = 0
-      for (const r of orphanRows) {
+    // Sum ONLY category='user' orphans — real product spend whose user was deleted
+    // (the reconciliation this bucket exists for). Testing/internal/other spend ALSO
+    // has a null user_id (a sim or the audit cron isn't a real user), but it belongs
+    // in the Cost-by-Bucket card, NOT here — WITHOUT this category filter the bucket
+    // double-counts the Testing bucket and mislabels sim spend as "deleted accounts"
+    // (that's how ~$232 of Fable/Sonnet sim spend was landing on this line). Paginate
+    // past the 1000-row PostgREST cap so the sum can never silently truncate.
+    let anthropicCost = 0, elevenlabsCost = 0, anthropicCalls = 0, elevenlabsChars = 0, rowCount = 0, failed = false
+    for (let offset = 0; ; offset += 1000) {
+      const { data: orphanRows, error: orphanError } = await svc
+        .from('api_usage')
+        .select('service, cost_usd, characters')
+        .is('user_id', null)
+        .eq('category', 'user')
+        .gte('created_at', sinceIso)
+        .range(offset, offset + 999)
+      if (orphanError) { console.error('[usage] unattributed query failed:', orphanError.message); failed = true; break }
+      for (const r of orphanRows ?? []) {
         const cost = Number(r.cost_usd) || 0
         if (r.service === 'anthropic') { anthropicCost += cost; anthropicCalls += 1 }
         else if (r.service === 'elevenlabs') { elevenlabsCost += cost; elevenlabsChars += Number(r.characters) || 0 }
       }
+      rowCount += (orphanRows ?? []).length
+      if (!orphanRows || orphanRows.length < 1000) break
+    }
+    if (!failed && rowCount > 0) {
       unattributed = {
         anthropicCost,
         elevenlabsCost,
         totalCost: anthropicCost + elevenlabsCost,
         anthropicCalls,
         elevenlabsChars,
-        rowCount: orphanRows.length,
+        rowCount,
       }
     }
   }

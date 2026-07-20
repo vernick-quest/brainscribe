@@ -1764,6 +1764,15 @@ Manual check (authed admin — can't automate, Google OAuth):
 
 Build green; lint no new errors (pre-existing `no-unused-expressions` warnings unrelated).
 
+## 2026-07-18 — Fix: "Deleted / unattributed" bucket was scooping up testing spend (focus/admin)
+
+**File:** `app/api/admin/usage/route.js` + `components/AdminDashboard.js` (UsageTab label). No migration.
+**Symptom:** the "Deleted / unattributed" row on the Cost-Per-User card showed ~$132 / "1000 orphaned rows" and read as deleted-user spend. **Diagnosis (live DB, read-only):** the orphan query summed ALL `user_id IS NULL` rows regardless of `category`. Of 4,823 such rows (last 30d, $233.33), **4,775 / $232.61 were `category='testing'`** (Fable/Sonnet red-team + essay-funnel/FTUE/esl-drift sim spend, already tagged by `scripts/redteam/lib/logUsage.mjs`) — so testing was **double-counted** (also in the Testing bucket via `usage_by_category`) AND mislabeled as deleted accounts. The "1000 rows / $132" was also **truncated** at the PostgREST 1000-row cap (real orphan total $233).
+**Fix:** scope the orphan sum to `category='user'` (real product spend whose user was deleted — the reconciliation this bucket is for) and paginate past the 1000-cap. Testing/internal/other null-user spend now shows ONLY in the Cost-by-Bucket card, never here.
+**After (verified against live DB):** "Deleted / unattributed" = **48 rows / $0.72** (30d) — $0.43 real deleted-user product spend + $0.30 nightly audit-cron overhead. Testing bucket unchanged at ~$232.61.
+**Manual check (admin):** open /admin → Usage & Cost → the Deleted/unattributed row now shows a small (<$1) figure, not the sim spend; the Testing bucket carries the ~$232.
+**Known residual (follow-up, not in this change):** the nightly transcript-audit cron logs via `recordAnthropicUsage` with `userId=null` and no category → defaults to `category='user'`, so ~$0.30 of automated audit overhead still lands in this bucket. Cleanest fix = thread an optional `category` through `lib/usage.js` (shared) and have `auditTranscript` tag its judge/Haiku calls `category='internal'`. Flagged for Robert/conductor (touches a shared lib).
+
 ### Part 2 — email_hash re-merge — DROPPED (not shipped)
 Per Robert 2026-07-17: unverified/unconsented accounts can't reach the coach so they incur
 no cost; Part 1's reconciliation already makes the cost totals accurate. Attributing orphaned
