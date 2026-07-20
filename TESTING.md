@@ -2102,3 +2102,15 @@ leading user turn), so the model never sees the app's deterministic greeting and
 re-introduces every first turn. Fix = a coach-prompt rule "the app has already greeted the
 student by name — never open turn 1 with an introduction; respond directly." (Optionally a
 client `appGreeted` flag, but the prompt rule alone fixes it.)
+
+**Bug fix (Robert, 2026-07-19): coach kept talking after "back to Folder".** Root cause =
+no audio teardown on unmount. `window.speechSynthesis` (fallback TTS) and the detached
+`new Audio()` (audioRef) are browser globals that keep playing after the component unmounts,
+and an in-flight `/api/speak` could resolve post-navigation and start playing. Fix (mirrors
+lib/useCoachVoice.js's seqRef+stop discipline): a `mountedRef` + unmount-cleanup effect that
+pauses/resets audioRef (currentTime=0, src=''), cancels speechSynthesis, and bumps both
+playSeqRef + tutorRunRef so any resolved-but-unplayed clip and any in-flight coach turn bail.
+All three playback-start points (playClip's el.play(), both speechSynthesis.speak fallbacks)
+now check mountedRef, so a late fetch can't speak on a dead session. StrictMode-safe
+(mountedRef re-set true on mount). Manual check owed (live): start a session, let the coach
+read aloud, tap "← Folder" mid-sentence → audio stops immediately and stays silent.

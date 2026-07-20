@@ -814,6 +814,12 @@ export default function TutorSession({
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
   const tutorRunRef       = useRef(0)       // bumps each coach turn; a superseded turn's leftover audio bails
+  // True while the component is mounted. Both the detached <audio> (audioRef) and
+  // window.speechSynthesis are browser globals that keep playing after unmount, and
+  // an in-flight /api/speak can resolve after the student has navigated back to the
+  // Folder — every playback-start point checks this so nothing speaks off a dead
+  // session. Mirrors lib/useCoachVoice.js's seqRef+stop discipline.
+  const mountedRef        = useRef(true)
   const audioUnlockedRef  = useRef(false)
   const pendingGreetingRef = useRef(null)   // greeting that got autoplay-blocked, to re-speak on first gesture
   const everPlayedRef     = useRef(false)   // has any clip actually started playing yet?
@@ -1055,13 +1061,34 @@ export default function TutorSession({
     window.speechSynthesis?.cancel()
   }
 
+  // Hard stop on unmount (nav back to Folder, route change, etc.). stopCurrentAudio
+  // is never otherwise called on the way out, so without this the coach keeps talking
+  // off a page the student already left. Bump both sequence counters so any resolved-
+  // but-not-yet-played clip and any in-flight coach turn both bail, fully tear down
+  // the detached <audio>, and flush the speechSynthesis queue. Re-set mountedRef on
+  // (re)mount so React StrictMode's dev mount→unmount→remount doesn't leave it false.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      playSeqRef.current++
+      tutorRunRef.current++
+      if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
+      const el = audioRef.current
+      if (el) { try { el.pause(); el.currentTime = 0; el.src = '' } catch {} }
+      window.speechSynthesis?.cancel()
+    }
+  }, [])
+
   // Plays a TTS blob URL on the single unlocked element. Resolves when the clip
   // ends, errors, or is superseded by a newer playback. onMeta(durationMs) fires
   // once metadata loads (used by the word-sync caption).
   function playClip(url, onMeta) {
-    const el = getAudioEl()
     const seq = ++playSeqRef.current
     return new Promise((resolve) => {
+      // Navigated away between fetch and play → don't start audio on a dead session.
+      if (!mountedRef.current) return resolve()
+      const el = getAudioEl()
       const done = () => { if (playSeqRef.current === seq) resolve() }
       el.onended = done
       el.onerror = () => { try { URL.revokeObjectURL(url) } catch {} ; done() }
@@ -1137,6 +1164,7 @@ export default function TutorSession({
       captionRef.current?.set(words.join(' '))
       try { URL.revokeObjectURL(url) } catch {}
     } catch {
+      if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
       const utterance = new SpeechSynthesisUtterance(cleanText)
       utterance.rate = 0.95
       window.speechSynthesis?.speak(utterance)
@@ -1178,6 +1206,7 @@ export default function TutorSession({
       await playClip(url)
       try { URL.revokeObjectURL(url) } catch {}
     } catch {
+      if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
       await new Promise(resolve => {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.rate = 0.95
