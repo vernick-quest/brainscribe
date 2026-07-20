@@ -4,12 +4,13 @@
 -- only (the writers) — parents/teachers get coach access but never a slot, and admin-
 -- seeded demo accounts never count. Clear the flag from everyone who shouldn't hold
 -- it; new grants go through lib/access.js, which is student-only + cap-checked.
--- coalesce(role,'') so a NULL role (mid-onboarding account) is also cleared —
--- `role <> 'student'` would skip NULLs (NULL <> x is NULL, not true).
+-- `role is distinct from 'student'` so a NULL role (mid-onboarding account) is also
+-- cleared — plain `role <> 'student'` skips NULLs, and role is an enum so coalescing
+-- it to '' is invalid.
 update public.profiles set is_beta_circle = false
 where is_beta_circle = true
   and (
-    coalesce(role, '') <> 'student'
+    role is distinct from 'student'
     or email in (
       'demo-student@brainscribe.io',
       'demo-parent@brainscribe.io',
