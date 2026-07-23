@@ -5,6 +5,40 @@ import ParentDashboard from '@/components/ParentDashboard'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import { getImpersonation } from '@/lib/impersonation'
 import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
+import { computeActualFromDraft } from '@/lib/requirements'
+
+// Freshen the per-assignment word/paragraph readout for IN-PROGRESS sessions
+// with a stored target. `sessions.requirements.actual` is only snapshotted when a
+// paragraph is saved/completed, so during early WIP (student has locked scaffold
+// components but assembled no paragraph yet) it reads 0 — the parent sees
+// "0 of 250" while the child is clearly working. Recompute from the live draft
+// (paragraphs → scaffold fallback), the same source the transcript uses. Reads are
+// RLS-gated (scaffold_watcher_read, migration 048) for a real parent; service-role
+// while impersonating. Never lowers a good stored count (draft-aware max-keeps it).
+async function withWipActuals(client, sessions) {
+  const wip = (sessions ?? []).filter(
+    s => s.status !== 'complete' && (s.requirements?.targets?.length ?? 0) > 0
+  )
+  if (wip.length === 0) return sessions
+  const { data: scaffolds } = await client
+    .from('paragraph_scaffolds').select('session_id, components')
+    .in('session_id', wip.map(s => s.id))
+  const bySession = new Map((scaffolds ?? []).map(r => [r.session_id, r.components]))
+  const wipIds = new Set(wip.map(s => s.id))
+  return (sessions ?? []).map(s => {
+    if (!wipIds.has(s.id)) return s
+    // No paragraphs table read here — computeActualFromDraft falls back to the
+    // scaffold; the stored actual already reflects any assembled paragraphs, so
+    // keep whichever count is larger (never regress a good snapshot).
+    const draftActual = computeActualFromDraft([], bySession.get(s.id))
+    const stored = s.requirements.actual ?? { words: 0, paragraphs: 0 }
+    const actual = {
+      words: Math.max(stored.words ?? 0, draftActual.words),
+      paragraphs: Math.max(stored.paragraphs ?? 0, draftActual.paragraphs),
+    }
+    return { ...s, requirements: { ...s.requirements, actual } }
+  })
+}
 
 export default async function ParentDashboardPage() {
   const supabase = await createClient()
@@ -46,7 +80,7 @@ export default async function ParentDashboardPage() {
         .limit(100),
     ])
     children = profileData ?? []
-    sessions = sessionData ?? []
+    sessions = await withWipActuals(service, sessionData ?? [])
   }
 
   // Teachers added to each child's assignments, so the parent can see + manage
@@ -82,7 +116,9 @@ export default async function ParentDashboardPage() {
     .eq('student_id', targetId)
     .order('last_active_at', { ascending: false, nullsFirst: false })
     .limit(20)
-  const ownSessions = (ownSessionData ?? []).filter(s => !s.is_onboarding)
+  const ownSessions = await withWipActuals(
+    service, (ownSessionData ?? []).filter(s => !s.is_onboarding)
+  )
 
   // Pending connection invites (e.g. a student invited this parent, who already
   // had an account). Surfaced as a confirmation banner. Not while impersonating.
