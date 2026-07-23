@@ -13,7 +13,7 @@ import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
-import { computeActual, chipState } from '@/lib/requirements'
+import { computeActualFromDraft, chipState } from '@/lib/requirements'
 
 export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
@@ -99,9 +99,12 @@ export default async function TranscriptPage({ params, searchParams }) {
   const isEmpty = !hasDraft && !messages?.length
 
   // Neutral requirement readout (word/paragraph counts) — recomputed from the
-  // written paragraphs so it's accurate even if requirements.actual is stale.
+  // draft so it's accurate even if requirements.actual is stale. Draft-aware: when
+  // no paragraph is assembled yet (early WIP), counts the scaffold's locked items
+  // so a watcher sees the running WIP count, not 0 — matching the essay above,
+  // which already falls back to scaffoldLines when paragraphs is empty.
   const reqTargets = session.requirements?.targets ?? []
-  const reqActual = reqTargets.length ? computeActual(paragraphs ?? []) : null
+  const reqActual = reqTargets.length ? computeActualFromDraft(paragraphs ?? [], scaffold?.components) : null
   const reqLine = reqTargets.length
     ? reqTargets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')
     : null

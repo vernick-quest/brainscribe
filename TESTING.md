@@ -2265,3 +2265,56 @@ assembleParagraph, gradeAgainstRubric, gymPlacement, auditJudge — auditJudge h
 **Constraints held:** `lib/coppa.js` byte-for-byte unchanged (empty diff); fail CLOSED on
 `access_granted !== true`; admin/impersonation preserved (assemble + tutor allow the admin body
 path); no migration. `npm run test:run` → 69 passed. `npm run build` → compiled successfully.
+
+---
+
+## 2026-07-23 — Parents see the WIP draft + running word count (focus/transcript)
+
+**What changed.** During an IN-PROGRESS session the student's locked content lives in
+`paragraph_scaffolds.components[].items[].text|.nuggetText` until a paragraph is assembled into the
+`paragraphs` table. Before this change a linked parent/teacher (a) could not READ the scaffold (no
+watcher RLS policy on `paragraph_scaffolds`) and (b) saw a word count of 0 (recomputed from the
+empty `paragraphs` table). So the parent saw a blank draft + "0 of 250" while the child was clearly
+working. Fix: migration `048_scaffold_watcher_read.sql` (SELECT-only watcher policy via
+`relationships`, mirrors "paragraphs: watcher reads") + a draft-aware word count
+(`computeActualFromDraft` in `lib/requirements.js`) wired into the transcript and the parent
+dashboard's per-assignment card.
+
+**⚠️ Requires migration 048 to be applied by hand before the parent-side reads work.** Until then a
+real parent's RLS read of `paragraph_scaffolds` returns nothing (draft still blank, count still 0).
+The student's own view and the teacher view do not depend on 048 (they already had read policies).
+
+Manual checks (do after migration 048 is applied):
+
+- [ ] **Parent — WIP draft renders.** As a linked parent, open the transcript of a child's session
+      that is in progress with locked scaffold content but NO assembled paragraph yet. The
+      "Draft (in progress)" card shows the locked lines (not "Nothing written yet.").
+- [ ] **Parent — running word count.** Same session: the requirement readout shows the WIP count
+      (e.g. "118 / 250 words"), not "0 / 250". Paragraph target may still read "0 / N paragraphs"
+      until a paragraph assembles — expected.
+- [ ] **Parent dashboard card.** On `/parent`, the child's in-progress assignment card shows the
+      same live WIP count in its meta line (was "0 of 250"). Complete assignments unchanged.
+- [ ] **Complete unchanged.** A completed session's transcript + card show the assembled-paragraph
+      count exactly as before (draft-aware count prefers `paragraphs` when present).
+- [ ] **Student unaffected.** The student's own writing view (TutorSession) still shows the live
+      count it computes client-side; the transcript for the student owner is unchanged.
+- [ ] **Teacher unaffected.** A per-assignment teacher still sees the scaffold (via the existing
+      `scaffold_teacher_read`) and the same draft-aware count.
+- [ ] **Non-watcher denied.** A signed-in user with NO `relationships` row for the student cannot
+      read the scaffold (RLS returns nothing); the new policy grants only the watcher trust boundary.
+
+**Automated.** `lib/requirements.test.js` added (scaffold-only WIP → correct word count; paragraphs
+win once assembled; nuggetText counted; malformed shapes safe; `computeActual` semantics unchanged).
+`npm run test:run` → 77 passed (5 files). `npm run build` → compiled successfully.
+
+**Files:** `supabase/migrations/048_scaffold_watcher_read.sql` (NOT applied),
+`lib/requirements.js` (+`scaffoldDraftLines`, +`computeActualFromDraft`), `lib/requirements.test.js`,
+`app/transcript/[id]/page.js` (reqActual draft-aware), `app/parent/page.js` (`withWipActuals`
+enriches in-progress children's + own sessions before render).
+
+**Note for conductor:** the handoff named `app/profile/[studentId]/page.js` for the "per-assignment
+word count", but that page renders only AGGREGATE stats (assignments started / completed / by
+subject) — it has no per-assignment word count. The per-assignment "X of 250" a parent actually sees
+is `components/SessionsList.js` (rendered on `/parent` via `ParentDashboard` → `ChildBlock`), fed by
+the stored `session.requirements.actual`. That is the surface fixed here (`app/parent/page.js`). No
+change was made to `app/profile/[studentId]/page.js`.
