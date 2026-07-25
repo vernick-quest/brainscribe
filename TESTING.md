@@ -2499,3 +2499,52 @@ list, which would create OUT-parameter name collisions with the table's own colu
 `grant … to service_role` is load-bearing — without it redemption breaks entirely (same footgun 029
 documented). `app/(auth)/welcome/page.js` needed no change: it already renders the server's `error`
 string, so the new exhausted copy surfaces as-is.
+
+## 2026-07-25 — Skill Studio: parent visibility of a child's progress (gym lane)
+
+Ported `aa14423` onto current `main` (rebase). Two integration seams fixed while porting:
+the portfolio route had been renamed `/gym/portfolio` → **`/skill-studio/portfolio`**
+(`/gym` keeps only a ROOT redirect stub, which does NOT catch `/gym/portfolio`), and
+`app/parent/page.js` had gained `withWipActuals()` (in-progress draft word counts,
+migration 048) — both features now coexist on the parent dashboard.
+
+**No migration** — reuses the parent-filtered gym RLS shipped in 025 (a6db848). Parents
+already had DB read access to `gym_progress` / `gym_skill_state` / `portfolio_entries`
+via the relationships parent-filter (role-filtered to `parent`); this surfaces it.
+
+Automated (green): `npm run build` passes; `npm run test:run` = **112 tests / 7 files**
+(was 106/6 — `lib/gymAwards.test.js` is new: it covers `loadGymSummaries` with a fake
+PostgREST client and synthetic rows, asserting the Practiced/Locked-In split, the display
+level ladder, per-student keying, and that the returned shape carries no gate/percentage
+field).
+
+Manual checklist (parent account, or admin remote-in as a parent):
+- [ ] Parent dashboard shows a **Skill Studio** card per child: level (**Scribe /
+      Wordsmith / Stylist / Virtuoso** — the display ladder, not the stored keys),
+      "N of 24 skills practiced", the honest **"X practiced · Y locked in"** split, and a
+      week-streak when > 1.
+- [ ] **Both features together:** for a child with an in-progress assignment *and* gym
+      progress, the same block shows the Skill Studio card AND the assignment card with a
+      live "N of 250 words" readout (`withWipActuals`, migration 048). Neither replaced
+      the other; the Skill Studio card sits above the assignment list.
+- [ ] A child who hasn't started shows the gentle empty line ("… hasn't started
+      practicing in the Skill Studio yet"), not a broken/zeroed card.
+- [ ] "View portfolio →" opens **`/skill-studio/portfolio?student=<childId>`** (NOT
+      `/gym/portfolio`, which 404s) with the child's typed entries (pairs/blueprints
+      render structurally), child-framed headings, and a back-to-dashboard link.
+- [ ] The card/portfolio show **growth only** — no gate status, percentages, "on track",
+      or any countdown-computable data (design rule).
+- [ ] **RLS boundary:** a parent can only open portfolios for their **own** linked
+      children; an unlinked `?student=<id>` redirects to /parent (and RLS returns no
+      rows regardless). A **teacher** gets no automatic gym visibility — the server-side
+      authorize is role-filtered to `parent`/`admin`, mirroring 025's RLS, so a bare
+      `relationships` link does not open the portfolio (teacher = grant-only).
+- [ ] Impersonation: admin remoting into a parent sees the impersonated parent's
+      children's Skill Studio cards (service-client path), not the admin's — **and
+      "View portfolio →" from there opens the child's real entries** with the
+      impersonation banner still showing (the portfolio route now honours the remote-in
+      cookie the same way /parent does). An admin who is NOT remoting in sees an empty
+      portfolio (there is no admin arm in 025's RLS) — expected; remote in instead.
+- [ ] A student's own **`/skill-studio/portfolio`** (no `?student=`) is unchanged:
+      "Your portfolio", "Everything you've made in Skill Studio…", "In your words:",
+      "← Back to Skill Studio".

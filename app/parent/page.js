@@ -5,6 +5,7 @@ import ParentDashboard from '@/components/ParentDashboard'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import { getImpersonation } from '@/lib/impersonation'
 import { getPendingInvitesForEmail } from '@/lib/pendingInvites'
+import { loadGymSummaries } from '@/lib/gymAwards'
 import { computeActualFromDraft } from '@/lib/requirements'
 
 // Freshen the per-assignment word/paragraph readout for IN-PROGRESS sessions
@@ -83,6 +84,15 @@ export default async function ParentDashboardPage() {
     sessions = await withWipActuals(service, sessionData ?? [])
   }
 
+  // Skill Studio (Writing Gym) progress per child. A real parent's own client reads
+  // via the parent-filtered gym RLS; impersonation uses the service client. Guarded so
+  // a pre-migration environment can't break the dashboard.
+  let gymByChild = {}
+  if (studentIds.length > 0) {
+    try { gymByChild = await loadGymSummaries(service, studentIds) }
+    catch (e) { console.error('[parent] gym summaries:', e); gymByChild = {} }
+  }
+
   // Teachers added to each child's assignments, so the parent can see + manage
   // them. Two queries (not an embed) to avoid the dual-FK ambiguity on
   // assignment_teachers (teacher_id + added_by both reference profiles). The
@@ -135,6 +145,7 @@ export default async function ParentDashboardPage() {
         children={children}
         sessions={sessions}
         teachersBySession={teachersBySession}
+        gymByChild={gymByChild}
         ownSessions={ownSessions}
         pendingInvites={pendingInvites}
         impersonating={!!imp}
