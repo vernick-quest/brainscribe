@@ -50,7 +50,10 @@ export default function SiteHeader({ active, sticky = false }) {
         <a href="/login" style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none' }}>
           Sign in
         </a>
-        <a href="/login" style={{
+        {/* Invite-only early access: the primary CTA goes to the landing-page
+            waitlist, NOT /login. The "Sign in" link above stays put so existing
+            families always have a way back in. */}
+        <a href="/#waitlist" style={{
           backgroundColor: 'var(--accent)',
           color: 'var(--text-on-accent)',
           padding: '9px 18px',
@@ -60,7 +63,7 @@ export default function SiteHeader({ active, sticky = false }) {
           textDecoration: 'none',
           whiteSpace: 'nowrap',
         }}>
-          Try it free
+          Request an invite
         </a>
       </nav>
     </header>

@@ -35,4 +35,4 @@ Notice the through-line: none of these is a lack of ideas. They're all about get
 
 That's the whole reason BrainScribe works the way it does. Instead of a blank page, your kid gets a coach asking one question at a time. They answer out loud — talking is far easier than transcribing — and what they say gets tidied into a paragraph they approve. The ideas were always theirs. The coach just holds the door open so they can get them out.
 
-If that sounds like your kid, [give it a try](/login) — it's free to start.
+If that sounds like your kid, [request an invite](/#waitlist) — BrainScribe is invite-only while we're in early access.

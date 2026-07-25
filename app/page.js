@@ -17,7 +17,7 @@ const serif = lora.style.fontFamily
 export const metadata = {
   title: 'BrainScribe — voice-first writing coach for kids with ADHD',
   description:
-    'Your kid talks; their own words become the writing — tidied up, never made up, on a transcript you can read. A voice-first writing coach for students with ADHD, grades 6–12 (ages 11–17). Free to try.',
+    'Your kid talks; their own words become the writing — tidied up, never made up, on a transcript you can read. A voice-first writing coach for students with ADHD, grades 6–12 (ages 11–17). Invite-only early access.',
 }
 
 // The marketing landing page. `/` is public (see lib/supabase/middleware.js) so
@@ -92,10 +92,15 @@ function Landing() {
             helps them get their own words onto the page &mdash; tidied up, never made up &mdash; on a transcript
             you can read start to finish.
           </p>
+          {/* Invite-only: primary CTA scrolls to the waitlist capture below.
+              Sign-in stays a quiet secondary so existing families aren't stranded. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-            <a href="/login" style={ctaPrimary}>Try it free</a>
+            <a href="#waitlist" style={ctaPrimary}>Request an invite</a>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-subtle)' }}>
-              Free to start &middot; just sign in with Google
+              Invite-only while we&rsquo;re in early access &middot;{' '}
+              <a href="/login" style={{ color: 'var(--text-muted)', fontWeight: 600, textDecoration: 'underline' }}>
+                already have an account? Sign in
+              </a>
             </span>
           </div>
         </div>
@@ -215,7 +220,7 @@ function Landing() {
         </h2>
         <p style={{ fontSize: '1.02rem', lineHeight: 1.7, color: 'var(--text-muted)', margin: '0 auto', maxWidth: 520 }}>
           A one-on-one executive-function or writing coach often runs well over $100 a session. BrainScribe gives
-          your kid an ADHD-aware coach on demand &mdash; for a fraction of that. Free to start.
+          your kid an ADHD-aware coach on demand &mdash; for a fraction of that.
         </p>
       </section>
 
@@ -257,8 +262,10 @@ function Landing() {
         </div>
       </section>
 
-      {/* ── Newsletter ── */}
-      <section style={{ ...sectionWrap, paddingTop: 8, paddingBottom: 8 }}>
+      {/* ── Waitlist / email capture ── every "Request an invite" CTA on the site
+          (header, hero, final CTA, and the other marketing pages via /#waitlist)
+          lands here, so there is exactly ONE way in while access is invite-only. */}
+      <section id="waitlist" style={{ ...sectionWrap, paddingTop: 8, paddingBottom: 8, scrollMarginTop: 24 }}>
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <NewsletterSignup
             source="waitlist"
@@ -290,11 +297,11 @@ function Landing() {
           }}>
             Your kid has more to say than they think.
           </h2>
-          <p style={{ fontSize: '1rem', opacity: 0.92, lineHeight: 1.65, margin: '0 auto 32px', maxWidth: 420 }}>
-            Try a session before the next assignment lands &mdash; so when it does, they already
+          <p style={{ fontSize: '1rem', opacity: 0.92, lineHeight: 1.65, margin: '0 auto 32px', maxWidth: 440 }}>
+            Get on the list now &mdash; so when the next assignment lands, they already
             know how it works.
           </p>
-          <a href="/login" style={{
+          <a href="#waitlist" style={{
             display: 'inline-block',
             backgroundColor: 'var(--surface-card)',
             color: 'var(--accent-text)',
@@ -304,8 +311,14 @@ function Landing() {
             fontSize: '1rem',
             textDecoration: 'none',
           }}>
-            Try BrainScribe free
+            Request an invite
           </a>
+          <p style={{ fontSize: '0.85rem', opacity: 0.9, margin: '18px 0 0' }}>
+            Already have an account?{' '}
+            <a href="/login" style={{ color: 'var(--text-on-accent)', fontWeight: 700, textDecoration: 'underline' }}>
+              Sign in
+            </a>
+          </p>
         </div>
       </section>
     </div>
