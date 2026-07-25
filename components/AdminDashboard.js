@@ -1215,6 +1215,21 @@ function personLabel(p) {
   return p.full_name || p.email || 'Unnamed student'
 }
 
+// Access-code redemption ceiling (migration 049). max_uses NULL = unlimited, which
+// is every pre-049 code — so "∞" is the normal, expected reading here, and a number
+// means someone deliberately capped it. `exhausted` is what actually stops new
+// redemptions (the server enforces it atomically; this is only the readout).
+function codeUsage(c) {
+  const uses = c.uses ?? 0
+  const max = typeof c.max_uses === 'number' ? c.max_uses : null
+  return {
+    uses,
+    max,
+    label: max === null ? `${uses} / ∞` : `${uses} / ${max}`,
+    exhausted: max !== null && uses >= max,
+  }
+}
+
 function BetaCircleManager({ initialCount = 0 }) {
   const [state, setState] = useState({ count: initialCount, cap: BETA_CIRCLE_CAP, members: [], candidates: [], codes: [] })
   const [loading, setLoading] = useState(true)
@@ -1225,6 +1240,8 @@ function BetaCircleManager({ initialCount = 0 }) {
   const [pick, setPick] = useState('')           // selected candidate id in the Add picker
   const [newCode, setNewCode] = useState('')
   const [newLabel, setNewLabel] = useState('')
+  const [newMaxUses, setNewMaxUses] = useState('')   // blank = unlimited
+  const [limitDrafts, setLimitDrafts] = useState({}) // per-code in-progress limit edits
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -1289,8 +1306,23 @@ function BetaCircleManager({ initialCount = 0 }) {
   async function createCode() {
     const code = newCode.trim().toLowerCase()
     if (!code) { setError('Enter a code.'); return }
-    const json = await mutate('createcode', { action: 'create_code', code, label: newLabel.trim(), grantsBetaCircle: true })
-    if (json.ok) { setNotice(`Code “${code}” created.`); setNewCode(''); setNewLabel('') }
+    const json = await mutate('createcode', {
+      action: 'create_code', code, label: newLabel.trim(), grantsBetaCircle: true,
+      maxUses: newMaxUses,  // blank string = unlimited; the server validates
+    })
+    if (json.ok) { setNotice(`Code “${code}” created.`); setNewCode(''); setNewLabel(''); setNewMaxUses('') }
+  }
+
+  // Set or clear a code's redemption ceiling. Blank = unlimited. A limit at or below
+  // the current uses instantly exhausts the code — that's a legitimate way to stop a
+  // leaked code without deactivating it, so we just say so plainly.
+  async function setCodeLimit(code, raw) {
+    const json = await mutate(`limit:${code}`, { action: 'set_code_limit', code, maxUses: raw })
+    if (json.ok) {
+      setLimitDrafts(d => { const next = { ...d }; delete next[code]; return next })
+      const n = String(raw ?? '').trim()
+      setNotice(n === '' ? `“${code}” is now unlimited.` : `“${code}” is capped at ${n} redemption${n === '1' ? '' : 's'}.`)
+    }
   }
 
   const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
@@ -1400,26 +1432,73 @@ function BetaCircleManager({ initialCount = 0 }) {
             <p style={sectionLabel}>Access codes</p>
             {codes.length > 0 && (
               <ul style={{ listStyle: 'none', margin: '0 0 var(--space-3)', padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                {codes.map(c => (
-                  <li key={c.code} style={rowStyle}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <code style={{ fontFamily: 'monospace', font: 'var(--type-body)', color: 'var(--accent-text)' }}>{c.code}</code>
-                      <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>
-                        {c.label ? `${c.label} · ` : ''}{c.uses} use{c.uses === 1 ? '' : 's'}{c.grants_beta_circle ? ' · grants slot' : ' · access only'}
-                      </p>
+                {codes.map(c => {
+                  const u = codeUsage(c)
+                  const draft = limitDrafts[c.code] ?? (u.max === null ? '' : String(u.max))
+                  const dirty = draft !== (u.max === null ? '' : String(u.max))
+                  const busy = busyKey === `limit:${c.code}`
+                  return (
+                  <li key={c.code} style={{ ...rowStyle, flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-2)' }}>
+                    <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)' }}>
+                          <code style={{ fontFamily: 'monospace', font: 'var(--type-body)', color: 'var(--accent-text)' }}>{c.code}</code>
+                          {u.exhausted && (
+                            <span style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--status-thin)', background: 'var(--status-thin-bg)', border: '1px solid var(--status-thin)', borderRadius: 'var(--radius-pill)', padding: '1px 8px' }}>
+                              Exhausted
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>
+                          {c.label ? `${c.label} · ` : ''}
+                          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: u.max === null ? 400 : 700, color: u.exhausted ? 'var(--status-thin)' : 'inherit' }}>{u.label}</span>
+                          {' used'}{c.grants_beta_circle ? ' · grants slot' : ' · access only'}
+                        </p>
+                      </div>
+                      <button onClick={() => toggleCode(c.code, !c.active)} disabled={busyKey === `code:${c.code}`}
+                        role="switch" aria-checked={c.active}
+                        aria-label={`${c.active ? 'Deactivate' : 'Activate'} code ${c.code}`}
+                        className="disabled:opacity-60"
+                        style={{ font: 'var(--type-meta)', fontWeight: 700, minHeight: 44, padding: '8px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', flexShrink: 0,
+                          color: c.active ? 'var(--status-success)' : 'var(--text-muted)',
+                          background: c.active ? 'var(--status-success-bg)' : 'var(--surface-muted)',
+                          border: `1px solid ${c.active ? 'var(--status-success)' : 'var(--border-default)'}` }}>
+                        {busyKey === `code:${c.code}` ? '…' : c.active ? 'Active' : 'Inactive'}
+                      </button>
                     </div>
-                    <button onClick={() => toggleCode(c.code, !c.active)} disabled={busyKey === `code:${c.code}`}
-                      role="switch" aria-checked={c.active}
-                      aria-label={`${c.active ? 'Deactivate' : 'Activate'} code ${c.code}`}
-                      className="disabled:opacity-60"
-                      style={{ font: 'var(--type-meta)', fontWeight: 700, minHeight: 44, padding: '8px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', flexShrink: 0,
-                        color: c.active ? 'var(--status-success)' : 'var(--text-muted)',
-                        background: c.active ? 'var(--status-success-bg)' : 'var(--surface-muted)',
-                        border: `1px solid ${c.active ? 'var(--status-success)' : 'var(--border-default)'}` }}>
-                      {busyKey === `code:${c.code}` ? '…' : c.active ? 'Active' : 'Inactive'}
-                    </button>
+
+                    {/* Redemption ceiling — blank = unlimited. This is how a leaked
+                        code gets capped without rotating it. */}
+                    <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)' }}>
+                      <label htmlFor={`bc-limit-${c.code}`} style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', flexShrink: 0 }}>Limit</label>
+                      <input id={`bc-limit-${c.code}`} value={draft} disabled={busy}
+                        onChange={e => setLimitDrafts(d => ({ ...d, [c.code]: e.target.value }))}
+                        inputMode="numeric" placeholder="unlimited"
+                        aria-describedby={`bc-limit-help-${c.code}`}
+                        style={{ width: 110, minHeight: 44, font: 'var(--type-meta)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-2)' }} />
+                      <button onClick={() => setCodeLimit(c.code, draft)} disabled={busy || !dirty}
+                        className="disabled:opacity-60"
+                        style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-strong)', background: 'var(--surface-muted)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-pill)', minHeight: 44, padding: '0 var(--space-3)', cursor: dirty && !busy ? 'pointer' : 'default', flexShrink: 0 }}>
+                        {busy ? '…' : 'Save limit'}
+                      </button>
+                      {u.max !== null && (
+                        <button onClick={() => setCodeLimit(c.code, '')} disabled={busy}
+                          className="disabled:opacity-60"
+                          style={{ font: 'var(--type-meta)', fontWeight: 600, color: 'var(--text-muted)', background: 'transparent', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-pill)', minHeight: 44, padding: '0 var(--space-3)', cursor: 'pointer', flexShrink: 0 }}>
+                          Clear
+                        </button>
+                      )}
+                      <span id={`bc-limit-help-${c.code}`} style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)' }}>
+                        {u.exhausted
+                          ? 'Fully claimed — no new redemptions.'
+                          : u.max === null
+                            ? 'Blank = unlimited redemptions.'
+                            : `${u.max - u.uses} redemption${u.max - u.uses === 1 ? '' : 's'} left.`}
+                      </span>
+                    </div>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
             {/* Create code row */}
@@ -1431,6 +1510,10 @@ function BetaCircleManager({ initialCount = 0 }) {
               <label htmlFor="bc-new-label" className="sr-only">Label (optional)</label>
               <input id="bc-new-label" value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (optional)"
                 style={{ flex: '2 1 180px', minWidth: 0, minHeight: 44, font: 'var(--type-body)', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-3)' }} />
+              <label htmlFor="bc-new-max" className="sr-only">Redemption limit (optional)</label>
+              <input id="bc-new-max" value={newMaxUses} onChange={e => setNewMaxUses(e.target.value)} placeholder="Limit"
+                inputMode="numeric"
+                style={{ flex: '0 0 100px', minWidth: 0, minHeight: 44, font: 'var(--type-body)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-strong)', background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0 var(--space-3)' }} />
               <button onClick={createCode} disabled={busyKey === 'createcode' || !newCode.trim()}
                 className="disabled:opacity-60"
                 style={{ font: 'var(--type-body)', fontWeight: 700, color: 'var(--text-strong)', background: 'var(--surface-muted)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
@@ -1438,7 +1521,9 @@ function BetaCircleManager({ initialCount = 0 }) {
               </button>
             </div>
             <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 'var(--space-2) 0 0' }}>
-              New codes grant a Beta Circle slot and go live immediately. Deactivating a code pauses new redemptions.
+              New codes grant a Beta Circle slot and go live immediately. Leave <em>Limit</em> blank for unlimited
+              redemptions, or set a number to cap how many people a code can let in. Deactivating a code pauses new
+              redemptions; an exhausted code stops granting access but stays valid-looking.
             </p>
           </div>
         </>

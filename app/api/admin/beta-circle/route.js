@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { BETA_CIRCLE_CAP, maybeGrantBetaCircle } from '@/lib/access'
+import { BETA_CIRCLE_CAP, maybeGrantBetaCircle, parseMaxUses } from '@/lib/access'
 import { NextResponse } from 'next/server'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,9 +51,10 @@ async function loadState(service) {
       .eq('role', 'student').eq('is_beta_circle', false)
       .order('created_at', { ascending: false })
       .limit(CANDIDATE_LIMIT),
-    // All access codes.
+    // All access codes. max_uses (migration 049) is the per-code redemption
+    // ceiling — NULL = unlimited.
     service.from('access_codes')
-      .select('code, label, active, uses, grants_beta_circle')
+      .select('code, label, active, uses, max_uses, grants_beta_circle')
       .order('created_at', { ascending: true }),
   ])
 
@@ -135,8 +136,38 @@ export async function POST(request) {
         return NextResponse.json({ ok: true, ...(await loadState(service)) })
       }
 
+      // ── set_code_limit ────────────────────────────────────────────────────
+      // Set (or clear) a code's redemption ceiling — migration 049. This is how a
+      // leaked/over-shared LIVE code gets capped without rotating it.
+      //
+      // Blank/null maxUses = unlimited; otherwise a positive integer (parseMaxUses
+      // fails CLOSED — a typo is a 400, never an accidental "unlimited"). A limit
+      // BELOW the current uses is allowed on purpose: that instantly exhausts the
+      // code, which is a legitimate "shut it off but keep it valid-looking" move.
+      case 'set_code_limit': {
+        const code = typeof body?.code === 'string' ? body.code.trim().toLowerCase() : ''
+        if (!code) return NextResponse.json({ error: 'Missing code' }, { status: 400 })
+
+        const parsed = parseMaxUses(body?.maxUses)
+        if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
+
+        // Confirm the code exists first so a typo'd code reports as such instead of
+        // silently updating zero rows and looking like a success.
+        const { data: existingCode } = await service
+          .from('access_codes').select('code').eq('code', code).maybeSingle()
+        if (!existingCode) {
+          return NextResponse.json({ error: `No such code “${code}”.` }, { status: 404 })
+        }
+
+        const { error } = await service
+          .from('access_codes').update({ max_uses: parsed.value }).eq('code', code)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ ok: true, ...(await loadState(service)) })
+      }
+
       // ── create_code ───────────────────────────────────────────────────────
       // Normalize to lowercase; insert active + zero uses; duplicate-safe.
+      // Optional maxUses (049) — blank = unlimited, matching every pre-049 code.
       case 'create_code': {
         const code = typeof body?.code === 'string' ? body.code.trim().toLowerCase() : ''
         const label = typeof body?.label === 'string' ? body.label.trim() : ''
@@ -148,6 +179,9 @@ export async function POST(request) {
             { status: 400 }
           )
         }
+
+        const parsedMax = parseMaxUses(body?.maxUses)
+        if (!parsedMax.ok) return NextResponse.json({ error: parsedMax.error }, { status: 400 })
 
         // Duplicate-safe: bail if the code already exists rather than clobbering it.
         const { data: existing } = await service
@@ -162,6 +196,7 @@ export async function POST(request) {
           grants_beta_circle: grantsBetaCircle,
           active: true,
           uses: 0,
+          max_uses: parsedMax.value,
         })
         if (error) {
           // Unique-violation race → treat as a friendly duplicate.
