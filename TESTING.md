@@ -2318,3 +2318,86 @@ subject) — it has no per-assignment word count. The per-assignment "X of 250" 
 is `components/SessionsList.js` (rendered on `/parent` via `ParentDashboard` → `ChildBlock`), fed by
 the stored `session.requirements.actual`. That is the surface fixed here (`app/parent/page.js`). No
 change was made to `app/profile/[studentId]/page.js`.
+
+---
+
+## 2026-07-25 — Positioning sweep ("Try it free" → invite-only) + JSON-LD accuracy (focus/marketing)
+
+BrainScribe is invite-only behind a Beta Circle access code, but the public site still sold a free
+trial in BOTH the visible copy and the structured data (`SoftwareApplication.offers` claimed
+`price: '0'` / "Free to start"). Structured data is what Google and AI assistants quote back, so the
+stale offer was the more damaging half. Chosen CTA everywhere: **"Request an invite"**, pointing at
+the existing landing-page email capture (`NewsletterSignup`, `source="waitlist"`), now anchored as
+`#waitlist`. Sign-in stays reachable on every page (header "Sign in" link, plus an explicit
+"Already have an account? Sign in" under the hero and final CTA). No price is stated anywhere —
+paid tiers are not launched and there is no live `/pricing` route.
+
+**Manual checklist**
+
+- [ ] **Landing hero.** `/` shows "Request an invite" (orange pill) + the sub-line "Invite-only while
+      we're in early access · already have an account? Sign in". Clicking the CTA scrolls to the
+      "Get early access" email box; clicking the sub-link goes to `/login`.
+- [ ] **Landing final CTA.** The orange band reads "Get on the list now…", button "Request an
+      invite" (scrolls to the same box), with "Already have an account? Sign in" beneath it.
+- [ ] **Value anchor.** The $500/mo human-coach comparison still reads true and no longer ends with
+      "Free to start."
+- [ ] **Header, every public page.** `/`, `/about`, `/blog`, `/blog/[slug]`, `/faq`, `/compare`,
+      `/writing-help/*`, `/privacy`, `/terms` — nav CTA reads "Request an invite" and goes to
+      `/#waitlist`; the quiet "Sign in" link is still present next to it.
+- [ ] **Page CTAs.** The "About BrainScribe" card on `/faq`, `/compare`, `/writing-help/[topic]` and
+      the closing CTA on `/about` all read "Request an invite" → `/#waitlist`.
+- [ ] **FAQ answer.** "Is BrainScribe free?" now answers invite-only early access / no open sign-up /
+      no announced pricing — and the FAQPage schema string is byte-identical to the visible answer.
+- [ ] **Blog CTAs.** All 7 posts end with a "Request an invite" link to `/#waitlist`; none claims
+      "free to start".
+- [ ] **Waitlist still works.** Submitting an email in the "Get early access" box POSTs `/api/subscribe`
+      and shows "You're on the list!" (unchanged component, unchanged endpoint).
+- [ ] **Access code never printed.** No page, schema, or `/llms.txt` contains the actual Beta code.
+
+**Schema emitted per page (verified against the real build output, all `JSON.parse`-clean)**
+
+| Surface | JSON-LD types |
+| --- | --- |
+| Every page (root layout) | `Organization`, `SoftwareApplication` |
+| `/faq`, `/compare`, `/writing-help/[topic]` | + `FAQPage` |
+| `/blog/[slug]` | + `BlogPosting` |
+
+23 prerendered pages carry JSON-LD; every block parses, and a recursive scan found **zero**
+`offers` / `price` / `priceCurrency` keys and zero "Free to start" strings anywhere in the output.
+All 8 FAQ answers on `/faq` were confirmed present verbatim in the visible HTML (Google's
+mirror-visible-content requirement).
+
+**What changed in the schema layer**
+- `softwareApplicationSchema()` — `offers` block **deleted outright** (not replaced). Invite-only
+  with no live pricing page means any offer we emit is a claim we can't back; absent is neutral.
+- `blogPostingSchema(post, url)` **added to `lib/schema.js`**; `app/blog/[slug]/page.js` no longer
+  hand-rolls its own `jsonLd` object + raw `<script>` — it renders `<JsonLd>` like every other page.
+  That second, unreviewed emitter is how the stale offer survived, so the consolidation is the
+  actual fix, not housekeeping.
+- `dateModified` now falls back `post.updated → post.date`; `lib/blog.js` parses an optional
+  `updated: YYYY-MM-DD` frontmatter key (purely additive — existing posts behave identically).
+- `organizationSchema()` reads `SAME_AS` from `lib/site.js` and **omits `sameAs` while it's empty**.
+
+**🔵 Pending Robert — `sameAs` URLs.** `lib/site.js`'s `SAME_AS` ships EMPTY on purpose: there are no
+external BrainScribe profile URLs anywhere in the repo, and a guessed URL resolves the entity to the
+wrong thing. `sameAs` is the strongest entity signal available; adding real URLs to that array is the
+only step needed. Prime candidate: the ISTE listing, plus any official LinkedIn / X / YouTube.
+
+**Automated.** `lib/schema.test.js` added — well-formedness + `@id` wiring for every builder, the
+`sameAs` omit-when-empty rule (and that the plumbing emits verbatim once populated), `dateModified`
+fallback/preference, undefined-drops-on-serialize, FAQ verbatim mirroring, and a recursive
+**"no price claim of any kind"** regression guard on `SoftwareApplication` (the test that would have
+caught this bug). `npm run test:run` → **89 passed (6 files)**. `npm run build` → compiled
+successfully; rendered-HTML spot check on `/`, `/faq`, `/compare`, `/about`, `/writing-help/adhd`,
+`/blog/its-not-cheating` found "Request an invite" on each and zero stale free-trial strings.
+
+**Flagged, NOT changed (out of scope):**
+- `app/api/coppa/initiate/route.js:126` — the parent consent EMAIL still says "This is completely
+  free — no credit card required." Same staleness class as the landing page, but it's an API route
+  (explicitly out of this lane) and it's transactional copy to an already-invited family. Needs an
+  owner.
+- `components/SessionsList.js:275` — "Free sessions" usage meter. Already behind `SHOW_USAGE_METER`
+  (off for Beta), so nothing renders. No action needed unless the meter is re-enabled.
+- Backlog, deliberately not built: `Course`/`LearningResource` for Skill Studio, `AggregateRating`/
+  `Review` (no real testimonials exist — never fabricate), `WebSite`/`BreadcrumbList`, and named-
+  `Person` blog authorship (author stays `Organization`; that's Robert's call).

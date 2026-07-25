@@ -49,4 +49,4 @@ Jade body-doubles. She treats false starts and "I don't even know what I'm tryin
 
 There's no wrong choice here — and the right coach for an essay on Tuesday might not be the right one for a lab report on Friday. The point is the same across all six: the questions are theirs, the answers are theirs, and the words on the page are always theirs.
 
-[Try a session](/login) and let your student pick the one that sounds like them.
+[Request an invite](/#waitlist) — once you're in, your student picks the coach that sounds like them.

@@ -134,7 +134,7 @@ export default function ComparePage() {
           <p style={{ fontSize: '1rem', lineHeight: 1.65, color: 'var(--brand-navy)', margin: '0 0 18px' }}>
             {CANONICAL_DESCRIPTION}
           </p>
-          <a href="/login" style={ctaPrimary}>Try it free</a>
+          <a href="/#waitlist" style={ctaPrimary}>Request an invite</a>
         </section>
       </main>
     </div>
