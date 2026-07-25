@@ -2401,3 +2401,101 @@ successfully; rendered-HTML spot check on `/`, `/faq`, `/compare`, `/about`, `/w
 - Backlog, deliberately not built: `Course`/`LearningResource` for Skill Studio, `AggregateRating`/
   `Review` (no real testimonials exist — never fabricate), `WebSite`/`BreadcrumbList`, and named-
   `Person` blog authorship (author stays `Organization`; that's Robert's call).
+## 2026-07-25 — Access-code redemption cap `max_uses` (focus/auth-coppa)
+
+**The gap.** `access_codes` has counted `uses` since migration 045 but nothing enforced a ceiling:
+`POST /api/access/redeem` set `access_granted = true` for anyone holding a valid ACTIVE code,
+unconditionally. The cap of 100 governs only `is_beta_circle` (the locked *rate*), never *access*.
+So a leaked or over-shared code = unbounded free coach + TTS + mic (denial-of-wallet). Migration 047
+already had to burn one leaked code (`unblock`) for exactly this reason. And the `uses` bump itself
+was a read-then-write — racy, fine as telemetry, useless as a cap.
+
+**The fix.** An OPTIONAL per-code ceiling (`access_codes.max_uses`; NULL = unlimited, so every
+existing code behaves exactly as before), claimed **atomically** in one SQL statement by a new
+`claim_access_code()` function, plus admin UI to set/clear a limit on a code that is already live.
+
+**⚠️ Requires migration `049_access_code_max_uses.sql` — APPLY BEFORE DEPLOY.** This one is NOT
+deploy-safe in either order: the redeem route calls `claim_access_code()` and the admin panel selects
+`max_uses`, so shipping the code first makes EVERY redemption 500 until the migration runs. Applying
+the migration first is harmless (the old code ignores both the column and the function). The
+migration's footer carries paste-back verification queries, including a throwaway-code smoke test of
+the claim — do not run that smoke test against the live code.
+
+Manual checks (do after migration 049 is applied AND the code is deployed):
+
+- [ ] **Unlimited code unchanged.** With every code still at `max_uses = NULL`, a fresh account
+      redeems the live code and gets coach access + (under the cap) a Beta Circle slot, exactly as
+      before 049. The admin panel shows that code as `N / ∞`.
+- [ ] **Admin can cap a LIVE code without rotating it.** `/admin` → Tools → Beta Circle → Access
+      codes → type a number in **Limit** next to the live code → **Save limit**. The row repaints as
+      `uses / limit` and the helper line reads "N redemptions left". No code value changed.
+- [ ] **Capped code stops at the cap.** Set the limit to `current uses + 1`. One more fresh account
+      redeems successfully (row now reads `limit / limit` with an amber **Exhausted** badge). The
+      NEXT fresh account is refused.
+- [ ] **The N+1 redeemer gets the RIGHT message.** That refused account sees "That code has been
+      fully claimed. Ask whoever invited you for a new one." — NOT "That code isn't valid."
+      (`/welcome` renders the server's `error` string verbatim, so no client change was needed.)
+- [ ] **A genuinely bad code still says invalid.** Same screen, type a code that does not exist →
+      "That code isn't valid. Check with whoever invited you."
+- [ ] **A DEACTIVATED code still says invalid, not exhausted.** Toggle a code to Inactive, redeem →
+      the invalid-code copy (deactivation must not leak that the code exists and merely filled up).
+- [ ] **Already-granted user burns no use.** Note a capped code's `uses`. As an account that ALREADY
+      has access, submit the code again (double-submit / back-button). The response succeeds and the
+      admin panel's `uses` is UNCHANGED.
+- [ ] **Clear the limit.** Press **Clear** on a capped code → it reads `N / ∞` again, the Exhausted
+      badge disappears, and a fresh account can redeem once more.
+- [ ] **Limit below current uses = "shut it off".** Set a limit lower than the code's `uses`. The row
+      shows **Exhausted** immediately and new redemptions get `code_exhausted`. (Deliberate: it stops
+      a leaked code while leaving it valid-looking. The Active toggle remains the way to hard-pause.)
+- [ ] **Bad limit input is refused, never "unlimited".** Try `abc`, `1.5`, `-3`, `0` → an inline error
+      and NO change to the code. Confirm `0` specifically is refused (the message points at the
+      Active toggle instead).
+- [ ] **Create with a limit.** Create a new code with **Limit** = `1`. It appears as `0 / 1`; one
+      account redeems it; it flips to `1 / 1` + Exhausted; a second account is refused.
+- [ ] **Create without a limit.** Leave **Limit** blank → the new code is `0 / ∞`, unlimited.
+- [ ] **Non-admin cannot reach any of this.** A student/parent hitting `/api/admin/beta-circle` still
+      gets 403 (`requireAdmin` unchanged), and `claim_access_code()` EXECUTE is revoked from `anon` +
+      `authenticated` — only the service role can burn a use.
+- [ ] **The coach gate is unmoved.** A user WITHOUT access still gets `access_code_required` from
+      `/api/tutor`, `/api/speak`, `/api/scribe-token`, `/api/sessions` (nothing in `lib/coppa.js`,
+      `canReachCoach`, `coachGateFailure` or `maybeGrantBetaCircle` changed).
+
+**Concurrency (cannot be exercised by hand — reasoned, and the reason the claim is SQL).** Two
+simultaneous redemptions at the boundary (`uses = max_uses - 1`) cannot both succeed: the single
+`update … where … and (max_uses is null or uses < max_uses) returning *` takes a row lock, and under
+READ COMMITTED the second transaction blocks on it and then re-evaluates its WHERE against the
+freshly committed row (EvalPlanQual re-check). Exactly one gets a row back; the other gets zero rows
+and is classified as `code_exhausted`. **Do not refactor this back into select-then-update** — that
+is the original bug.
+
+**Ordering tradeoff (commented in the route).** Claim FIRST, then grant. If the `access_granted`
+write fails after a successful claim, one use is consumed for nothing — accepted, because the inverse
+(grant, then fail to claim) hands out free access above the cap, which is the entire thing being
+prevented. An over-consumed use is a support ticket; an over-granted code is an unbounded model bill.
+
+**Automated.** `lib/access.test.js` extended with 17 tests covering `parseMaxUses` (blank → unlimited;
+positive ints as string/number; rejects `0`, negatives, floats, `1e3`, `NaN`/`Infinity`, booleans /
+objects / arrays, and values above the Postgres `integer` ceiling; every rejection carries a message,
+and no value leaks through on failure), `classifyClaimFailure` (missing → invalid; inactive → invalid
+even when exhausted; uncapped → never "exhausted"; at-ceiling → `code_exhausted`; limit-below-uses →
+`code_exhausted`; non-numeric `max_uses` is not a ceiling) and `claimFailureBody`.
+`npm run test:run` → **94 passed** (5 files; was 77). `npm run build` → compiled successfully.
+`npm run lint` → 179 problems, byte-identical to the pre-change baseline (no new findings).
+
+**Files:** `supabase/migrations/049_access_code_max_uses.sql` (**NOT applied**),
+`lib/access.js` (+`parseMaxUses`, +`classifyClaimFailure`, +`claimFailureBody`, +the two message
+constants — the existing gate/cohort exports are untouched), `lib/access.test.js`,
+`app/api/access/redeem/route.js` (already-granted short-circuit → atomic `.rpc('claim_access_code')`
+→ classify-on-miss → grant), `app/api/admin/beta-circle/route.js` (+`set_code_limit` action,
+`create_code` accepts `maxUses`, GET returns `max_uses`), `components/AdminDashboard.js`
+(`codeUsage()` helper; `uses / max` readout, Exhausted badge, per-code Limit input + Save/Clear,
+optional Limit on the create row).
+
+**Note for conductor.** No local Postgres was available in the worktree, so migration 049 was
+verified by review only — the SQL was never executed. The two things to eyeball before applying:
+(a) `returns setof public.access_codes` is used deliberately instead of a `returns table (…)` column
+list, which would create OUT-parameter name collisions with the table's own columns inside the body;
+(b) the `revoke … from public` strips `service_role`'s inherited EXECUTE, so the explicit
+`grant … to service_role` is load-bearing — without it redemption breaks entirely (same footgun 029
+documented). `app/(auth)/welcome/page.js` needed no change: it already renders the server's `error`
+string, so the new exhausted copy surfaces as-is.
