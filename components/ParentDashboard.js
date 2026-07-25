@@ -32,7 +32,55 @@ function EmptyState() {
 }
 
 // ── Per-child block ───────────────────────────────────────────
-function ChildBlock({ child, sessions, teachersBySession = {} }) {
+// Skill Studio (Writing Gym) progress — parents get automatic visibility, same as
+// assignment sessions. Shows growth (level, badges, the honest Practiced/Locked-In
+// split, portfolio) — never a countdown, gate status, or percentage (design rule).
+function SkillStudioCard({ child, gym }) {
+  const firstName = child.full_name?.split(' ')[0] ?? 'your student'
+  if (!gym || !gym.started) {
+    return (
+      <div className="rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--bg-page-alt)', border: '1px solid var(--border-default)' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--accent-text)' }}>Skill Studio</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          {firstName} hasn't started practicing in the Skill Studio yet.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--surface-spark)', border: '1px solid var(--border-accent)' }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--accent-text)' }}>Skill Studio</p>
+        <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}>
+          {/* Display name comes from loadGymSummaries (lib/gymCurriculum LEVELS) so the
+              parent and the student always read the same ladder — the stored `level` key
+              ('finder'…'writer') intentionally differs from the display name. */}
+          {gym.levelName ?? 'Scribe'}
+        </span>
+        {gym.streak > 1 && (
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>· {gym.streak}-week streak</span>
+        )}
+      </div>
+      <p className="text-sm mt-2" style={{ color: 'var(--text-strong)' }}>
+        <strong>{gym.earned}</strong> of {gym.total} skills practiced
+      </p>
+      {/* The honest split — what makes the portfolio credible to a skeptical parent. */}
+      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+        {gym.practiced} practiced · {gym.lockedIn} locked in
+        <span title="Locked in means the skill showed up in their real writing, not just in practice."> ⓘ</span>
+      </p>
+      <a href={`/skill-studio/portfolio?student=${child.id}`}
+        className="inline-block mt-2 text-xs font-semibold rounded-full px-3 py-1.5 transition"
+        style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+        View portfolio →
+      </a>
+    </div>
+  )
+}
+
+function ChildBlock({ child, sessions, teachersBySession = {}, gym = null }) {
   const childSessions = sessions
     .filter(s => s.student_id === child.id)
     .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
@@ -66,6 +114,12 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
         </a>
       </div>
 
+      {/* Skill Studio (Writing Gym) progress — sits above the assignment list; both
+          are automatic for a parent. */}
+      <div className="px-5 pt-5">
+        <SkillStudioCard child={child} gym={gym} />
+      </div>
+
       {/* Assignments — SAME list UI the student sees (SessionsList), read-only
           because a parent is a watcher (canManage=false → no rename/delete/assign,
           links land on the transcript). */}
@@ -83,7 +137,7 @@ function ChildBlock({ child, sessions, teachersBySession = {} }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, ownSessions = [], pendingInvites = [], impersonating = false }) {
+export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, gymByChild = {}, ownSessions = [], pendingInvites = [], impersonating = false }) {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -120,7 +174,7 @@ export default function ParentDashboard({ user, profile, children, sessions, tea
         {/* One block per child — all expanded (parents have few kids) */}
         {children.map(child => (
           <ChildBlock key={child.id} child={child} sessions={sessions}
-            teachersBySession={teachersBySession} />
+            teachersBySession={teachersBySession} gym={gymByChild[child.id]} />
         ))}
 
         {/* Add-child affordance stays at the bottom. When there are 0 children the

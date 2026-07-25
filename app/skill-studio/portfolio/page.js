@@ -1,121 +1,91 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { TIER_META } from '@/lib/gymCurriculum'
+import ImpersonationBanner from '@/components/ImpersonationBanner'
+import GymPortfolioView from '@/components/GymPortfolioView'
+import { getImpersonation } from '@/lib/impersonation'
 
-// Typed portfolio renders — the pair/blueprint shapes ARE the growth evidence, so
-// they render structurally, not as flattened text (design §The Writing Portfolio).
-// P1 captures what the writing flow produced; P2/P3 add in-session structured pair /
-// blueprint capture and the async self-assessment lines.
+// The Skill Studio portfolio. Two audiences, one render:
+//   • the student's own work        → /skill-studio/portfolio
+//   • a parent viewing their child  → /skill-studio/portfolio?student=<childId>
+// (This route was /gym/portfolio before the Skill Studio rename; /gym/ now keeps only a
+// ROOT redirect stub, so every link must point at /skill-studio/portfolio.)
+// Parent access mirrors assignment sessions (design §The Writing Portfolio: "Parent —
+// full access automatically"). RLS on portfolio_entries already grants a parent read
+// via the parent-filtered relationships predicate; we additionally verify the link
+// server-side so an unlinked ?student= param redirects cleanly instead of rendering empty.
 
-function EntryBody({ entry }) {
-  const c = entry.content ?? {}
-  switch (entry.entry_type) {
-    case 'pair':
-      return (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="p-3" style={{ background: 'var(--surface-sunken)', borderRadius: 'var(--radius-md)' }}>
-            <p style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 6px' }}>Before</p>
-            <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: 0, whiteSpace: 'pre-wrap' }}>{c.before ?? '—'}</p>
-          </div>
-          <div className="p-3" style={{ background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
-            <p style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 6px' }}>After</p>
-            <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: 0, whiteSpace: 'pre-wrap' }}>{c.after ?? '—'}</p>
-          </div>
-        </div>
-      )
-    case 'blueprint':
-      return Array.isArray(c.sections) && c.sections.length ? (
-        <div>
-          {c.thesis && <p style={{ font: 'var(--type-body)', color: 'var(--text-strong)', margin: '0 0 8px' }}><strong>Thesis:</strong> {c.thesis}</p>}
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {c.sections.map((s, i) => (
-              <li key={i} style={{ font: 'var(--type-body)', color: 'var(--text-body)', marginBottom: 4 }}>
-                <strong>{s.label}:</strong> {s.job}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: 0, whiteSpace: 'pre-wrap' }}>{c.text ?? ''}</p>
-      )
-    case 'multi_paragraph':
-      return (
-        <div className="flex flex-col gap-3">
-          {(c.paragraphs ?? []).map((p, i) => (
-            <p key={i} style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
-          ))}
-          {c.bridge && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>Bridge: {c.bridge}</p>}
-        </div>
-      )
-    case 'thesis':
-      return (
-        <div>
-          <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)', margin: '0 0 6px' }}>{c.thesis ?? ''}</p>
-          {c.rationale && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>Why it's arguable: {c.rationale}</p>}
-        </div>
-      )
-    default: // paragraph | reflection | placement_warmup | capstone_letter
-      return <p style={{ font: 'var(--type-body)', color: 'var(--text-body)', margin: 0, whiteSpace: 'pre-wrap' }}>{c.text ?? c.after ?? ''}</p>
-  }
-}
-
-export default async function GymPortfolioPage() {
+export default async function GymPortfolioPage({ searchParams }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  const { data: signedIn } = await supabase
     .from('profiles').select('role, full_name, avatar_url, age_bracket').eq('id', user.id).single()
 
-  const { data: entries } = await supabase
+  // Remote-in: act as the impersonated user, same posture as /parent — the cookie is
+  // only honoured for a real admin, and the elevated client is used ONLY on that branch.
+  const imp = await getImpersonation(signedIn)
+  const db = imp ? createServiceClient() : supabase
+  const viewerId = imp?.userId ?? user.id
+  const viewerRole = imp?.role ?? signedIn?.role
+  const { data: viewer } = imp
+    ? await db.from('profiles').select('role, full_name, avatar_url, age_bracket').eq('id', viewerId).single()
+    : { data: signedIn }
+
+  const params = await searchParams
+  const requested = params?.student ?? null
+  const viewingChild = requested && requested !== viewerId
+
+  let targetId = viewerId
+  let childName = null
+
+  if (viewingChild) {
+    // Authorize: a linked PARENT (or an admin) may view this student's portfolio.
+    // Role-filtered on purpose — teachers also appear in `relationships`, but gym
+    // visibility for a teacher is grant-only (migration 025's RLS says the same), so a
+    // bare watcher link must not open the portfolio.
+    const { data: rel } = await db
+      .from('relationships').select('student_id').eq('watcher_id', viewerId).eq('student_id', requested).maybeSingle()
+    const authorized = viewerRole === 'admin' || (viewerRole === 'parent' && !!rel)
+    if (!authorized) redirect('/parent')
+    targetId = requested
+    const { data: childProfile } = await createServiceClient()
+      .from('profiles').select('full_name').eq('id', targetId).single()
+    childName = childProfile?.full_name?.split(' ')[0] ?? 'your student'
+  }
+
+  // Entries are read with the CALLER's client, so RLS stays the real boundary: a parent
+  // reads through the parent-filtered predicate and anyone unlinked gets nothing even if
+  // they somehow reached this line. (An admin who is NOT remoting in has no RLS arm on
+  // portfolio_entries and so sees an empty list — remote in as the parent instead.)
+  const { data: entries } = await db
     .from('portfolio_entries')
     .select('id, skill_key, skill_label, tier, entry_type, content, self_assessment, created_at')
-    .eq('student_id', user.id)
+    .eq('student_id', targetId)
     .order('created_at', { ascending: false })
 
-  const list = entries ?? []
+  const backHref = viewingChild ? '/parent' : '/skill-studio'
+  const backLabel = viewingChild ? '← Back to dashboard' : '← Back to Skill Studio'
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
-      <Navbar user={user} profile={profile} />
+      {imp && <ImpersonationBanner name={imp.name} role={imp.role} />}
+      <Navbar user={user} profile={viewer} />
       <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-10">
-        <a href="/skill-studio" style={{ font: 'var(--type-meta)', color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>← Back to Skill Studio</a>
-        <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '8px 0 4px' }}>Your portfolio</h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', marginBottom: 24 }}>
-          Everything you've made in Skill Studio — proof of how your writing is growing.
-        </p>
-
-        {list.length === 0 ? (
-          <div className="p-8 text-center" style={{ background: 'var(--surface-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-default)' }}>
-            <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
-              Your portfolio will fill up as you finish practice sessions.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {list.map(entry => {
-              const tier = TIER_META[entry.tier] ?? TIER_META[1]
-              return (
-                <article key={entry.id} className="p-5" style={{ background: 'var(--surface-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: tier.color }} aria-hidden="true" />
-                    <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)' }}>{entry.skill_label}</span>
-                    <span style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', marginLeft: 'auto' }}>
-                      {new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                  <EntryBody entry={entry} />
-                  {entry.self_assessment && (
-                    <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '12px 0 0', fontStyle: 'italic' }}>
-                      In your words: {entry.self_assessment}
-                    </p>
-                  )}
-                </article>
-              )
-            })}
-          </div>
-        )}
+        <a href={backHref} style={{ font: 'var(--type-meta)', color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>{backLabel}</a>
+        <GymPortfolioView
+          entries={entries ?? []}
+          heading={viewingChild ? `${childName}'s portfolio` : 'Your portfolio'}
+          subheading={viewingChild
+            ? `Everything ${childName} has made in Skill Studio — proof of how their writing is growing.`
+            : "Everything you've made in Skill Studio — proof of how your writing is growing."}
+          emptyText={viewingChild
+            ? `${childName}'s portfolio will fill up as they finish practice sessions.`
+            : 'Your portfolio will fill up as you finish practice sessions.'}
+          selfAssessmentPrefix={viewingChild ? `In ${childName}'s words:` : 'In your words:'}
+        />
       </main>
     </div>
   )
