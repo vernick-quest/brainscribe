@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect, useCallback } from 'react'
+import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
@@ -1552,6 +1553,10 @@ function ToolsTab({ demoSeeded, betaCircleCount }) {
 const LIST_TABS = ['students', 'parents', 'teachers', 'sessions']
 
 export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(currentProfile?.full_name, currentProfile?.role)
   const [tab, setTab] = useState('students')
   const [search, setSearch] = useState('')
 

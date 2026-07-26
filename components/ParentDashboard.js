@@ -1,6 +1,7 @@
 'use client'
 
 import YourWritingCard from '@/components/YourWritingCard'
+import { useTabTitle } from '@/components/TabTitle'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
 import Avatar from '@/components/Avatar'
 import Navbar from '@/components/Navbar'
@@ -138,6 +139,10 @@ function ChildBlock({ child, sessions, teachersBySession = {}, gym = null }) {
 
 // ── Main component ────────────────────────────────────────────
 export default function ParentDashboard({ user, profile, children, sessions, teachersBySession = {}, gymByChild = {}, ownSessions = [], pendingInvites = [], impersonating = false }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (

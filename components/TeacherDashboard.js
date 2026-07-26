@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useTabTitle } from '@/components/TabTitle'
 import Navbar from '@/components/Navbar'
 import PendingInviteBanner from '@/components/PendingInviteBanner'
 import YourWritingCard from '@/components/YourWritingCard'
@@ -190,6 +191,10 @@ function StudentBlock({ student, sessions, defaultOpen }) {
 
 // ── Main ──────────────────────────────────────────────────────
 export default function TeacherDashboard({ user, profile, students, sessions, notifications = [], ownSessions = [], pendingInvites = [], impersonating = false }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (

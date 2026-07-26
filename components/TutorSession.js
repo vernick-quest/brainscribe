@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
+import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
 import ImpersonationBanner from './ImpersonationBanner'
@@ -753,6 +754,10 @@ export default function TutorSession({
   completeEndpoint = null,
   gym = null,
 }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const [messages, setMessages]           = useState(
     initialMessages.map(m => m.role === 'assistant' ? { ...m, persona: resolvePersona(session.persona) } : m)
   )
