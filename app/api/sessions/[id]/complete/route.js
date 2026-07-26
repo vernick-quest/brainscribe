@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { createNotificationsForSession } from '@/lib/notifications'
 import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
@@ -147,6 +148,29 @@ export async function PATCH(request, { params }) {
   if (error) {
     console.error('[sessions complete]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Finishing the onboarding session IS finishing onboarding — mark it here, at the
+  // real completion event.
+  //
+  // It used to be written only when the user LANDED on the finale (/onboarding/complete,
+  // or the transcript with ?onboarding=1). Close the tab when the coach says done, or
+  // navigate straight to the folder, and the flag never set: 3 of the first 9 people to
+  // finish onboarding stayed flagged incomplete — and because /parent and /teacher
+  // redirect on !onboarding_complete, two real parents were bounced back into onboarding
+  // on every visit, a loop they couldn't escape. The finale pages still write it (a
+  // harmless idempotent repeat); this makes the flag independent of whether the last
+  // page was ever viewed. Service role: onboarding_complete is a 020-locked gate column.
+  if (session.is_onboarding) {
+    try {
+      await createServiceClient()
+        .from('profiles')
+        .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
+        .eq('id', session.student_id)
+        .eq('onboarding_complete', false)   // don't overwrite an earlier, truer timestamp
+    } catch (e) {
+      console.error('[sessions complete] onboarding flag', e)   // never fail the completion
+    }
   }
 
   // Fetch student name for notification message
