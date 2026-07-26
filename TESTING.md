@@ -2548,3 +2548,66 @@ Manual checklist (parent account, or admin remote-in as a parent):
 - [ ] A student's own **`/skill-studio/portfolio`** (no `?student=`) is unchanged:
       "Your portfolio", "Everything you've made in Skill Studio…", "In your words:",
       "← Back to Skill Studio".
+
+## 2026-07-25 — Student badges tell the truth about profile credit (gym lane)
+
+**No migration.** Read-only change: `app/skill-studio/page.js` now also selects the
+`practiced_source` column that migration 025 already ships.
+
+**The bug.** `gym_skill_state` carries a `state` (`practiced` | `locked_in`) AND a
+`practiced_source` (`session` | `placement` | `profile`). A `profile` row was credited
+from the student's **writing profile** — the skill showed up in a real assignment, so
+it's genuinely theirs, but they never did a Skill Studio rep and it leaves nothing in
+the portfolio. `SkillBadge` collapsed both into **"Practiced"**, so a student's own
+badge wall claimed reps they never did (live case: 2 badges, zero completed gym
+sessions, empty portfolio). The parent side got the same fix in `213f666`; this is the
+student-voice half.
+
+**How the source is carried:** a parallel `skillSources` map (`{ skill_key:
+'session'|'profile' }`) — `skillStates`' `{ key: state }` shape is untouched. The
+labelling rule is one pure, tested function, `badgeCredit(state, source)` in
+`lib/gymCurriculum.js`; `'profile'` is the only value that means writing credit, so a
+missing/unknown source falls through to studio practice (never demote a real rep).
+`locked_in` outranks source and keeps its own label + gleam. The ladder semantics, the
+`needsWarmup` gate, and `lib/gymSuggest.js` (which deliberately does NOT re-suggest a
+profile-credited skill) are all unchanged.
+
+Automated (green): `npm run build` passes; `npm run test:run` = **121 tests / 8 files**
+(was 114/7 — `lib/gymCurriculum.test.js` is new: 7 cases over `badgeCredit` /
+`badgeCreditLabel` covering profile credit, session + placement, missing/unknown
+source, no row, and locked-in outranking source). `npx eslint` on the three changed
+files reports the same 3 pre-existing `react/no-unescaped-entities` errors as `main`
+— no new lint.
+
+Manual checklist (student account with at least one **profile**-sourced row — an
+existing assignment-mode student who has never opened Skill Studio is the natural case;
+otherwise flip one row's `practiced_source` to `'profile'` in a scratch account):
+- [ ] Badge wall: a **profile-credited** badge renders as a **tinted face with a
+      tier-coloured ring and navy letter** (not the full-colour fill), and its
+      tooltip/screen-reader name reads **"{Skill} — Spotted in your writing"** —
+      the word "Practiced" must not appear for it anywhere on the page.
+- [ ] A badge from a real Studio rep still renders the **full tier-colour fill** with a
+      white letter and reads **"{Skill} — Practiced"**.
+- [ ] A `locked_in` badge still gets the **spark gleam** and reads **"{Skill} — Locked
+      in"**, whichever source first earned the practiced rung.
+- [ ] A skill with **no row** is unchanged: sunken dashed socket, muted label, 0.55
+      opacity (only reachable in the All-skills list — the wall shows earned only).
+- [ ] Legend + intro line appear **only** when at least one badge is profile-credited
+      ("Some of these you already do in your own writing…" + the swatch key, with the
+      Locked-in swatch only when a locked-in badge exists). An all-Studio student sees
+      neither — no new noise.
+- [ ] Level meter line is honest: all-Studio → unchanged "N skills practiced so far";
+      all-profile → "N skills spotted in your writing so far"; mixed → "N skills so
+      far: A spotted in your writing, B practiced in Skill Studio".
+- [ ] All-skills list: a profile-credited row shows an **outline** pill "Spotted in your
+      writing" and its button says **"Practice"** (not "Practice again"); a
+      Studio-practiced row keeps the filled pill "Practiced" + "Practice again".
+- [ ] Unchanged behaviour: prereq unlocks still count profile-credited skills (a
+      dependant of a profile-credited skill is still unlocked); the suggestion engine
+      still does **not** suggest a profile-credited skill; the warm-up card still only
+      appears for a student with no writing profile at all.
+- [ ] Mobile 375px: the badge wall and the legend wrap without overflow.
+- [ ] ⚠️ Known, deferred: the tier-1 amber ring (`#D98A1F`) on cream is ~2.4:1 — under
+      the 3:1 non-text guidance. It is not the only carrier (accessible name, tooltip,
+      legend, and fill/tint all encode the state) and it matches the already-shipped
+      tier palette, so no new token was invented. Flag if a11y wants a darker tier-1.
