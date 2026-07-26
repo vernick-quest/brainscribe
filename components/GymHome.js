@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   GYM_SKILLS, LEVELS, TIER_META, getSkill, isUnlocked, missingPrereqs, getTierSkillTree,
+  badgeCredit, badgeCreditLabel,
 } from '@/lib/gymCurriculum'
 
 // Skill-tree connector geometry. One gutter column per nesting level; a subtle
@@ -14,7 +15,8 @@ const STEP_W = 'clamp(16px, 4vw, 24px)' // one indent level
 const LINE_X = '9px'                    // x of the vertical guide inside a column
 
 // Writing Gym home screen. Per the settled design (§UI): level meter + badge wall
-// (Practiced full-color, Locked-In gleam), this week's practice card, all-skills
+// (Spotted-in-your-writing ring, Practiced full-color, Locked-In gleam — see
+// badgeCredit in lib/gymCurriculum), this week's practice card, all-skills
 // browser with per-skill lock lines, and the streak DEMOTED below badges + level
 // (Q2). The student only ever sees earned badges + embellishment-on-upgrade — no
 // empty sockets, no "N of M locked in" meter (that honest split lives in the
@@ -142,34 +144,87 @@ function LevelLadder({ curLevelIdx }) {
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
-function SkillBadge({ skill, state }) {
+// Three earned treatments, so the wall reads as "here's what I've actually done":
+//   spotted in your writing (profile credit) — tinted face + tier-coloured ring, navy
+//     glyph. Positive and clearly earned, but visibly lighter than a Studio rep.
+//   practiced (Studio rep)                   — full tier-colour fill, white glyph.
+//   locked in                                — the practiced fill plus the spark gleam.
+// A skill with no row keeps the sunken dashed socket.
+function badgeFace(credit, tier) {
+  switch (credit) {
+    case 'writing':
+      return {
+        background: `color-mix(in srgb, ${tier.color} 12%, var(--surface-card))`,
+        color: 'var(--text-strong)',
+        border: `2px solid ${tier.color}`,
+        boxShadow: 'var(--shadow-xs)',
+        opacity: 1,
+      }
+    case 'studio':
+    case 'locked_in':
+      return {
+        background: tier.color, color: '#fff', border: 'none',
+        boxShadow: credit === 'locked_in' ? 'var(--shadow-spark)' : 'var(--shadow-sm)',
+        opacity: 1,
+      }
+    default:
+      return {
+        background: 'var(--surface-sunken)', color: 'var(--text-subtle)',
+        border: '1px dashed var(--border-default)', boxShadow: 'none', opacity: 0.55,
+      }
+  }
+}
+
+function SkillBadge({ skill, state, source }) {
   const tier = TIER_META[skill.tier]
-  const practiced = state === 'practiced' || state === 'locked_in'
-  const lockedIn = state === 'locked_in'
+  const credit = badgeCredit(state, source)
+  const earned = credit !== 'none'
+  const face = badgeFace(credit, tier)
+  const stateLabel = badgeCreditLabel(credit)
+  // The face is decorative; the state must not be colour-only, so it rides the
+  // accessible name as well as the tooltip.
+  const label = stateLabel ? `${skill.label} — ${stateLabel}` : skill.label
   return (
     <div
       className="flex flex-col items-center gap-1.5 text-center"
       style={{ width: 84 }}
-      title={practiced ? `${skill.label} — ${lockedIn ? 'Locked in' : 'Practiced'}` : skill.label}
+      role="listitem"
+      aria-label={label}
+      title={label}
     >
       <div
         className="flex items-center justify-center"
         aria-hidden="true"
         style={{
           width: 56, height: 56, borderRadius: '50%',
-          background: practiced ? tier.color : 'var(--surface-sunken)',
-          color: practiced ? '#fff' : 'var(--text-subtle)',
-          border: practiced ? 'none' : '1px dashed var(--border-default)',
           fontFamily: 'var(--font-display)', fontWeight: 'var(--fw-bold)', fontSize: 20,
-          boxShadow: lockedIn ? 'var(--shadow-spark)' : practiced ? 'var(--shadow-sm)' : 'none',
-          opacity: practiced ? 1 : 0.55,
+          ...face,
         }}
       >
         {skill.label.replace(/^The /, '').charAt(0)}
       </div>
-      <span style={{ font: 'var(--type-meta)', color: practiced ? 'var(--text-body)' : 'var(--text-subtle)', lineHeight: 1.15 }}>
+      <span style={{ font: 'var(--type-meta)', color: earned ? 'var(--text-body)' : 'var(--text-subtle)', lineHeight: 1.15 }}>
         {skill.label.replace(/^The /, '')}
       </span>
+    </div>
+  )
+}
+
+// Legend key — only rendered when the wall actually mixes sources, so a student whose
+// badges are all Studio reps never sees a distinction that doesn't apply to them.
+function BadgeKey({ showLockedIn }) {
+  const item = (face, text) => (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, ...face }} />
+      {text}
+    </span>
+  )
+  const neutral = { color: 'var(--text-muted)' }
+  return (
+    <div className="flex flex-wrap items-center" style={{ font: 'var(--type-meta)', ...neutral, gap: '6px 14px', margin: '0 0 12px' }}>
+      {item(badgeFace('writing', TIER_META[1]), 'Spotted in your writing')}
+      {item(badgeFace('studio', TIER_META[1]), 'Practiced in Skill Studio')}
+      {showLockedIn && item(badgeFace('locked_in', TIER_META[1]), 'Locked in')}
     </div>
   )
 }
@@ -205,8 +260,14 @@ function ConnectorGutters({ depth, isLast, trail }) {
 }
 
 // ── All-skills row ──────────────────────────────────────────────────────────
-function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, isQueued, onStart, starting, depth = 0, isLast = true, trail = [] }) {
-  const practiced = state === 'practiced' || state === 'locked_in'
+function SkillRow({ skill, state, source, unlocked, blockedBy, isSuggested, isQueued, onStart, starting, depth = 0, isLast = true, trail = [] }) {
+  const credit = badgeCredit(state, source)
+  // `earned` = has a badge of any kind (drives layout/weight, as `practiced` used to).
+  // The LABEL is the thing that must not lie: a profile-credited skill has never been
+  // practiced here, so it reads "Spotted in your writing" and its button says
+  // "Practice", not "Practice again".
+  const earned = credit !== 'none'
+  const fromWriting = credit === 'writing'
   const tier = TIER_META[skill.tier]
   return (
     <div
@@ -221,15 +282,23 @@ function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, isQueued, on
           <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', color: unlocked ? 'var(--text-strong)' : 'var(--text-muted)' }}>
             {skill.label}
           </span>
-          {practiced && (
-            <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: tier.color, background: 'var(--surface-muted)', borderRadius: 'var(--radius-pill)', padding: '1px 8px' }}>
-              {state === 'locked_in' ? 'Locked in' : 'Practiced'}
+          {earned && (
+            // Outline pill for writing-credit, filled-muted pill for a Studio rep —
+            // the same lesser-than-practiced language as the badge face.
+            <span style={{
+              font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)',
+              color: fromWriting ? 'var(--text-body)' : tier.color,
+              background: fromWriting ? 'transparent' : 'var(--surface-muted)',
+              border: fromWriting ? `1px solid ${tier.color}` : '1px solid transparent',
+              borderRadius: 'var(--radius-pill)', padding: '1px 8px',
+            }}>
+              {badgeCreditLabel(credit)}
             </span>
           )}
-          {isSuggested && !practiced && (
+          {isSuggested && !earned && (
             <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: 'var(--accent-text)' }}>Suggested</span>
           )}
-          {isQueued && !practiced && !unlocked && (
+          {isQueued && !earned && !unlocked && (
             <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-bold)', color: tier.color }}>Queued for you</span>
           )}
         </div>
@@ -247,12 +316,12 @@ function SkillRow({ skill, state, unlocked, blockedBy, isSuggested, isQueued, on
           disabled={starting}
           className="shrink-0 transition hover:opacity-90 disabled:opacity-50"
           style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)',
-            color: practiced ? 'var(--text-body)' : 'var(--text-on-accent)',
-            background: practiced ? 'var(--surface-muted)' : 'var(--accent)',
-            border: practiced ? '1px solid var(--border-default)' : 'none',
+            color: earned ? 'var(--text-body)' : 'var(--text-on-accent)',
+            background: earned ? 'var(--surface-muted)' : 'var(--accent)',
+            border: earned ? '1px solid var(--border-default)' : 'none',
             borderRadius: 'var(--radius-pill)', padding: '7px 16px' }}
         >
-          {practiced ? 'Practice again' : 'Practice'}
+          {earned && !fromWriting ? 'Practice again' : 'Practice'}
         </button>
       ) : (
         <span className="shrink-0" aria-hidden="true" style={{ color: 'var(--text-subtle)' }}>
@@ -271,6 +340,7 @@ export default function GymHome({
   streak = 0,
   practicedCount = 0,
   skillStates = {},          // { [skill_key]: 'practiced' | 'locked_in' }
+  skillSources = {},         // { [skill_key]: 'session' | 'profile' } — where the credit came from
   practicedKeys = [],        // keys at practiced+
   completedSessionCount = 0,
   suggestedSkillKey = null,
@@ -321,6 +391,14 @@ export default function GymHome({
   const curLevelIdx = levelIndex(levelKey)
   const badgeSkills = GYM_SKILLS.filter(s => practicedSet.has(s.key))
 
+  // Split the earned badges by where the credit came from, so neither the level meter
+  // nor the badge wall claims Studio reps that never happened.
+  const credits = badgeSkills.map(s => badgeCredit(skillStates[s.key], skillSources[s.key]))
+  const writingCount = credits.filter(c => c === 'writing').length
+  const studioCount = credits.length - writingCount   // studio reps + locked-in badges
+  const hasLockedIn = credits.some(c => c === 'locked_in')
+  const nSkills = n => `${n} ${n === 1 ? 'skill' : 'skills'}`
+
   return (
     <main style={{ maxWidth: 'var(--width-prose)' }} className="mx-auto px-6 py-10">
 
@@ -342,9 +420,14 @@ export default function GymHome({
         <div className="mb-4">
           <LevelLadder curLevelIdx={curLevelIdx} />
         </div>
+        {/* Same honesty as the badges: "practiced" is only said about Studio reps. */}
         <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>
           You're a <strong style={{ color: 'var(--text-strong)' }}>{LEVELS[curLevelIdx].name}</strong>
-          {' '}— {practicedCount} {practicedCount === 1 ? 'skill' : 'skills'} practiced so far.
+          {writingCount === 0
+            ? <>{' '}— {nSkills(practicedCount)} practiced so far.</>
+            : studioCount === 0
+              ? <>{' '}— {nSkills(writingCount)} spotted in your writing so far.</>
+              : <>{' '}— {nSkills(writingCount + studioCount)} so far: {writingCount} spotted in your writing, {studioCount} practiced in Skill Studio.</>}
         </p>
       </section>
 
@@ -396,11 +479,19 @@ export default function GymHome({
       {badgeSkills.length > 0 && (
         <section className="mb-8">
           <h2 style={{ font: 'var(--type-subhead)', color: 'var(--text-strong)', margin: '0 0 4px' }}>Your badges</h2>
+          {writingCount > 0 && (
+            <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 10px' }}>
+              Some of these you already do in your own writing — your coach spotted them in your assignments.
+            </p>
+          )}
+          {writingCount > 0 && <BadgeKey showLockedIn={hasLockedIn} />}
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 16px' }}>
             <a href="/skill-studio/portfolio" style={{ color: 'var(--text-link)', fontWeight: 'var(--fw-semibold)' }}>See your portfolio →</a>
           </p>
-          <div className="flex flex-wrap" style={{ gap: 16 }}>
-            {badgeSkills.map(s => <SkillBadge key={s.key} skill={s} state={skillStates[s.key]} />)}
+          <div className="flex flex-wrap" role="list" style={{ gap: 16 }}>
+            {badgeSkills.map(s => (
+              <SkillBadge key={s.key} skill={s} state={skillStates[s.key]} source={skillSources[s.key]} />
+            ))}
           </div>
         </section>
       )}
@@ -423,6 +514,7 @@ export default function GymHome({
                   key={skill.key}
                   skill={skill}
                   state={skillStates[skill.key]}
+                  source={skillSources[skill.key]}
                   unlocked={unlocked}
                   blockedBy={unlocked ? [] : (skill.volumeGate ? [] : missingPrereqs(skill, practicedSet))}
                   isSuggested={skill.key === suggestedSkillKey}

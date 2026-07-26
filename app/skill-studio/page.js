@@ -26,7 +26,10 @@ export default async function GymPage() {
 
   const [progressRes, statesRes, portfolioRes, completedRes] = await Promise.all([
     supabase.from('gym_progress').select('current_level, current_streak, longest_streak, suggested_next_skill, suggested_reason, placement').eq('student_id', user.id).maybeSingle(),
-    supabase.from('gym_skill_state').select('skill_key, state').eq('student_id', user.id),
+    // `practiced_source` matters as much as `state`: a row sourced from the student's
+    // WRITING PROFILE was spotted in a real assignment — they never did a Studio rep
+    // for it. The badge wall must not call that "Practiced". See badgeCredit().
+    supabase.from('gym_skill_state').select('skill_key, state, practiced_source').eq('student_id', user.id),
     supabase.from('portfolio_entries').select('id', { count: 'exact', head: true }).eq('student_id', user.id),
     supabase.from('gym_sessions').select('id', { count: 'exact', head: true }).eq('student_id', user.id).eq('status', 'complete'),
   ])
@@ -34,6 +37,13 @@ export default async function GymPage() {
   const progress = progressRes.data ?? null
   const states = statesRes.data ?? []
   const skillStates = Object.fromEntries(states.map(s => [s.skill_key, s.state]))
+  // Parallel map — deliberately NOT folded into skillStates, whose { key: state }
+  // shape is read elsewhere. Normalized to the two values the UI distinguishes:
+  // only 'profile' is writing-profile credit; 'session', 'placement', missing and
+  // unknown all mean real Studio practice (never demote a real rep).
+  const skillSources = Object.fromEntries(
+    states.map(s => [s.skill_key, s.practiced_source === 'profile' ? 'profile' : 'session'])
+  )
   const practicedKeys = states.map(s => s.skill_key)
   const portfolioCount = portfolioRes.count ?? 0
   const completedSessionCount = completedRes.count ?? 0
@@ -61,6 +71,7 @@ export default async function GymPage() {
         streak={progress?.current_streak ?? 0}
         practicedCount={practicedKeys.length}
         skillStates={skillStates}
+        skillSources={skillSources}
         practicedKeys={practicedKeys}
         completedSessionCount={completedSessionCount}
         suggestedSkillKey={suggestedSkillKey}
