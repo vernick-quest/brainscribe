@@ -63,20 +63,29 @@ function SkillStudioCard({ child, gym }) {
         )}
       </div>
       <p className="text-sm mt-2" style={{ color: 'var(--text-strong)' }}>
-        <strong>{gym.earned}</strong> of {gym.total} skills practiced
+        <strong>{gym.earned}</strong> of {gym.total} skills so far
       </p>
-      {/* The honest split — what makes the portfolio credible to a skeptical parent. */}
+      {/* The honest split — BY SOURCE, and this is the credibility mechanism. A skill
+          "spotted in their own writing" was credited from the student's real assignments
+          (practiced_source='profile'); they never did a Skill Studio rep for it, so it
+          leaves NOTHING in the portfolio. Calling both "practiced" is what let this card
+          promise work the portfolio couldn't show. `locked in` only appears once the P3
+          channels actually write it — showing a permanent "0 locked in" reads as failure. */}
       <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-        {gym.practiced} practiced · {gym.lockedIn} locked in
-        <span title="Locked in means the skill showed up in their real writing, not just in practice."> ⓘ</span>
+        {gym.fromWriting} spotted in their own writing · {gym.fromStudio} practiced in Skill Studio
+        {gym.lockedIn > 0 && ` · ${gym.lockedIn} locked in`}
+        <span title="Spotted in their own writing: the skill showed up in a real assignment. Practiced in Skill Studio: they did a focused rep — those are the pieces that fill the portfolio."> ⓘ</span>
       </p>
-      <a href={`/skill-studio/portfolio?student=${child.id}`}
-        className="inline-block mt-2 text-xs font-semibold rounded-full px-3 py-1.5 transition"
-        style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
-        View portfolio →
-      </a>
+      {/* Only offer the portfolio when there's actually something in it. */}
+      {gym.portfolioCount > 0 && (
+        <a href={`/skill-studio/portfolio?student=${child.id}`}
+          className="inline-block mt-2 text-xs font-semibold rounded-full px-3 py-1.5 transition"
+          style={{ border: '1px solid var(--border-strong)', color: 'var(--text-muted)' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+          View portfolio →
+        </a>
+      )}
     </div>
   )
 }
