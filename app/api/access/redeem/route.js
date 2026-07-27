@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { maybeGrantBetaCircle, classifyClaimFailure, claimFailureBody, INVALID_CODE_MESSAGE } from '@/lib/access'
+import { after } from 'next/server'
+import { maybeGrantBetaCircle, classifyClaimFailure, claimFailureBody, INVALID_CODE_MESSAGE, accessCodeAlertLevel } from '@/lib/access'
+import { sendAccessCodeAlert } from '@/lib/notifications'
 
 // POST /api/access/redeem — redeem a Beta Circle access code.
 //
@@ -113,6 +115,30 @@ export async function POST(request) {
   if (accessCode.grants_beta_circle) {
     betaCircle = await maybeGrantBetaCircle(service, user.id)
     capReached = !betaCircle
+  }
+
+  // Ops alert when this redemption crossed a threshold on the code (80% / full).
+  // Hitting the ceiling already decommissions the code — claim_access_code stops
+  // matching it — but silently; without this you'd only notice by opening /admin.
+  // Deferred + fully guarded: an email problem must never affect the student who
+  // just redeemed successfully.
+  const alertLevel = accessCodeAlertLevel(accessCode.uses, accessCode.max_uses)
+  if (alertLevel) {
+    after(async () => {
+      try {
+        const { data: admins } = await service
+          .from('profiles').select('email').eq('role', 'admin').not('email', 'is', null)
+        await sendAccessCodeAlert({
+          to: (admins ?? []).map(a => a.email),
+          code,
+          uses: accessCode.uses,
+          maxUses: accessCode.max_uses,
+          level: alertLevel,
+        })
+      } catch (e) {
+        console.error('[access/redeem] threshold alert failed:', e)
+      }
+    })
   }
 
   return Response.json({ access_granted: true, beta_circle: betaCircle, cap_reached: capReached })
