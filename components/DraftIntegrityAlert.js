@@ -60,13 +60,6 @@ export default function DraftIntegrityAlert() {
     )
   }
 
-  // Split the warnings so the header can't claim "well under target" for a session that
-  // has no target at all — it did, for 2 of the 4 rows on 2026-07-28.
-  const underTarget = data.flagged.filter(
-    f => f.severity === 'warn' && typeof f.shortfallPct === 'number' && f.shortfallPct >= 30
-  ).length
-  const otherWarnings = Math.max(0, warnings - underTarget)
-
   const isAlert = alerts > 0
   const accent = isAlert ? 'var(--status-danger, #DC2626)' : 'var(--status-warning, #D97706)'
   const bg = isAlert ? 'var(--status-danger-bg, #FEF2F2)' : 'var(--status-warning-bg, #FFFBEB)'
@@ -82,9 +75,7 @@ export default function DraftIntegrityAlert() {
         <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
           {alerts > 0 && `${alerts} session${alerts === 1 ? '' : 's'} may be missing student work`}
           {alerts > 0 && warnings > 0 && ' · '}
-          {underTarget > 0 && `${underTarget} well under target`}
-          {underTarget > 0 && otherWarnings > 0 && ' · '}
-          {otherWarnings > 0 && `${otherWarnings} with empty sections`}
+          {warnings > 0 && `${warnings} worth a look`}
         </span>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {open ? 'Hide' : 'Review'}
@@ -96,11 +87,12 @@ export default function DraftIntegrityAlert() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {/* Explicit {' '} — JSX drops the space after an expression when the text node
                 continues onto the next line, which rendered as "44recent sessions". */}
-            Checked {data.checked}{' '}recent sessions. A session is flagged when the working
-            draft holds content the Final Draft doesn&apos;t render, when a lock-in was
-            recorded as dropped, or when a finished draft falls well short of its target.
-            Empty scaffold slots alone are NOT reported — a coach may skip a component
-            deliberately, and a repaired draft keeps its old slots empty.
+            Checked {data.checked}{' '}recent sessions. This watches for ONE thing: a
+            disconnect between the working draft and the Final Draft — content the draft
+            doesn&apos;t render, or a lock-in the client recorded as dropped. Word counts
+            are not a fault (targets are a ceiling, and writing less is the student&apos;s
+            call), and an empty scaffold slot on its own isn&apos;t either — a coach may
+            skip a component deliberately, and a repaired draft keeps its old slots empty.
           </p>
           {data.flagged.map(f => (
             <div key={f.sessionId} className="rounded-xl p-3 text-sm"
