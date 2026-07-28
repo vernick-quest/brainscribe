@@ -9,6 +9,7 @@ import Icon from '@/components/Icon'
 import TranscriptToolbar from '@/components/TranscriptToolbar'
 import ConversationLog from '@/components/ConversationLog'
 import RubricReviewSection from '@/components/RubricReviewSection'
+import DraftSatisfactionCheck from '@/components/DraftSatisfactionCheck'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
@@ -46,12 +47,14 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
     db.from('rubrics').select('rubric_text, feedback_text').eq('session_id', id).maybeSingle(),
     db.from('sources').select('*').eq('session_id', id).order('position'),
+    // The student's own "does this match what you wrote?" answer, if they've given one.
+    db.from('draft_feedback').select('matches, note').eq('session_id', id).maybeSingle(),
   ])
 
   // Auto-generated Works Cited (deterministic; MLA on the transcript). Metadata only.
@@ -276,6 +279,21 @@ export default async function TranscriptPage({ params, searchParams }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* "Does this match what you wrote?" — student-owner only, finished sessions
+              only, never during the onboarding hook (no real essay yet), and never while
+              an admin is remoted in. The student is the one witness who always knows
+              whether their draft is complete; every automated check we had passed the
+              session that lost a week of a kid's work. */}
+          {isStudent && !imp && isComplete && !session.is_onboarding && hasDraft && (
+            <div className="no-print">
+              <DraftSatisfactionCheck
+                sessionId={session.id}
+                finalWords={reqActual?.words ?? null}
+                existing={draftFeedback ?? null}
+              />
             </div>
           )}
         </section>

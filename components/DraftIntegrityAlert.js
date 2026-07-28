@@ -95,6 +95,12 @@ export default function DraftIntegrityAlert() {
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
                 <span className="font-semibold" style={{ color: 'var(--text-strong)' }}>
                   {f.studentName ?? 'Unknown student'}
+                  {f.studentReportedMissing && (
+                    <span className="ml-2 text-[10px] font-bold rounded-full px-2 py-0.5 align-middle"
+                      style={{ backgroundColor: accent, color: 'white' }}>
+                      STUDENT REPORTED
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   {f.status} · {timeAgo(f.createdAt)}

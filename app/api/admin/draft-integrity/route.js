@@ -41,10 +41,15 @@ export async function GET(request) {
   const ids = sessions.map(s => s.id)
 
   // Two bulk reads rather than 2N per-session queries — this runs on an admin page load.
-  const [{ data: allParas }, { data: allScaffolds }] = await Promise.all([
+  const [{ data: allParas }, { data: allScaffolds }, { data: allFeedback }] = await Promise.all([
     service.from('paragraphs').select('session_id, position, scribed_text').in('session_id', ids).order('position'),
     service.from('paragraph_scaffolds').select('session_id, components, current_paragraph_index').in('session_id', ids),
+    // The student's own verdict. This outranks every heuristic below: a student saying
+    // their work is missing IS the ground truth, and it catches losses no automated
+    // check can see.
+    service.from('draft_feedback').select('session_id, matches, note').in('session_id', ids),
   ])
+  const feedbackBySession = new Map((allFeedback ?? []).map(f => [f.session_id, f]))
 
   const parasBySession = new Map()
   for (const p of allParas ?? []) {
@@ -69,9 +74,24 @@ export async function GET(request) {
         targetWords: target?.min ?? target?.target ?? target?.max ?? null,
       }
     )
-    if (result.ok) continue
+    // A student saying "something's missing" is ground truth, not a heuristic — it is
+    // always an alert, even when every automated signal looks clean.
+    const feedback = feedbackBySession.get(s.id)
+    const studentReported = feedback?.matches === false
+    if (result.ok && !studentReported) continue
+
+    if (studentReported) {
+      result.severity = 'alert'
+      result.reasons = [
+        `THE STUDENT REPORTED WORK MISSING${feedback.note ? `: "${feedback.note}"` : ''}`,
+        ...result.reasons,
+      ]
+    }
 
     flagged.push({
+      studentReportedMissing: studentReported,
+      studentNote: feedback?.note ?? null,
+      studentConfirmedOk: feedback?.matches === true,
       sessionId: s.id,
       studentName: s.profiles?.full_name ?? null,
       studentId: s.student_id,
