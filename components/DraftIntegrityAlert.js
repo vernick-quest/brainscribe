@@ -60,6 +60,13 @@ export default function DraftIntegrityAlert() {
     )
   }
 
+  // Split the warnings so the header can't claim "well under target" for a session that
+  // has no target at all — it did, for 2 of the 4 rows on 2026-07-28.
+  const underTarget = data.flagged.filter(
+    f => f.severity === 'warn' && typeof f.shortfallPct === 'number' && f.shortfallPct >= 30
+  ).length
+  const otherWarnings = Math.max(0, warnings - underTarget)
+
   const isAlert = alerts > 0
   const accent = isAlert ? 'var(--status-danger, #DC2626)' : 'var(--status-warning, #D97706)'
   const bg = isAlert ? 'var(--status-danger-bg, #FEF2F2)' : 'var(--status-warning-bg, #FFFBEB)'
@@ -75,7 +82,9 @@ export default function DraftIntegrityAlert() {
         <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
           {alerts > 0 && `${alerts} session${alerts === 1 ? '' : 's'} may be missing student work`}
           {alerts > 0 && warnings > 0 && ' · '}
-          {warnings > 0 && `${warnings} well under target`}
+          {underTarget > 0 && `${underTarget} well under target`}
+          {underTarget > 0 && otherWarnings > 0 && ' · '}
+          {otherWarnings > 0 && `${otherWarnings} with empty sections`}
         </span>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {open ? 'Hide' : 'Review'}
@@ -85,9 +94,13 @@ export default function DraftIntegrityAlert() {
       {open && (
         <div className="px-4 pb-4 space-y-2">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Checked {data.checked} recent sessions. A session is flagged when its working draft
-            holds content the Final Draft doesn&apos;t render, or when it finished with empty
-            scaffold components — the signature of writes that were dropped.
+            {/* Explicit {' '} — JSX drops the space after an expression when the text node
+                continues onto the next line, which rendered as "44recent sessions". */}
+            Checked {data.checked}{' '}recent sessions. A session is flagged when the working
+            draft holds content the Final Draft doesn&apos;t render, when a lock-in was
+            recorded as dropped, or when a finished draft falls well short of its target.
+            Empty scaffold slots alone are NOT reported — a coach may skip a component
+            deliberately, and a repaired draft keeps its old slots empty.
           </p>
           {data.flagged.map(f => (
             <div key={f.sessionId} className="rounded-xl p-3 text-sm"
