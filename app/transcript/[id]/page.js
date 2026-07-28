@@ -10,6 +10,7 @@ import TranscriptToolbar from '@/components/TranscriptToolbar'
 import ConversationLog from '@/components/ConversationLog'
 import RubricReviewSection from '@/components/RubricReviewSection'
 import DraftSatisfactionCheck from '@/components/DraftSatisfactionCheck'
+import RestorationNotice from '@/components/RestorationNotice'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
@@ -47,7 +48,7 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }, { data: restoration }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
@@ -55,6 +56,10 @@ export default async function TranscriptPage({ params, searchParams }) {
     db.from('sources').select('*').eq('session_id', id).order('position'),
     // The student's own "does this match what you wrote?" answer, if they've given one.
     db.from('draft_feedback').select('matches, note').eq('session_id', id).maybeSingle(),
+    // "We put some of your writing back" — present only on a session we repaired.
+    db.from('draft_restorations')
+      .select('session_id, words_before, words_after, summary, acknowledged_at')
+      .eq('session_id', id).maybeSingle(),
   ])
 
   // Auto-generated Works Cited (deterministic; MLA on the transcript). Metadata only.
@@ -279,6 +284,15 @@ export default async function TranscriptPage({ params, searchParams }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Repaired-draft notice. Student-owner only: a parent dismissing it would mean
+              the child never learns their essay was fixed. Sits above the satisfaction
+              check because it explains what they're about to read. */}
+          {isStudent && !imp && (
+            <div className="no-print">
+              <RestorationNotice restoration={restoration ?? null} />
             </div>
           )}
 

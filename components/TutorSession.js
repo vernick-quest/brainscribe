@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, updateComponentItem } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, updateComponentItem, resolveDoneText } from '@/lib/scaffoldWrite'
+import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
@@ -1290,10 +1291,12 @@ export default function TutorSession({
         const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
         const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
         sc = updateComponentItem(sc, paraIdx, componentId, item => {
-          const text = inlineText || item.nuggetText || item.text || ''
-          // Never confirm a component with no content — it'd render a blank "✓" line.
-          if (!text) return item
-          return { ...item, status: 'confirmed', text }
+          const { text, dropped } = resolveDoneText(item, inlineText)
+          // Still never confirm a component with no content — a blank "✓" renders as
+          // nothing. But no longer walk away quietly: record the drop on the item so the
+          // integrity check can tell "the coach skipped this" from "we lost this".
+          if (dropped) return { ...item, writeDropped: true }
+          return { ...item, status: 'confirmed', text, writeDropped: false }
         })
         changed = true
       }
@@ -3172,6 +3175,15 @@ export default function TutorSession({
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Quiet escape hatch: a student who notices something missing WHILE writing
+                needs somewhere to say so. Elio said exactly this mid-session on
+                2026-07-01, the coach told him not to worry about it, and his report
+                reached nobody for a month. Only once there's a draft to be missing from,
+                and never during the onboarding hook. */}
+            {!session.is_onboarding && scaffold?.components?.length > 0 && (
+              <MissingWorkFlag sessionId={session.id} draftWords={reqActual?.words ?? null} />
             )}
           </div>
         </div>
