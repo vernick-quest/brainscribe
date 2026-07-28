@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
+import { resolveWriteIndex, updateComponentItem } from '@/lib/scaffoldWrite'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
@@ -143,18 +144,6 @@ function buildComponentTree(type, count, customLabels = null) {
     }
     return { index: i, type: paraType, status: i === 0 ? 'working' : 'locked', summary: null, items: getParaItems(paraType) }
   })
-}
-
-function updateComponentItem(scaffold, paraIdx, componentId, updater) {
-  return {
-    ...scaffold,
-    components: scaffold.components.map((p, i) =>
-      i !== paraIdx ? p : {
-        ...p,
-        items: p.items.map(item => item.id === componentId ? updater(item) : item),
-      }
-    ),
-  }
 }
 
 // Strips scaffold stream tokens + [DICTATE] + [CARE] + [SOURCE] from display text.
@@ -1269,7 +1258,7 @@ export default function TutorSession({
 
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
-        const paraIdx = sc.current_paragraph_index ?? 0
+        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
         sc = updateComponentItem(sc, paraIdx, componentId, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
         )
@@ -1281,7 +1270,7 @@ export default function TutorSession({
         if (colonIdx !== -1) {
           const componentId = payload.slice(0, colonIdx)
           const nuggetText = payload.slice(colonIdx + 1)
-          const paraIdx = sc.current_paragraph_index ?? 0
+          const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
           sc = updateComponentItem(sc, paraIdx, componentId, item =>
@@ -1299,7 +1288,7 @@ export default function TutorSession({
         const colonIdx = payload.indexOf(':')
         const componentId = colonIdx === -1 ? payload : payload.slice(0, colonIdx)
         const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
-        const paraIdx = sc.current_paragraph_index ?? 0
+        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
         sc = updateComponentItem(sc, paraIdx, componentId, item => {
           const text = inlineText || item.nuggetText || item.text || ''
           // Never confirm a component with no content — it'd render a blank "✓" line.

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect, useCallback } from 'react'
+import DraftIntegrityAlert from '@/components/DraftIntegrityAlert'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
@@ -1638,6 +1639,11 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
       <Navbar user={currentUser} profile={currentProfile} />
 
       <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+
+        {/* Draft integrity — surfaced first because this failure mode is silent by
+            nature: the student sees a full working draft, the saved draft is short, and
+            nothing else in the product notices. */}
+        <DraftIntegrityAlert />
 
         {/* Stats double as the primary tab selectors — click a tile to open its
             list below (the tile IS its tab button; active tile = navy border). */}
