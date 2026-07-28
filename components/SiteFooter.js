@@ -1,3 +1,14 @@
+// The ISTE EdTech Index listing badge. Usage rules from ISTE (Danny Wagner,
+// 2026-07-23): use it AS-IS, don't modify or crop it, keep the text readable, and
+// link it to the EdTech Index product page. Scaled proportionally only; the asset is
+// served at 266×300 for a ~133px display so it stays crisp on retina.
+//
+// ⚠️ It says exactly what it means: BrainScribe is LISTED in the directory. It is NOT
+// a quality validation — ISTE issues a separate badge for products that earn one. So
+// it sits quietly in the footer with no surrounding "approved / vetted / certified"
+// framing. If we ever earn a real validation, that gets its own treatment.
+const EDTECH_INDEX_LISTING = 'https://edtechindex.org/product/ultid/P454-E623-146F-48B1-97/'
+
 export default function SiteFooter() {
   return (
     <footer style={{
@@ -10,9 +21,25 @@ export default function SiteFooter() {
       flexWrap: 'wrap',
       gap: 12,
     }}>
-      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        © 2026 BrainScribe &nbsp;·&nbsp; Built by a parent who stayed up too late.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <a
+          href={EDTECH_INDEX_LISTING}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: 'inline-flex', flexShrink: 0 }}
+        >
+          <img
+            src="/edtech-index-badge.png"
+            alt="Find us on the ISTE EdTech Index"
+            width={62}
+            height={70}
+            style={{ display: 'block', width: 62, height: 70 }}
+          />
+        </a>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          © 2026 BrainScribe &nbsp;·&nbsp; Built by a parent who stayed up too late.
+        </p>
+      </div>
       <nav style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         {[
           { href: '/writing-help', label: 'Writing help' },
