@@ -9,9 +9,18 @@ import { CANONICAL_URL } from '@/lib/site'
 // /login is publicly reachable (allowed there) but kept out of the index
 // (disallowed here). When adding a new public marketing page, also add it to
 // the sitemap in app/sitemap.js.
+// ⚠️ Disallow entries are PREFIX matches, not exact paths. `/write` therefore also
+// blocked `/writing-help` and every topic page under it — the SEO landing pages that
+// are IN the sitemap. Search Console reported the contradiction ("Blocked by
+// robots.txt", 2026-07-26). `$` anchors the match to the end of the path, so `/write$`
+// blocks only the legacy /write alias. Before adding an entry here, check it isn't a
+// prefix of a public page you want indexed.
 const DISALLOW = [
   '/api/',
-  '/write',
+  '/write$',        // legacy alias → /assignment/new. NOT /writing-help/*
+  '/assignment',
+  '/skill-studio',
+  '/gym',           // legacy alias → /skill-studio
   '/folder',
   '/parent',
   '/teacher',
@@ -22,6 +31,10 @@ const DISALLOW = [
   '/invite',
   '/login',
 ]
+
+// Deliberately NOT listed: /admin. It's auth+role gated and redirects before any
+// content renders, so it can never be indexed anyway — and robots.txt is public, so
+// naming it would advertise the route for zero indexing benefit.
 
 // AI-assistant crawlers + training/grounding opt-in tokens. Explicitly ALLOWed
 // so BrainScribe's public pages can be fetched and cited by ChatGPT/SearchGPT,
