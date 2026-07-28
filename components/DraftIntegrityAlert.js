@@ -103,7 +103,13 @@ export default function DraftIntegrityAlert() {
                   )}
                 </span>
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {f.status} · {timeAgo(f.createdAt)}
+                  {/* The timestamp is labelled by the status, so it has to MEAN that
+                      status: a complete session shows when it completed, anything else
+                      shows when it started. Reading created_at as "completed 7d ago"
+                      sent the 2026-07-20 investigation looking at the wrong week. */}
+                  {f.status} · {f.status === 'complete' && f.completedAt
+                    ? timeAgo(f.completedAt)
+                    : `started ${timeAgo(f.createdAt)}`}
                 </span>
               </div>
               <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>

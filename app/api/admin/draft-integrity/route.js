@@ -32,7 +32,7 @@ export async function GET(request) {
 
   const { data: sessions, error } = await service
     .from('sessions')
-    .select('id, student_id, status, created_at, assignment_text, requirements, profiles(full_name)')
+    .select('id, student_id, status, created_at, completed_at, assignment_text, requirements, profiles(full_name)')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -97,6 +97,9 @@ export async function GET(request) {
       studentId: s.student_id,
       status: s.status,
       createdAt: s.created_at,
+      // The card labels this timestamp with the session status, so a complete session
+      // must show when it COMPLETED — created_at read as "completed 7d ago" and misled.
+      completedAt: s.completed_at ?? null,
       // Enough to recognise the assignment, never the student's own prose.
       assignmentPreview: String(s.assignment_text || '').replace(/\s+/g, ' ').slice(0, 90),
       ...result,
