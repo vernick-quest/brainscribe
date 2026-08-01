@@ -197,7 +197,13 @@ function DeleteUserButton({ userId, name }) {
 // At-a-glance: green = completed onboarding, grey = will be sent through it.
 // Click to toggle — resetting to "Not onboarded" routes them through onboarding
 // on their next sign-in (handy for testing).
-function OnboardingBadge({ userId, complete }) {
+// Three states, not two. `onboarding_complete` is a ROUTING flag — it only means "stop
+// sending this person to /onboarding" — and BOTH skip buttons set it. So a parent who
+// clicked "Skip — go to my dashboard" 2 minutes after signing up rendered identically to
+// a student who wrote a practice paragraph, which is exactly how a real parent's status
+// got misread on 2026-08-01. `practiced` is the truth, derived from sessions rather than
+// from the flag: did they actually finish a practice assignment?
+function OnboardingBadge({ userId, complete, practiced }) {
   const [done, setDone] = useState(complete)
   const [saving, setSaving] = useState(false)
 
@@ -213,19 +219,30 @@ function OnboardingBadge({ userId, complete }) {
     setSaving(false)
   }
 
+  const state = !done ? 'none' : practiced ? 'practiced' : 'skipped'
+  const label = { practiced: 'Practiced ✓', skipped: 'Skipped', none: 'Not onboarded' }[state]
+  const title = {
+    practiced: 'Finished a practice assignment — click to reset (they’ll go through onboarding again next sign-in)',
+    skipped: 'Marked onboarded WITHOUT finishing a practice assignment (they used a skip link) — click to reset',
+    none: 'Not onboarded — click to mark complete',
+  }[state]
+  const tone = {
+    practiced: { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' },
+    // Amber, not green: nothing is wrong, but it is not the same thing and the panel
+    // should never imply it is.
+    skipped: { backgroundColor: 'var(--status-warning-bg, #FFFBEB)', color: 'var(--status-warning, #D97706)' },
+    none: { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' },
+  }[state]
+
   return (
     <button
       onClick={toggle}
       disabled={saving}
-      title={done
-        ? 'Onboarded — click to reset (they’ll go through onboarding again next sign-in)'
-        : 'Not onboarded — click to mark complete'}
+      title={title}
       className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 transition shrink-0 cursor-pointer"
-      style={done
-        ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
-        : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}
+      style={tone}
     >
-      {saving ? '…' : done ? 'Onboarded ✓' : 'Not onboarded'}
+      {saving ? '…' : label}
     </button>
   )
 }
@@ -876,7 +893,8 @@ function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, childr
           {stat}
           <AgeBadge ageBracket={person.age_bracket} consentGiven={person.coppa_consent_given} />
           <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>{formatDate(person.created_at)}</span>
-          <OnboardingBadge userId={person.id} complete={person.onboarding_complete === true} />
+          <OnboardingBadge userId={person.id} complete={person.onboarding_complete === true}
+            practiced={person.practiced === true} />
           <RoleEditor userId={person.id} currentRole={person.role} onChanged={onRoleChanged} />
           <RemoteInButton userId={person.id} />
           <DeleteUserButton userId={person.id} name={person.full_name} />
@@ -1561,9 +1579,19 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const [tab, setTab] = useState('students')
   const [search, setSearch] = useState('')
 
-  const students = profiles.filter(p => p.role === 'student')
-  const parents  = profiles.filter(p => p.role === 'parent')
-  const teachers = profiles.filter(p => p.role === 'teacher')
+  // Did this person actually FINISH a practice assignment? Derived from sessions because
+  // the profile flag cannot answer it — onboarding_complete only means "don't route them
+  // to /onboarding again", and both skip links set it. See OnboardingBadge.
+  const practicedIds = new Set(
+    (sessions ?? [])
+      .filter(s => s.is_onboarding && s.status === 'complete')
+      .map(s => s.student_id)
+  )
+  const withPracticed = p => ({ ...p, practiced: practicedIds.has(p.id) })
+
+  const students = profiles.filter(p => p.role === 'student').map(withPracticed)
+  const parents  = profiles.filter(p => p.role === 'parent').map(withPracticed)
+  const teachers = profiles.filter(p => p.role === 'teacher').map(withPracticed)
   // Beta Circle = students holding the locked-rate flag (parents/teachers/demo never
   // count — enforced server-side; this is just the display total for the Tools card).
   const betaCircleCount = profiles.filter(p => p.is_beta_circle).length
