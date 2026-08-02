@@ -5,6 +5,8 @@ import { createNotification } from '@/lib/notifications'
 import InviteAgeGate from '@/components/InviteAgeGate'
 import { MAX_CHILDREN_PER_PARENT, MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { maybeGrantBetaCircle } from '@/lib/access'
+import { evaluateParentLedConsent } from '@/lib/parentFirst'
+import { grantParentLedConsent } from '@/lib/coppaConsent'
 
 export default async function InvitePage({ searchParams }) {
   const params = await searchParams
@@ -163,9 +165,30 @@ export default async function InvitePage({ searchParams }) {
       }
     }
 
+    // PARENT-FIRST: an under-13 claiming a PARENT's invite has their consent established
+    // here, by the act of a parent who independently created an account and invited them.
+    // This is the inverted flow — nothing was ever pending for the child to get approved.
+    // Rules live in lib/parentFirst.js (pure + tested); this only acts on the verdict.
+    if (invite.role === 'student' && invite.invited_by) {
+      const [{ data: inviter }, { data: claimer }] = await Promise.all([
+        service.from('profiles').select('id, email, role').eq('id', invite.invited_by).single(),
+        service.from('profiles').select('id, email, role, age_bracket, coppa_consent_given').eq('id', user.id).single(),
+      ])
+      const verdict = evaluateParentLedConsent({ parent: inviter, child: claimer })
+      if (verdict.ok) {
+        const res = await grantParentLedConsent(service, {
+          childId: user.id,
+          parentUserId: invite.invited_by,
+        })
+        if (!res.ok) console.error('[invite] parent-led consent failed:', res.error)
+      } else if (claimer?.age_bracket === 'under13' && !claimer?.coppa_consent_given) {
+        // An under-13 who was NOT consented here still has no access. Logged because a
+        // silent no-op is exactly the failure mode that hid two data-loss bugs for a month.
+        console.warn(`[invite] under-13 claim did not establish consent: ${verdict.reason}`)
+      }
+    }
+
     // Create the watcher→student link (service client: see the cap note above).
-    // A student claiming a parent-sent invite still runs their own age-first /
-    // COPPA onboarding separately — this relationship is read-only oversight.
     if (pendingRel) {
       await service.from('relationships').upsert(
         pendingRel,
