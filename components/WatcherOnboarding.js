@@ -55,10 +55,12 @@ export default function WatcherOnboarding({ role = 'parent', onSkip, onTryPracti
   const [stage, setStage] = useState('intro')   // intro | demo | seeing | invite
 
   const isParent = role === 'parent'
-  const childWord = isParent ? 'your child' : 'your students'
+  // Full clause, not a noun slot — "your students will be the one writing" is what a
+  // shared fragment gets you.
+  const whoWrites = isParent ? 'your child will be the one writing' : 'your students will be the ones writing'
 
   const lines = {
-    intro: `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so ${childWord} will be the one writing. Let me show you what that actually looks like — it takes about a minute, and you don't have to write anything yourself.`,
+    intro: `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so ${whoWrites}. Let me show you what that actually looks like — it takes about a minute, and you don't have to write anything yourself.`,
     demo: `Here's a real coaching exchange. Watch what happens at the end: the filler comes out, and what's left is still entirely the student's own words. I never write the sentence for them — that's the whole point.`,
     seeing: `And here's what you'll see. Every session leaves a transcript — the finished paragraph and the whole conversation that produced it. You don't have to wait until they're done, either: you can look in while they're still working and see how far along they are.`,
     invite: isParent
@@ -182,7 +184,7 @@ export default function WatcherOnboarding({ role = 'parent', onSkip, onTryPracti
               <button
                 onClick={() => { stop(); onTryPractice?.() }}
                 className="w-full text-xs font-medium mt-3 transition hover:underline"
-                style={{ color: 'var(--text-subtle)' }}>
+                style={{ color: 'var(--text-subtle)', minHeight: 44 }}>
                 Or try writing one line yourself first
               </button>
               <StepIndicator n={stepNumber} total={STEPS.length} />
