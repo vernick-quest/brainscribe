@@ -6,6 +6,8 @@ import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
+import { createServiceClient } from '@/lib/supabase/service'
+import { parseCommitments } from '@/lib/coachCommitments'
 
 const anthropic = new Anthropic()
 
@@ -139,14 +141,34 @@ export async function POST(request) {
         controller.error(err)
       } finally {
         const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
-        resolveResult({ inputTokens, outputTokens, savedText })
+        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText })
       }
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText } = await resultReady
+    const { inputTokens, outputTokens, savedText, rawText } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+
+    // Record what the coach PROMISED it saved, from the raw stream before the tokens are
+    // stripped. Deliberately a different path from the client-side scaffold write it will
+    // later be reconciled against: if the same code recorded both, a dropped write would
+    // drop its own evidence — which is how two silent-drop bugs went a month unnoticed.
+    // Service role, because a client that could forge or delete a commitment could hide
+    // its own loss. Never blocks or fails the turn.
+    try {
+      const { components } = parseCommitments(rawText)
+      if (components.length) {
+        const svc = createServiceClient()
+        const { error: cErr } = await svc.from('coach_commitments').upsert(
+          components.map(component_id => ({ session_id: sessionId, component_id })),
+          { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+        )
+        if (cErr) console.error('[tutor] commitment record failed:', cErr.message)
+      }
+    } catch (err) {
+      console.error('[tutor] commitment record threw:', err?.message)
+    }
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,

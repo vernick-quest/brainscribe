@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { reconcileCommitments } from '@/lib/coachCommitments'
 import { checkDraftIntegrity } from '@/lib/draftIntegrity'
 
 // GET /api/admin/draft-integrity — sessions where the student's Final Draft may be
@@ -41,15 +42,27 @@ export async function GET(request) {
   const ids = sessions.map(s => s.id)
 
   // Two bulk reads rather than 2N per-session queries — this runs on an admin page load.
-  const [{ data: allParas }, { data: allScaffolds }, { data: allFeedback }] = await Promise.all([
+  const [{ data: allParas }, { data: allScaffolds }, { data: allFeedback }, { data: allCommitments }, { data: allRestorations }] = await Promise.all([
     service.from('paragraphs').select('session_id, position, scribed_text').in('session_id', ids).order('position'),
     service.from('paragraph_scaffolds').select('session_id, components, current_paragraph_index').in('session_id', ids),
     // The student's own verdict. This outranks every heuristic below: a student saying
     // their work is missing IS the ground truth, and it catches losses no automated
     // check can see.
     service.from('draft_feedback').select('session_id, matches, note').in('session_id', ids),
+    // What the coach PROMISED it saved, recorded server-side from the raw stream. The
+    // only signal here that proves loss rather than inferring it.
+    service.from('coach_commitments').select('session_id, component_id').in('session_id', ids),
+    // Sessions already repaired — their old scaffold slots stay empty by design, so a
+    // restore must not manufacture permanent broken promises.
+    service.from('draft_restorations').select('session_id').in('session_id', ids),
   ])
   const feedbackBySession = new Map((allFeedback ?? []).map(f => [f.session_id, f]))
+  const commitmentsBySession = new Map()
+  for (const c of allCommitments ?? []) {
+    if (!commitmentsBySession.has(c.session_id)) commitmentsBySession.set(c.session_id, [])
+    commitmentsBySession.get(c.session_id).push(c)
+  }
+  const restoredSessions = new Set((allRestorations ?? []).map(r => r.session_id))
 
   const parasBySession = new Map()
   for (const p of allParas ?? []) {
@@ -65,6 +78,11 @@ export async function GET(request) {
     if (!scaffold) continue
 
     const target = s.requirements?.targets?.find(t => t.type === 'words')
+    const { broken: brokenCommitments } = reconcileCommitments(
+      commitmentsBySession.get(s.id) ?? [],
+      scaffold.components ?? [],
+      { restored: restoredSessions.has(s.id) },
+    )
     const result = checkDraftIntegrity(
       parasBySession.get(s.id) ?? [],
       scaffold.components ?? [],
@@ -72,6 +90,7 @@ export async function GET(request) {
         currentParagraphIndex: scaffold.current_paragraph_index ?? null,
         status: s.status,
         targetWords: target?.min ?? target?.target ?? target?.max ?? null,
+        brokenCommitments,
       }
     )
     // A student saying "something's missing" is ground truth, not a heuristic — it is
