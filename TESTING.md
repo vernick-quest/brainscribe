@@ -2623,8 +2623,13 @@ Replaces the watcher branch of the FTUE. Students are unaffected — verify that
 - [ ] Screen 2 plays `CoachDemo` and the filler words visibly grey out at the tidy step.
       Two replay controls, correctly distinct: **"Replay Owen"** (audio) and the demo's own
       **"Replay"** (animation).
-- [ ] Screen 3 shows the Final Draft + the exchange that produced it. Static content —
+- [ ] Screen 3 shows the Final Draft + the exchange that produced it, with a derived word
+      count in the header ("28 words · complete" — never hardcoded). Static content —
       confirm it does NOT read from the DB (no session needed, works on a fresh account).
+- [ ] Screen 3 states in-progress visibility, not just finished transcripts: Owen says you
+      can "look in while they're still working", caption reads "finished or still in
+      progress". Cross-check it's TRUE — open a parent account against a child with a live
+      WIP draft and confirm the draft and its word count are visible mid-session.
 - [ ] Screen 4: entering a child's email creates a real invite. Check `invites` for the row
       and that the child can claim it → a `relationships` row appears → the child shows on
       the parent dashboard.

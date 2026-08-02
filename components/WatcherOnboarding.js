@@ -42,6 +42,10 @@ const DEMO_EXCHANGE = [
   { role: 'coach',   text: 'Say more about that — what’s the first thing he notices?' },
   { role: 'student', text: 'The empty seat. And how loud everyone else is now.' },
 ]
+// Derived, never hardcoded — a stale count on the one screen that promises transparency
+// would be a bad joke.
+const wordCount = (t) => t.trim().split(/\s+/).filter(w => /[a-z0-9]/i.test(w)).length
+
 const DEMO_PARAGRAPH =
   'When his friend moves away, he sits alone at lunch and starts noticing things he never ' +
   'noticed before — the empty seat, and how loud everyone else is now.'
@@ -56,7 +60,7 @@ export default function WatcherOnboarding({ role = 'parent', onSkip, onTryPracti
   const lines = {
     intro: `Welcome to BrainScribe — I'm Owen, one of the writing coaches. You're set up as a ${role}, so ${childWord} will be the one writing. Let me show you what that actually looks like — it takes about a minute, and you don't have to write anything yourself.`,
     demo: `Here's a real coaching exchange. Watch what happens at the end: the filler comes out, and what's left is still entirely the student's own words. I never write the sentence for them — that's the whole point.`,
-    seeing: `And here's what you'll see afterwards. Every session leaves a transcript: the finished paragraph, and the whole conversation that produced it. Nothing is hidden from you.`,
+    seeing: `And here's what you'll see. Every session leaves a transcript — the finished paragraph and the whole conversation that produced it. You don't have to wait until they're done, either: you can look in while they're still working and see how far along they are.`,
     invite: isParent
       ? `That's it. The last thing is getting your child set up — pop in their email and they'll get a link. You can always do this later from your dashboard.`
       : `That's it. The last thing is inviting your students — pop in an email and they'll get a link. You can always do this later from your dashboard.`,
@@ -122,9 +126,16 @@ export default function WatcherOnboarding({ role = 'parent', onSkip, onTryPracti
 
               <div className="rounded-2xl overflow-hidden my-4"
                 style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}>
-                <div className="px-4 py-2.5" style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--surface-muted)' }}>
+                <div className="px-4 py-2.5 flex items-center justify-between gap-3"
+                  style={{ borderBottom: '1px solid var(--border-default)', backgroundColor: 'var(--surface-muted)' }}>
                   <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                     Final draft
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-subtle)' }}>
+                    {/* Explicit {' '} — JSX drops the space after an expression when the
+                        text node wraps to the next line. Rendered as "28words". Same trap
+                        that produced "44recent sessions" in the admin panel. */}
+                    {wordCount(DEMO_PARAGRAPH)}{' '}words &middot; complete
                   </p>
                 </div>
                 <p className="px-4 py-3 text-sm leading-relaxed" style={{ color: 'var(--text-body)' }}>
@@ -148,8 +159,12 @@ export default function WatcherOnboarding({ role = 'parent', onSkip, onTryPracti
                 </div>
               </div>
 
+              {/* In-progress visibility is the stronger claim of the two: a finished
+                  transcript is a record, but "how is she doing on Thursday's essay" is the
+                  thing a parent actually wants mid-week. Parents see WIP drafts and their
+                  live word count on the child's page. */}
               <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-                You can read any session, any time — start to finish.
+                Any session, any time &mdash; finished or still in progress.
               </p>
 
               <PrimaryButton onClick={() => go('invite')}>
