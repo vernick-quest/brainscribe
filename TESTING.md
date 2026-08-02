@@ -2611,3 +2611,29 @@ otherwise flip one row's `practiced_source` to `'profile'` in a scratch account)
       the 3:1 non-text guidance. It is not the only carrier (accessible name, tooltip,
       legend, and fill/tint all encode the state) and it matches the already-shipped
       tier palette, so no new token was invented. Flag if a11y wants a darker tier-1.
+
+## 2026-08-01 — Parent/teacher onboarding (watcher FTUE)
+
+Replaces the watcher branch of the FTUE. Students are unaffected — verify that first.
+
+- [ ] **Student FTUE unchanged.** Sign in as a student with `onboarding_complete = false`:
+      intro → prompt pick → paragraph anatomy → practice session. Byte-for-byte as before.
+- [ ] **Parent** with `onboarding_complete = false` lands on the watcher flow, not the
+      prompt picker. 4 steps: intro → demo → what you'll see → invite.
+- [ ] Screen 2 plays `CoachDemo` and the filler words visibly grey out at the tidy step.
+      Two replay controls, correctly distinct: **"Replay Owen"** (audio) and the demo's own
+      **"Replay"** (animation).
+- [ ] Screen 3 shows the Final Draft + the exchange that produced it. Static content —
+      confirm it does NOT read from the DB (no session needed, works on a fresh account).
+- [ ] Screen 4: entering a child's email creates a real invite. Check `invites` for the row
+      and that the child can claim it → a `relationships` row appears → the child shows on
+      the parent dashboard.
+- [ ] **Nothing blocks.** All of these reach the dashboard: top-right "Skip onboarding" on
+      every screen · "I'll do this later" on screen 4 · closing the invite after sending.
+- [ ] "Or try writing one line yourself first" drops into the normal student prompt picker
+      and a practice session runs to completion.
+- [ ] **Teacher** role: same flow, copy says "your students" / "Invite my students".
+- [ ] `prefers-reduced-motion`: CoachDemo shows the full revealed demo, no autoplay.
+- [ ] Mobile width: no horizontal scroll on any of the 4 screens; 44px tap targets.
+- [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
+      they took the practice offer — `practiced` is derived from sessions, not the flag.
