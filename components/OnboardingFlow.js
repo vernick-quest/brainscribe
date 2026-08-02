@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { PERSONAS, PersonaAvatar, getPersona } from '@/lib/personas'
 import { useCoachVoice } from '@/lib/useCoachVoice'
 import Icon from '@/components/Icon'
+import { Card, Narration, StepIndicator, PrimaryButton } from '@/components/onboardingUI'
+import WatcherOnboarding from '@/components/WatcherOnboarding'
 
 const OWEN = getPersona('owen')
 
@@ -27,6 +29,9 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
   const home = role === 'parent' ? '/parent' : role === 'teacher' ? '/teacher' : '/folder'
 
   const [stage, setStage]       = useState('intro')   // 'intro' | 'prompts' | 'plan'
+  // A watcher who takes the closing "try writing one line yourself" offer falls through
+  // to the student picker below, so the practice path is shared rather than duplicated.
+  const [watcherWantsPractice, setWatcherWantsPractice] = useState(false)
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
@@ -103,6 +108,19 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
       setError('Network error — please check your connection and try again.')
       setCreating(false)
     }
+  }
+
+  // Parents and teachers get a different flow entirely: show them the product, then ask
+  // for the invite. See WatcherOnboarding for the reasoning and the data behind it. The
+  // student path below is deliberately untouched.
+  if (isWatcher && !watcherWantsPractice) {
+    return (
+      <WatcherOnboarding
+        role={role}
+        onSkip={handleSkip}
+        onTryPractice={() => { stop(); setWatcherWantsPractice(true); setStage('prompts') }}
+      />
+    )
   }
 
   return (
@@ -238,50 +256,9 @@ export default function OnboardingFlow({ studentName = 'there', prompts = [], ro
 
 // ── Small presentational helpers ──────────────────────────────────────────────
 
-function Card({ children }) {
-  return (
-    <div className="space-y-5"
-      style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-md)', borderRadius: 'var(--radius-xl)', padding: 'clamp(28px, 5vw, 40px) clamp(24px, 4vw, 36px)' }}>
-      {children}
-    </div>
-  )
-}
 
-function SpeechText({ children }) {
-  return (
-    <p style={{ font: 'var(--type-lead)', color: 'var(--text-strong)' }}>
-      {children}
-    </p>
-  )
-}
 
-// Owen's spoken line + a replay control (mirrors the in-chat "replay" affordance).
-// Autoplay is blocked until the first gesture, so the button is the reliable way to
-// hear the line.
-function Narration({ children, onReplay }) {
-  return (
-    <div>
-      <SpeechText>{children}</SpeechText>
-      <ReplayButton onClick={onReplay} />
-    </div>
-  )
-}
 
-function ReplayButton({ onClick }) {
-  return (
-    <div className="flex justify-end mt-1.5">
-      <button onClick={onClick}
-        className="inline-flex items-center gap-1 text-xs font-medium transition hover:underline"
-        style={{ color: 'var(--text-subtle)' }}
-        aria-label="Replay Owen's audio">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <polygon points="6 4 20 12 6 20 6 4" />
-        </svg>
-        Replay
-      </button>
-    </div>
-  )
-}
 
 // The lineup of coaches, shown on the welcome screen so the student knows Owen is
 // one of several styles they can switch to — not the only option.
@@ -298,13 +275,6 @@ function CoachRow() {
   )
 }
 
-function StepIndicator({ n, total }) {
-  return (
-    <p className="text-center" style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-subtle)' }}>
-      Step {n} of {total}
-    </p>
-  )
-}
 
 // The four pieces of a paragraph, with the hook marked as today's warm-up. Mirrors
 // the "what comes next" list on the completion reveal so the student sees the same
@@ -337,16 +307,6 @@ function ParagraphAnatomy() {
         Each piece shows up in your Draft as you go. Today we&rsquo;ll just nail the opening line.
       </p>
     </div>
-  )
-}
-
-function PrimaryButton({ onClick, children }) {
-  return (
-    <button onClick={onClick}
-      className="w-full transition"
-      style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '12px 0' }}>
-      {children}
-    </button>
   )
 }
 
