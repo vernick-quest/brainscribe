@@ -157,14 +157,48 @@ export async function POST(request) {
     // Service role, because a client that could forge or delete a commitment could hide
     // its own loss. Never blocks or fails the turn.
     try {
-      const { components } = parseCommitments(rawText)
+      const { components, inlineText } = parseCommitments(rawText)
       if (components.length) {
         const svc = createServiceClient()
-        const { error: cErr } = await svc.from('coach_commitments').upsert(
-          components.map(component_id => ({ session_id: sessionId, component_id })),
-          { onConflict: 'session_id,component_id', ignoreDuplicates: true },
-        )
-        if (cErr) console.error('[tutor] commitment record failed:', cErr.message)
+        // Carry the inline words too (migration 056). Without them a broken promise is
+        // provable but unrecoverable.
+        //
+        // TWO calls, deliberately. postgrest-js builds the column list from the UNION of
+        // all rows' keys and defaults missing values to NULL, so a single mixed call —
+        // [DONE:body] bare alongside [DONE:closing:text] — would write inline_text = NULL
+        // over the stored body text. Re-emitting a bare DONE in a recap is normal, so the
+        // feature meant to preserve the last copy of a student's words would have been the
+        // thing that erased it.
+        const withText = components.filter(id => inlineText[id])
+        const withoutText = components.filter(id => !inlineText[id])
+
+        if (withText.length) {
+          const { error } = await svc.from('coach_commitments').upsert(
+            withText.map(component_id => ({
+              session_id: sessionId, component_id, inline_text: inlineText[component_id],
+            })),
+            { onConflict: 'session_id,component_id' },
+          )
+          if (error) {
+            // Migration 056 is applied BY HAND, so this deploy can land first. Losing the
+            // recovery text is a downgrade; losing the commitment itself would blind the
+            // detector entirely. Fall back to recording the promise without the text.
+            console.error('[tutor] commitment (with text) failed, retrying without inline_text:', error.message)
+            const { error: retryErr } = await svc.from('coach_commitments').upsert(
+              withText.map(component_id => ({ session_id: sessionId, component_id })),
+              { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+            )
+            if (retryErr) console.error('[tutor] commitment fallback failed:', retryErr.message)
+          }
+        }
+        if (withoutText.length) {
+          // ignoreDuplicates: a bare DONE must never blank text an earlier turn captured.
+          const { error } = await svc.from('coach_commitments').upsert(
+            withoutText.map(component_id => ({ session_id: sessionId, component_id })),
+            { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+          )
+          if (error) console.error('[tutor] commitment (bare) failed:', error.message)
+        }
       }
     } catch (err) {
       console.error('[tutor] commitment record threw:', err?.message)

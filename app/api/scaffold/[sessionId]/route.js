@@ -128,10 +128,14 @@ export async function PATCH(request, { params }) {
     }
   }
 
+  // UPSERT, not update. `.update().single()` errors when no row exists, so a single failed
+  // create POST at session start made EVERY subsequent PATCH 500 for the rest of the
+  // session — and every caller ignores the response, so the student's whole scaffold lived
+  // only in React state until the tab closed. Recreating the row is strictly better than
+  // failing every write for the life of the session.
   const { data, error } = await supabase
     .from('paragraph_scaffolds')
-    .update(update)
-    .eq('session_id', sessionId)
+    .upsert({ session_id: sessionId, ...update }, { onConflict: 'session_id' })
     .select()
     .single()
 
