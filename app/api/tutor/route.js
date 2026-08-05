@@ -179,7 +179,17 @@ export async function POST(request) {
             })),
             { onConflict: 'session_id,component_id' },
           )
-          if (error) console.error('[tutor] commitment (with text) failed:', error.message)
+          if (error) {
+            // Migration 056 is applied BY HAND, so this deploy can land first. Losing the
+            // recovery text is a downgrade; losing the commitment itself would blind the
+            // detector entirely. Fall back to recording the promise without the text.
+            console.error('[tutor] commitment (with text) failed, retrying without inline_text:', error.message)
+            const { error: retryErr } = await svc.from('coach_commitments').upsert(
+              withText.map(component_id => ({ session_id: sessionId, component_id })),
+              { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+            )
+            if (retryErr) console.error('[tutor] commitment fallback failed:', retryErr.message)
+          }
         }
         if (withoutText.length) {
           // ignoreDuplicates: a bare DONE must never blank text an earlier turn captured.
