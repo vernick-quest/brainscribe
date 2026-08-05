@@ -1230,7 +1230,21 @@ export default function TutorSession({
 
   // ── Scaffold token parsing ───────────────────────────────────────────────────
 
-  async function parseAndApplyScaffoldTokens(fullText, currentScaffold) {
+  // A turn can emit [NUGGET:hook:…] BEFORE its [SCAFFOLD:…]. The handlers below all require
+  // `sc`, so those tokens used to be skipped silently — the only drop class leaving no
+  // trace at all. Hoisting the SCAFFOLD token to the front of the turn means the tree
+  // exists before anything needs to write into it. Order within the rest is preserved.
+  function hoistScaffoldToken(fullText) {
+    const m = String(fullText || '').match(/\[SCAFFOLD:[^\]]*\]/)
+    if (!m || m.index === 0) return fullText
+    const before = fullText.slice(0, m.index)
+    if (!/\[(NUGGET|DONE|ACTIVE|THESIS|PARA_DONE):/.test(before)) return fullText
+    console.warn('[token-safety-net] tokens arrived before [SCAFFOLD:] — reordering so they are not dropped')
+    return m[0] + fullText.slice(0, m.index) + fullText.slice(m.index + m[0].length)
+  }
+
+  async function parseAndApplyScaffoldTokens(rawFullText, currentScaffold) {
+    const fullText = hoistScaffoldToken(rawFullText)
     // Sections whose prose is already assembled. Their `paragraphs` row is what the Final
     // Draft renders, so a scaffold-only write there would update a checklist the
     // deliverable no longer reads — see resolveComponentWrite.
@@ -1324,6 +1338,15 @@ export default function TutorSession({
           // words outrank our inference about which slot they belong in.
           if (!doneTarget.exact && (item.text || item.nuggetText)) {
             return { ...item, status: 'confirmed', text: item.text || item.nuggetText, writeDropped: false }
+          }
+          // A late recap quoting only part of a confirmed line must not truncate it. Only
+          // guards the case where the new text is contained in the old — a genuine revision
+          // (different words) still wins, which is what revisions are for.
+          if (item.status === 'confirmed' && item.text && inlineText
+              && item.text.length > inlineText.length
+              && item.text.toLowerCase().includes(inlineText.trim().toLowerCase())) {
+            console.warn(`[token-safety-net] [DONE:${componentId}:…] quoted a fragment of the confirmed text — keeping the longer version`)
+            return item
           }
           const { text, dropped } = resolveDoneText(item, inlineText)
           // Still never confirm a component with no content — a blank "✓" renders as
@@ -1868,7 +1891,17 @@ export default function TutorSession({
   // was no longer being persisted. One retry, then a visible notice: silence is the one
   // response this system has repeatedly proven it cannot afford.
   async function patchScaffold(components, extra = {}) {
-    const body = JSON.stringify({ components, ...extra })
+    // Carry the shape too. The PATCH route upserts, so a row recreated after a failed
+    // create POST would otherwise store assignment_type=NULL and total_paragraphs=1 — after
+    // a reload that hides the sources shelf on an essay and tells the coach it is a
+    // single-paragraph piece.
+    const live = scaffoldRef.current ?? scaffold
+    const body = JSON.stringify({
+      components,
+      ...(live?.assignment_type ? { assignmentType: live.assignment_type } : {}),
+      ...(live?.total_paragraphs ? { totalParagraphs: live.total_paragraphs } : {}),
+      ...extra,
+    })
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const res = await fetch(`/api/scaffold/${session.id}`, {
@@ -2078,7 +2111,9 @@ export default function TutorSession({
       } else {
         updated.push({ scribed_text: text, is_thin: isThin, paragraph_index: sectionIndex })
       }
-      return updated
+      // Keep display order by POSITION, not array slot — with a skipped paragraph the two
+      // diverge, and the readers elsewhere already match on paragraph_index.
+      return updated.sort((a, b) => (a.paragraph_index ?? a.position ?? 0) - (b.paragraph_index ?? b.position ?? 0))
     })
 
     // If scaffold-tracked, mark the paragraph complete.
