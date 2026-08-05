@@ -157,12 +157,21 @@ export async function POST(request) {
     // Service role, because a client that could forge or delete a commitment could hide
     // its own loss. Never blocks or fails the turn.
     try {
-      const { components } = parseCommitments(rawText)
+      const { components, inlineText } = parseCommitments(rawText)
       if (components.length) {
         const svc = createServiceClient()
+        // Carry the inline words too (migration 056). Without them a broken promise is
+        // provable but unrecoverable: a client whose read loop died never persisted the
+        // text, and the message row is stored token-stripped. `ignoreDuplicates` is
+        // deliberately NOT used here — a later turn that inlines the text should be able
+        // to fill in what an earlier bare [DONE:] left empty.
         const { error: cErr } = await svc.from('coach_commitments').upsert(
-          components.map(component_id => ({ session_id: sessionId, component_id })),
-          { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+          components.map(component_id => ({
+            session_id: sessionId,
+            component_id,
+            ...(inlineText[component_id] ? { inline_text: inlineText[component_id] } : {}),
+          })),
+          { onConflict: 'session_id,component_id' },
         )
         if (cErr) console.error('[tutor] commitment record failed:', cErr.message)
       }

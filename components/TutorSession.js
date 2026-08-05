@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite } from '@/lib/scaffoldWrite'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -759,6 +759,7 @@ export default function TutorSession({
   // whatever the student did in between. Found 2026-08-04: the manual "Lock it in" flow
   // destroyed the student's typed line deterministically this way, because the coach's
   // acknowledgment turn parsed against the PRE-lock tree and PATCHed it back.
+  const [saveWarning, setSaveWarning] = useState(null)
   const scaffoldRef = useRef(initialScaffold)
   const applyScaffold = (next) => { scaffoldRef.current = next; setScaffold(next) }
   const captionRef                        = useRef(null)
@@ -1257,19 +1258,22 @@ export default function TutorSession({
           sc = { assignment_type: assignType, total_paragraphs: totalParas, current_paragraph_index: 0, components, thesis: null }
           newScaffoldCreated = true
           changed = true
-          await fetch(`/api/scaffold/${session.id}`, {
+          const createRes = await fetch(`/api/scaffold/${session.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignmentType: assignType, totalParagraphs: totalParas, components }),
-          })
+          }).catch(e => ({ ok: false, status: e?.message }))
+          // Not fatal any more — the PATCH route upserts, so a later write recreates the
+          // row. Worth knowing about all the same.
+          if (!createRes?.ok) console.error(`[scaffold] create POST failed (${createRes?.status}) — later writes will recreate the row`)
         }
       }
 
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
         const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
-        const activeTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
-        if (activeTarget) sc = updateComponentItem(sc, paraIdx, activeTarget.id, item =>
+        const activeTarget = resolveComponentWrite(sc, paraIdx, componentId)
+        if (activeTarget) sc = updateComponentItem(sc, activeTarget.paraIdx, activeTarget.id, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
         )
         changed = true
@@ -1288,8 +1292,8 @@ export default function TutorSession({
           const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
-          const nugTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
-          if (nugTarget) sc = updateComponentItem(sc, paraIdx, nugTarget.id, item =>
+          const nugTarget = resolveComponentWrite(sc, paraIdx, componentId)
+          if (nugTarget) sc = updateComponentItem(sc, nugTarget.paraIdx, nugTarget.id, item =>
             item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
           )
           changed = true
@@ -1309,8 +1313,8 @@ export default function TutorSession({
         // Net E: the coach may name a component this scaffold doesn't have (standard prose
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
-        const doneTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
-        if (doneTarget) sc = updateComponentItem(sc, paraIdx, doneTarget.id, item => {
+        const doneTarget = resolveComponentWrite(sc, paraIdx, componentId)
+        if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
           // On an INEXACT match we are guessing which component was meant, so never let
           // the guess overwrite real text — confirm what the student already has. Their
           // words outrank our inference about which slot they belong in.
@@ -1458,14 +1462,9 @@ export default function TutorSession({
     // tree, so without this PATCH the confirmed component never reaches the DB and the
     // reveal/transcript come up blank.
     if (changed && sc) {
-      await fetch(`/api/scaffold/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          components: sc.components,
-          thesis: sc.thesis,
-          current_paragraph_index: sc.current_paragraph_index,
-        }),
+      await patchScaffold(sc.components, {
+        thesis: sc.thesis,
+        current_paragraph_index: sc.current_paragraph_index,
       })
     }
 
@@ -1785,11 +1784,7 @@ export default function TutorSession({
       ...item, status: 'confirmed', text: nuggetText,
     }))
     applyScaffold(newScaffold)
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    await patchScaffold(newScaffold.components)
     const note = {
       role: 'user',
       content: `[Student locked in their ${componentId} from the panel: "${nuggetText}". Acknowledge in one sentence in your persona's voice, emit [DONE:${componentId}], then move to the next component.]`,
@@ -1802,11 +1797,7 @@ export default function TutorSession({
       ...item, status: 'working', nuggetText: null,
     }))
     applyScaffold(newScaffold)
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    await patchScaffold(newScaffold.components)
     const note = {
       role: 'user',
       content: `[Student wants to keep developing their ${componentId} — they passed on locking in that phrase. Continue coaching this component.]`,
@@ -1868,6 +1859,27 @@ export default function TutorSession({
     askTutor([...messages, note], persona, messages)
   }
 
+  // Every scaffold write went out fire-and-forget with no res.ok check, so a transient
+  // failure was indistinguishable from success — the student kept writing into a tree that
+  // was no longer being persisted. One retry, then a visible notice: silence is the one
+  // response this system has repeatedly proven it cannot afford.
+  async function patchScaffold(components, extra = {}) {
+    const body = JSON.stringify({ components, ...extra })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`/api/scaffold/${session.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body,
+        })
+        if (res.ok) return true
+        console.error(`[scaffold] PATCH failed (${res.status}), attempt ${attempt + 1}/2`)
+      } catch (e) {
+        console.error(`[scaffold] PATCH threw, attempt ${attempt + 1}/2:`, e?.message)
+      }
+    }
+    setSaveWarning("We're having trouble saving right now — please keep this tab open.")
+    return false
+  }
+
   // ── Direct component edit ────────────────────────────────────────────────────
 
   async function saveComponentEdit(paraIdx, componentId, newText) {
@@ -1881,11 +1893,7 @@ export default function TutorSession({
     applyScaffold(newScaffold)
     setEditingComponent(null)
 
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    await patchScaffold(newScaffold.components)
 
     const label = COMPONENT_LABELS[componentId] ?? componentId
     const clip = (t) => t.length > 150 ? t.slice(0, 150) + '…' : t
@@ -2077,13 +2085,8 @@ export default function TutorSession({
         ),
       }
       applyScaffold(newScaffold)
-      fetch(`/api/scaffold/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          components: newScaffold.components,
-          current_paragraph_index: newScaffold.current_paragraph_index,
-        }),
+      patchScaffold(newScaffold.components, {
+        current_paragraph_index: newScaffold.current_paragraph_index,
       })
     }
 
@@ -2682,6 +2685,15 @@ export default function TutorSession({
 
         </div>
 
+        {saveWarning && (
+          <div role="alert" className="mx-4 mt-3 shrink-0 rounded-xl px-4 py-2.5 flex items-start gap-2"
+            style={{ backgroundColor: 'var(--status-warning-bg, #FFFBEB)', border: '1px solid var(--status-warning, #D97706)' }}>
+            <p className="text-xs leading-snug" style={{ color: 'var(--status-warning, #D97706)' }}>
+              {saveWarning}
+            </p>
+          </div>
+        )}
+
         {/* ── Essay panel ── */}
         <div className={`flex-1 flex-col min-h-0 border-t-2 md:border-t-0 md:border-l-2 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
           style={{ backgroundColor: 'var(--bg-page)', borderColor: 'var(--border-accent)' }}>
@@ -2934,8 +2946,17 @@ export default function TutorSession({
                                     </span>
                                     {/* Revise = an orange filled button (white text) so it reads
                                         as a tappable control, not a label (Robert). Orange = action
-                                        per the design system. */}
-                                    {isConfirmed && itemText && !isEditingThis && (
+                                        per the design system.
+                                        HIDDEN once the paragraph is assembled: saveComponentEdit
+                                        writes the scaffold ONLY, and from that moment the paragraphs
+                                        row is what the transcript, Copy essay, teacher view and Final
+                                        Draft all render. A revision made here would sit in the
+                                        checklist under unchanged prose and never reach the
+                                        deliverable — invisible to the orphan check too, since an
+                                        edit sharing >40% of its words doesn't read as orphaned. The
+                                        prose editor below (saveDirectEdit) is the right tool then,
+                                        and it does write /api/paragraphs. */}
+                                    {isConfirmed && itemText && !isEditingThis && !assembledPara && (
                                       <button
                                         onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
                                         title="Revise this"
