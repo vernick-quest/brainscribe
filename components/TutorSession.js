@@ -1797,7 +1797,7 @@ export default function TutorSession({
   }
 
   async function skipNugget(paraIdx, componentId) {
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
+    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
       ...item, status: 'working', nuggetText: null,
     }))
     applyScaffold(newScaffold)
@@ -2081,13 +2081,18 @@ export default function TutorSession({
       return updated
     })
 
-    // If scaffold-tracked, mark the paragraph complete
-    const totalParas = scaffold?.total_paragraphs ?? 1
-    if (scaffold) {
+    // If scaffold-tracked, mark the paragraph complete.
+    // LIVE tree, not the closure: this advances the cursor and then calls askTutor, whose
+    // parse PATCHes the whole tree. Building from a stale closure here is how the cursor
+    // regressed — and a regressed cursor makes the NEXT dictation upsert over the
+    // paragraph just saved, because /api/paragraphs is keyed on (session_id, position).
+    const live = scaffoldRef.current ?? scaffold
+    const totalParas = live?.total_paragraphs ?? 1
+    if (live) {
       const newScaffold = {
-        ...scaffold,
-        current_paragraph_index: Math.min(sectionIndex + 1, scaffold.components.length),
-        components: scaffold.components.map((p, i) =>
+        ...live,
+        current_paragraph_index: Math.min(sectionIndex + 1, live.components.length),
+        components: live.components.map((p, i) =>
           i === sectionIndex ? { ...p, status: 'complete' } : p
         ),
       }
