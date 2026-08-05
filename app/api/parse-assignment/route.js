@@ -89,7 +89,13 @@ Capture everything the student needs to know about WHAT to write and HOW it must
 - required elements (thesis, evidence, specific sections, syllable counts, rhyme scheme, etc.)
 If a rubric or checklist describes structural or content requirements, INCLUDE those — that's often where the format is specified.
 
-Leave out only pure administrative noise that doesn't change what the student writes: teacher/student names, class headers, due dates, point values, and grading-only criteria (e.g. "Grammar — 10 pts").
+LAYOUT: worksheets are often TABLES. Read every cell, including the right-hand column — fields sitting beside each other on the same row are just as important as the ones below. Work through the grid cell by cell rather than reading straight down the page, or you will silently lose half of it.
+
+EVERY FIELD THE STUDENT MUST FILL IN IS PART OF THE ASSIGNMENT — include it even when it looks administrative:
+- "Author's Name:", "Book Title:", "Genre:" are things the STUDENT supplies. They are not the class header.
+- A rating scale the student marks ("give it 1-5 stars", "circle one") is a question they must answer, not a grading rubric.
+- Any blank, line, or box waiting to be completed.
+Leave out only what the student never has to write: the teacher's own name, class/period headers, due dates, the points an item is WORTH, and grading-only criteria (e.g. "Grammar — 10 pts"). If you cannot tell whether a field is for the student or the teacher, KEEP IT — a coach can skip something extra, but it cannot ask about a field it never saw.
 
 If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
         },

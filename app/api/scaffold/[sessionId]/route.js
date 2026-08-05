@@ -133,6 +133,12 @@ export async function PATCH(request, { params }) {
   // session — and every caller ignores the response, so the student's whole scaffold lived
   // only in React state until the tab closed. Recreating the row is strictly better than
   // failing every write for the life of the session.
+  // Shape columns, when the client sent them — only used by the insert branch of the
+  // upsert (a row recreated after a failed create POST). On conflict they simply rewrite
+  // the same values.
+  if (body.assignmentType) update.assignment_type = body.assignmentType
+  if (Number.isInteger(body.totalParagraphs)) update.total_paragraphs = body.totalParagraphs
+
   const { data, error } = await supabase
     .from('paragraph_scaffolds')
     .upsert({ session_id: sessionId, ...update }, { onConflict: 'session_id' })
