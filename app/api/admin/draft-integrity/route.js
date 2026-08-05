@@ -48,13 +48,13 @@ export async function GET(request) {
     // The student's own verdict. This outranks every heuristic below: a student saying
     // their work is missing IS the ground truth, and it catches losses no automated
     // check can see.
-    service.from('draft_feedback').select('session_id, matches, note').in('session_id', ids),
+    service.from('draft_feedback').select('session_id, matches, note, created_at').in('session_id', ids),
     // What the coach PROMISED it saved, recorded server-side from the raw stream. The
     // only signal here that proves loss rather than inferring it.
     service.from('coach_commitments').select('session_id, component_id').in('session_id', ids),
     // Sessions already repaired — their old scaffold slots stay empty by design, so a
     // restore must not manufacture permanent broken promises.
-    service.from('draft_restorations').select('session_id').in('session_id', ids),
+    service.from('draft_restorations').select('session_id, restored_at').in('session_id', ids),
   ])
   const feedbackBySession = new Map((allFeedback ?? []).map(f => [f.session_id, f]))
   const commitmentsBySession = new Map()
@@ -63,6 +63,7 @@ export async function GET(request) {
     commitmentsBySession.get(c.session_id).push(c)
   }
   const restoredSessions = new Set((allRestorations ?? []).map(r => r.session_id))
+  const restoredAt = new Map((allRestorations ?? []).map(r => [r.session_id, r.restored_at]))
 
   const parasBySession = new Map()
   for (const p of allParas ?? []) {
@@ -96,7 +97,13 @@ export async function GET(request) {
     // A student saying "something's missing" is ground truth, not a heuristic — it is
     // always an alert, even when every automated signal looks clean.
     const feedback = feedbackBySession.get(s.id)
-    const studentReported = feedback?.matches === false
+    // A student report is ground truth — but it describes a moment, not a permanent state.
+    // Once the draft has been REPAIRED after they reported it, the report has been answered
+    // and must stop alerting, or the session it flagged can never leave the screen. Baron's
+    // Gratitude Letter sat there fixed-but-flagged for exactly this reason.
+    const repairedAt = restoredAt.get(s.id)
+    const reportAddressed = Boolean(repairedAt && feedback?.created_at && new Date(repairedAt) >= new Date(feedback.created_at))
+    const studentReported = feedback?.matches === false && !reportAddressed
     if (result.ok && !studentReported) continue
 
     if (studentReported) {
