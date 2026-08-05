@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, updateComponentItem, resolveDoneText } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget } from '@/lib/scaffoldWrite'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -1260,7 +1260,8 @@ export default function TutorSession({
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
         const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
-        sc = updateComponentItem(sc, paraIdx, componentId, item =>
+        const activeTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
+        if (activeTarget) sc = updateComponentItem(sc, paraIdx, activeTarget.id, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
         )
         changed = true
@@ -1274,7 +1275,8 @@ export default function TutorSession({
           const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
-          sc = updateComponentItem(sc, paraIdx, componentId, item =>
+          const nugTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
+          if (nugTarget) sc = updateComponentItem(sc, paraIdx, nugTarget.id, item =>
             item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
           )
           changed = true
@@ -1290,7 +1292,17 @@ export default function TutorSession({
         const componentId = colonIdx === -1 ? payload : payload.slice(0, colonIdx)
         const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
         const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
-        sc = updateComponentItem(sc, paraIdx, componentId, item => {
+        // Net E: the coach may name a component this scaffold doesn't have (standard prose
+        // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
+        // 151 words of Baron's Gratitude Letter on 2026-08-04.
+        const doneTarget = resolveComponentTarget(sc.components?.[paraIdx], componentId)
+        if (doneTarget) sc = updateComponentItem(sc, paraIdx, doneTarget.id, item => {
+          // On an INEXACT match we are guessing which component was meant, so never let
+          // the guess overwrite real text — confirm what the student already has. Their
+          // words outrank our inference about which slot they belong in.
+          if (!doneTarget.exact && (item.text || item.nuggetText)) {
+            return { ...item, status: 'confirmed', text: item.text || item.nuggetText, writeDropped: false }
+          }
           const { text, dropped } = resolveDoneText(item, inlineText)
           // Still never confirm a component with no content — a blank "✓" renders as
           // nothing. But no longer walk away quietly: record the drop on the item so the
