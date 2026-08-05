@@ -753,6 +753,14 @@ export default function TutorSession({
   )
   const [paragraphs, setParagraphs]       = useState(initialParagraphs)
   const [scaffold, setScaffold]           = useState(initialScaffold)
+  // LIVE mirror of `scaffold`. The token parse and the completion snapshot both run
+  // seconds after the render that captured them, and the server PATCH is a whole-tree
+  // overwrite with no merge — so reading the closure means writing a stale tree over
+  // whatever the student did in between. Found 2026-08-04: the manual "Lock it in" flow
+  // destroyed the student's typed line deterministically this way, because the coach's
+  // acknowledgment turn parsed against the PRE-lock tree and PATCHed it back.
+  const scaffoldRef = useRef(initialScaffold)
+  const applyScaffold = (next) => { scaffoldRef.current = next; setScaffold(next) }
   const captionRef                        = useRef(null)
   // True only on the FIRST coach turn of a genuinely resumed session (set when the
   // resume greeting fires); sent to /api/tutor so the coach's dynamic-tail RESUMING
@@ -1234,7 +1242,7 @@ export default function TutorSession({
 
       // A scaffold is built once. Ignore any re-emitted SCAFFOLD once one exists,
       // so a repeated token can't wipe the student's already-locked components.
-      if (type === 'SCAFFOLD' && !currentScaffold?.components?.length) {
+      if (type === 'SCAFFOLD' && !sc?.components?.length) {
         const parts = payload.split(':')
         const assignType = parts[0]
         const count = parseInt(parts[1])
@@ -1272,6 +1280,11 @@ export default function TutorSession({
         if (colonIdx !== -1) {
           const componentId = payload.slice(0, colonIdx)
           const nuggetText = payload.slice(colonIdx + 1)
+          // A blank payload must never erase words we already captured — resolveDoneText
+          // refuses to save blanks for the same reason.
+          if (!nuggetText.trim()) {
+            console.error(`[scaffold] ignored empty [NUGGET:${componentId}:] — keeping the existing candidate text`)
+          } else {
           const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
@@ -1280,6 +1293,7 @@ export default function TutorSession({
             item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
           )
           changed = true
+          }
         }
       }
 
@@ -1529,8 +1543,10 @@ export default function TutorSession({
       }
 
       // Parse scaffold tokens and update scaffold state
-      const newScaffold = await parseAndApplyScaffoldTokens(full, scaffold)
-      if (newScaffold !== scaffold) setScaffold(newScaffold)
+      // Parse against the LIVE tree, never the closure — see scaffoldRef above.
+      const live = scaffoldRef.current ?? scaffold
+      const newScaffold = await parseAndApplyScaffoldTokens(full, live)
+      if (newScaffold !== live) applyScaffold(newScaffold)
 
       if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
 
@@ -1725,7 +1741,9 @@ export default function TutorSession({
     // must not depend on an earlier fire-and-forget PATCH having landed. Prefer the
     // freshly-parsed scaffold passed by the caller; fall back to state. (setScaffold
     // is async, so the `scaffold` closure may still be one turn stale here.)
-    const snapshot = finalScaffold ?? scaffold
+    // Ignore anything that isn't a scaffold: this is also used as an onClick handler, and
+    // React passes a SyntheticEvent, which is truthy and defeated the ?? fallback.
+    const snapshot = finalScaffold?.components ? finalScaffold : (scaffoldRef.current ?? scaffold)
     try {
       const res = await fetch(completeEndpoint ?? `/api/sessions/${session.id}/complete`, {
         method: 'PATCH',
@@ -1766,7 +1784,7 @@ export default function TutorSession({
     const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
       ...item, status: 'confirmed', text: nuggetText,
     }))
-    setScaffold(newScaffold)
+    applyScaffold(newScaffold)
     await fetch(`/api/scaffold/${session.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1783,7 +1801,7 @@ export default function TutorSession({
     const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
       ...item, status: 'working', nuggetText: null,
     }))
-    setScaffold(newScaffold)
+    applyScaffold(newScaffold)
     await fetch(`/api/scaffold/${session.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1860,7 +1878,7 @@ export default function TutorSession({
     const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, i => ({
       ...i, text: newText, nuggetText: newText, status: 'confirmed',
     }))
-    setScaffold(newScaffold)
+    applyScaffold(newScaffold)
     setEditingComponent(null)
 
     await fetch(`/api/scaffold/${session.id}`, {
@@ -2058,7 +2076,7 @@ export default function TutorSession({
           i === sectionIndex ? { ...p, status: 'complete' } : p
         ),
       }
-      setScaffold(newScaffold)
+      applyScaffold(newScaffold)
       fetch(`/api/scaffold/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -3052,7 +3070,7 @@ export default function TutorSession({
                           {isCurrentPara && allConfirmed && !onboarding && (
                             para.type === 'custom' ? (
                               <button
-                                onClick={markSessionComplete}
+                                onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
                                 disabled={phase !== 'listening' || sessionComplete}
                                 className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
                                 style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
