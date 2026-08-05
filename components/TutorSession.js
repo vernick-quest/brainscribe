@@ -1231,6 +1231,10 @@ export default function TutorSession({
   // ── Scaffold token parsing ───────────────────────────────────────────────────
 
   async function parseAndApplyScaffoldTokens(fullText, currentScaffold) {
+    // Sections whose prose is already assembled. Their `paragraphs` row is what the Final
+    // Draft renders, so a scaffold-only write there would update a checklist the
+    // deliverable no longer reads — see resolveComponentWrite.
+    const assembledIndexes = (paragraphs ?? []).map(p => p.paragraph_index ?? p.position)
     let sc = currentScaffold ? JSON.parse(JSON.stringify(currentScaffold)) : null
     let changed = false
     let newScaffoldCreated = false
@@ -1272,7 +1276,7 @@ export default function TutorSession({
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
         const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
-        const activeTarget = resolveComponentWrite(sc, paraIdx, componentId)
+        const activeTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
         if (activeTarget) sc = updateComponentItem(sc, activeTarget.paraIdx, activeTarget.id, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
         )
@@ -1292,7 +1296,7 @@ export default function TutorSession({
           const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
-          const nugTarget = resolveComponentWrite(sc, paraIdx, componentId)
+          const nugTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
           if (nugTarget) sc = updateComponentItem(sc, nugTarget.paraIdx, nugTarget.id, item =>
             item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
           )
@@ -1313,7 +1317,7 @@ export default function TutorSession({
         // Net E: the coach may name a component this scaffold doesn't have (standard prose
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
-        const doneTarget = resolveComponentWrite(sc, paraIdx, componentId)
+        const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
         if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
           // On an INEXACT match we are guessing which component was meant, so never let
           // the guess overwrite real text — confirm what the student already has. Their
@@ -1489,7 +1493,7 @@ export default function TutorSession({
           assignment: session.assignment_text,
           messages: history,
           persona: activePersona,
-          scaffold,
+          scaffold: scaffoldRef.current ?? scaffold,
           resume: wasResume,
         }),
       })
@@ -1780,7 +1784,7 @@ export default function TutorSession({
   // ── Nugget panel actions ─────────────────────────────────────────────────────
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
+    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
       ...item, status: 'confirmed', text: nuggetText,
     }))
     applyScaffold(newScaffold)
@@ -1870,11 +1874,13 @@ export default function TutorSession({
         const res = await fetch(`/api/scaffold/${session.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body,
         })
-        if (res.ok) return true
+        if (res.ok) { setSaveWarning(null); return true }
         console.error(`[scaffold] PATCH failed (${res.status}), attempt ${attempt + 1}/2`)
       } catch (e) {
         console.error(`[scaffold] PATCH threw, attempt ${attempt + 1}/2:`, e?.message)
       }
+      // A moment between attempts — a retry fired instantly rides out the same blip.
+      if (attempt === 0) await new Promise(r => setTimeout(r, 600))
     }
     setSaveWarning("We're having trouble saving right now — please keep this tab open.")
     return false
@@ -1883,11 +1889,12 @@ export default function TutorSession({
   // ── Direct component edit ────────────────────────────────────────────────────
 
   async function saveComponentEdit(paraIdx, componentId, newText) {
-    const item = scaffold?.components[paraIdx]?.items?.find(i => i.id === componentId)
+    const live = scaffoldRef.current ?? scaffold
+    const item = live?.components[paraIdx]?.items?.find(i => i.id === componentId)
     const oldText = item?.text || item?.nuggetText || ''
     if (newText === oldText) { setEditingComponent(null); return }
 
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, i => ({
+    const newScaffold = updateComponentItem(live, paraIdx, componentId, i => ({
       ...i, text: newText, nuggetText: newText, status: 'confirmed',
     }))
     applyScaffold(newScaffold)
@@ -2902,8 +2909,14 @@ export default function TutorSession({
                               <button
                                 onClick={() => { setEditDraft(assembledPara.scribed_text); setEditingParaIdx(paraIdx) }}
                                 title="Edit paragraph"
-                                className="absolute top-0 right-0 opacity-0 group-hover/para:opacity-100 transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
-                                style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                /* Always visible. Component-level Revise is hidden once a
+                                   paragraph is assembled, so this is the ONLY way left to
+                                   fix a line — and it used to be an opacity-0 hover-reveal,
+                                   which does not exist on touch. On an iPad that left a
+                                   child looking at a mistake with no visible way to correct
+                                   it. Undiscoverable is worse than disabled. */
+                                className="absolute top-0 right-0 transition text-[11px] font-semibold rounded-md px-2"
+                                style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)', minHeight: 44 }}
                               >
                                 Edit
                               </button>
