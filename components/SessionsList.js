@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { chipState } from '@/lib/requirements'
+import { formatLastModified } from '@/lib/dates'
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -21,17 +22,6 @@ function ClientDate({ dateStr }) {
   const [label, setLabel] = useState('')
   useEffect(() => { setLabel(formatDate(dateStr)) }, [dateStr])
   return <span suppressHydrationWarning>{label}</span>
-}
-
-// "Last modified" label: WEEKDAY + time within the last week (e.g. "WED, 9:00 pm"),
-// switching to the actual date once it's older than a week (e.g. "Jul 10, 9:00 pm").
-function formatLastModified(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const diffDays = Math.floor((new Date() - date) / 86400000)
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
-  if (diffDays < 7) return `${date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}, ${time}`
-  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`
 }
 
 // Client-computed (locale/timezone dependent) so it can't cause a hydration mismatch.
