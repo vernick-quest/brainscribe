@@ -3266,9 +3266,21 @@ export default function TutorSession({
                     <>
                       <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
                       <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
-                      <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                        See your opening line →
-                      </a>
+                      {/* TWO doors, not one. A student finished the warm-up, found no route
+                          onward, and simply carried on typing here — writing a real Civil
+                          War paragraph into a practice session whose scaffold holds ONE
+                          line, so none of it could be saved. The warm-up must say plainly
+                          where real homework goes. */}
+                      <div className="flex flex-col gap-2 mt-3">
+                        <a href="/assignment/new"
+                          className="inline-flex items-center justify-center gap-1 rounded-full px-4 text-xs font-bold transition"
+                          style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', minHeight: 44 }}>
+                          Got real homework? Start an assignment →
+                        </a>
+                        <a href="/onboarding/complete" className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                          See your opening line first
+                        </a>
+                      </div>
                     </>
                   ) : (
                     <>
