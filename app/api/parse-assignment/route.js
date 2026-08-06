@@ -97,6 +97,18 @@ EVERY FIELD THE STUDENT MUST FILL IN IS PART OF THE ASSIGNMENT — include it ev
 - Any blank, line, or box waiting to be completed.
 Leave out only what the student never has to write: the teacher's own name, class/period headers, due dates, the points an item is WORTH, and grading-only criteria (e.g. "Grammar — 10 pts"). If you cannot tell whether a field is for the student or the teacher, KEEP IT — a coach can skip something extra, but it cannot ask about a field it never saw.
 
+WORK THE STUDENT HAS ALREADY DONE — this is separate from the assignment and you must NOT throw it away. A student often uploads a worksheet they have partly filled in: handwriting in the blanks, typed answers under the printed prompts, a rating circled. Capture it, because a coach that cannot see it will ask them to redo work they have already finished.
+
+Transcribe their existing answers VERBATIM — their words, their spelling, their phrasing. Never tidy, complete, or improve them. If a field is blank, say nothing about it rather than inventing an answer.
+
+Put anything already written at the END, after everything else, under exactly this heading and nothing else:
+
+ALREADY WRITTEN BY THE STUDENT:
+<field label>: <their exact words>
+<field label>: <their exact words>
+
+Omit that whole section — heading included — if the page is blank. Everything above the heading is the assignment; everything below it is the student's own draft, and the two must never be mixed.
+
 If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
         },
       ],
