@@ -19,7 +19,7 @@ import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
-import { newSessionGreeting } from '@/lib/greeting'
+import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
@@ -199,8 +199,10 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
 
   if (!hasScaffold) {
     // Single source of truth (lib/greeting.js) — same text the server persists as
-    // the first assistant message on session creation, so display can't drift.
-    return newSessionGreeting(persona, name)
+    // the first assistant message on session creation, so display can't drift. That
+    // includes the existing-work variant: pass the same flag the server passed, or the
+    // fallback silently reverts to "have you written anything?" on work we can see.
+    return newSessionGreeting(persona, name, { existingWork: hasExistingWork(session?.assignment_text) })
   }
 
   if (allDone) {

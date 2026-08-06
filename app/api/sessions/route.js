@@ -5,7 +5,7 @@ import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
-import { newSessionGreeting } from '@/lib/greeting'
+import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 
 const anthropic = new Anthropic()
 
@@ -223,7 +223,9 @@ export async function POST(request) {
     const { error: greetErr } = await supabase.from('messages').insert({
       session_id: data.id,
       role: 'assistant',
-      content: newSessionGreeting(persona, greetName),
+      // Tell the greeting whether the upload already carried their answers — otherwise the
+      // very first thing we say is "have you written anything?" about work we can see.
+      content: newSessionGreeting(persona, greetName, { existingWork: hasExistingWork(assignmentText) }),
     })
     if (greetErr) console.error('[sessions POST] greeting insert failed:', greetErr.message)
 
