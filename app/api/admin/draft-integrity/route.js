@@ -33,7 +33,7 @@ export async function GET(request) {
 
   const { data: sessions, error } = await service
     .from('sessions')
-    .select('id, student_id, status, created_at, completed_at, assignment_text, requirements, profiles(full_name)')
+    .select('id, student_id, status, is_onboarding, created_at, completed_at, assignment_text, requirements, profiles(full_name)')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -42,7 +42,7 @@ export async function GET(request) {
   const ids = sessions.map(s => s.id)
 
   // Two bulk reads rather than 2N per-session queries — this runs on an admin page load.
-  const [{ data: allParas }, { data: allScaffolds }, { data: allFeedback }, { data: allCommitments }, { data: allRestorations }] = await Promise.all([
+  const [{ data: allParas }, { data: allScaffolds }, { data: allFeedback }, { data: allCommitments }, { data: allRestorations }, { data: allMessages }] = await Promise.all([
     service.from('paragraphs').select('session_id, position, scribed_text').in('session_id', ids).order('position'),
     service.from('paragraph_scaffolds').select('session_id, components, current_paragraph_index').in('session_id', ids),
     // The student's own verdict. This outranks every heuristic below: a student saying
@@ -55,6 +55,8 @@ export async function GET(request) {
     // Sessions already repaired — their old scaffold slots stay empty by design, so a
     // restore must not manufacture permanent broken promises.
     service.from('draft_restorations').select('session_id, restored_at').in('session_id', ids),
+    // Message counts, to tell an abandoned session from one that genuinely lost its shape.
+    service.from('messages').select('session_id').in('session_id', ids),
   ])
   const feedbackBySession = new Map((allFeedback ?? []).map(f => [f.session_id, f]))
   const commitmentsBySession = new Map()
@@ -72,11 +74,53 @@ export async function GET(request) {
   }
   const scaffoldBySession = new Map((allScaffolds ?? []).map(s => [s.session_id, s]))
 
+  // A couple of turns is someone looking around, not a session that lost its structure.
+  const MIN_MESSAGES_FOR_SCAFFOLD = 8
+  const messageCounts = new Map()
+  for (const m of allMessages ?? []) {
+    messageCounts.set(m.session_id, (messageCounts.get(m.session_id) ?? 0) + 1)
+  }
+
   const flagged = []
   for (const s of sessions) {
     const scaffold = scaffoldBySession.get(s.id)
-    // No scaffold means no structured draft to compare against — nothing to say.
-    if (!scaffold) continue
+
+    // A session with NO scaffold used to be skipped in silence — "nothing to compare
+    // against". That is exactly backwards: every signal below reads
+    // paragraph_scaffolds.components, so a session without one is INVISIBLE to all of them.
+    // 9 of 27 completed sessions were in that state, including a haiku with 69 messages and
+    // a narrative with 56. Invisible is the worst thing a safety net can be.
+    //
+    // The onboarding warm-up legitimately has no scaffold (hook-only), and a session
+    // abandoned after a couple of turns never got far enough to have one — so neither is a
+    // fault. A LONG completed session with no structure is.
+    if (!scaffold) {
+      const msgCount = messageCounts.get(s.id) ?? 0
+      if (s.status === 'complete' && !s.is_onboarding && msgCount >= MIN_MESSAGES_FOR_SCAFFOLD) {
+        const paras = parasBySession.get(s.id) ?? []
+        flagged.push({
+          sessionId: s.id,
+          studentName: s.profiles?.full_name ?? null,
+          studentId: s.student_id,
+          status: s.status,
+          createdAt: s.created_at,
+          completedAt: s.completed_at ?? null,
+          assignmentPreview: String(s.assignment_text || '').replace(/\s+/g, ' ').slice(0, 90),
+          severity: 'warn',
+          reasons: [
+            `finished after ${msgCount} messages with NO scaffold at all — nothing here is ` +
+            `structured, so every other integrity check is blind to this session`,
+          ],
+          finalWords: paras.reduce((n, p) => n + String(p.scribed_text || '').trim().split(/\s+/).filter(Boolean).length, 0),
+          workingWords: 0, orphanedWords: 0,
+          orphanedComponents: [], unfilledComponents: [], droppedComponents: [],
+          brokenCommitments: [], renderedFromParagraphs: paras.length > 0,
+          cursorOutOfRange: false, targetWords: null, shortfallPct: null,
+          noScaffold: true,
+        })
+      }
+      continue
+    }
 
     const target = s.requirements?.targets?.find(t => t.type === 'words')
     const { broken: brokenCommitments } = reconcileCommitments(
