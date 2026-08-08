@@ -1177,15 +1177,17 @@ function UsageTab() {
               </div>
             ))}
 
-            {/* Deleted / unattributed — orphaned spend (user_id nulled on delete,
-                migration 013). Surfaced so the per-user rows reconcile with the total. */}
+            {/* Deleted / unattributed — real product spend (category='user') whose
+                user_id was nulled on delete (migration 013). Testing/sim spend also has
+                a null user but is EXCLUDED here (it lives in the Cost-by-Bucket card);
+                the route scopes this to category='user'. Reconciles the per-user rows. */}
             {unattributed && (
               <div className="flex items-center gap-3 text-xs py-1.5"
                 style={{ borderTop: '1px dashed var(--border-default)' }}>
                 <span className="flex-1 min-w-0">
                   <span className="font-semibold block truncate italic" style={{ color: 'var(--text-muted)' }}>Deleted / unattributed</span>
                   <span className="block truncate" style={{ color: 'var(--text-subtle)' }}>
-                    {unattributed.rowCount} orphaned row{unattributed.rowCount !== 1 ? 's' : ''} — deleted accounts, no PII
+                    {unattributed.rowCount} orphaned row{unattributed.rowCount !== 1 ? 's' : ''} — deleted/unattributed users, no PII (testing excluded)
                   </span>
                 </span>
                 <span className="w-20 text-right" style={{ color: 'var(--text-muted)' }}>${unattributed.anthropicCost.toFixed(4)}</span>
