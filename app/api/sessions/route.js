@@ -108,6 +108,11 @@ ${assignmentText}`,
       return null
     })
     .filter(Boolean)
+    // A length ceiling is stated in words OR characters, never both. The prompt says
+    // so, but a prompt is not a guarantee: two length targets would put two
+    // contradictory chips on the card and hand the coach two different recommended
+    // ranges in one block. Words win — that is what we actually count.
+    .filter((r, _i, all) => r.type !== 'chars' || !all.some(o => o.type === 'words'))
 
   return { title, summary, outline, requirements }
 }

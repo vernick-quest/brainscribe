@@ -50,7 +50,12 @@ export default async function TranscriptPage({ params, searchParams }) {
 
   const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }, { data: restoration }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
-    db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
+    // assignment_type is NOT optional here: it selects the recommended-target band
+    // (a personal statement aims 90–95% of the ceiling, an essay 80–90%). Selecting
+    // only `components` made `scaffold.assignment_type` undefined, so the `?? 'default'`
+    // below silently swallowed it and this page showed a DIFFERENT target range than
+    // the live session and the coach — a silent no-op, caught by red-team not by a test.
+    db.from('paragraph_scaffolds').select('components, assignment_type').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
     db.from('rubrics').select('rubric_text, feedback_text').eq('session_id', id).maybeSingle(),
     db.from('sources').select('*').eq('session_id', id).order('position'),
