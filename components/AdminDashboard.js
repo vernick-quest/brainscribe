@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar'
 import Icon from '@/components/Icon'
 import Avatar from '@/components/Avatar'
 import { PersonaAvatar } from '@/lib/personas'
+import { DEMO_EMAILS } from '@/lib/demoAccounts'
 
 // Line-art icons matching the login landing page (Feather/Lucide style). The
 // Students/Parents/Teachers glyphs are the same paths used there, so the admin
@@ -303,12 +304,6 @@ function AgeBadge({ ageBracket, consentGiven }) {
 // through the real rendering code. The student is 13+ on purpose — an under-13
 // demo account would be avatar-suppressed AND auto-deleted by the 7-day COPPA
 // cron, which would defeat a "repeatable" persona.
-const DEMO_EMAILS = [
-  'demo-student@brainscribe.io',
-  'demo-parent@brainscribe.io',
-  'demo-teacher@brainscribe.io',
-]
-
 function DemoDataControl({ seeded }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
