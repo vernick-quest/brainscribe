@@ -2651,3 +2651,66 @@ Replaces the watcher branch of the FTUE. Students are unaffected — verify that
 - [ ] Mobile width: no horizontal scroll on any of the 4 screens; 44px tap targets.
 - [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
       they took the practice offer — `practiced` is derived from sessions, not the flag.
+
+## 2026-08-08 — Draft-integrity triage: demo exclusion + standing admin verdicts (focus/admin)
+
+**Files:** `lib/demoAccounts.js` (new), `lib/draftIntegrityReview.js` + `.test.js` (new),
+`app/api/admin/draft-integrity/route.js`, `components/DraftIntegrityAlert.js`,
+`app/api/admin/seed-demo/route.js` + `components/AdminDashboard.js` (import the shared
+DEMO_EMAILS), `supabase/migrations/057_draft_integrity_reviews.sql` (⚠️ **NOT APPLIED** —
+number must be confirmed with focus/infra; coaching-session v2 also wants 057).
+
+### Part 1 — demo accounts excluded at the source
+Two of the five standing alerts were seeded "Demo Student — Mia R." sessions. The route now
+resolves the demo profile ids from the seeder-owned `DEMO_EMAILS` (durable identity, never the
+display name — a name can be renamed, a login can't) and excludes them **in the query**, so demo
+rows don't consume the `limit` window either. A null/absent profile is treated as REAL and kept —
+this filter must never err toward dropping a genuine student.
+- **Proved against live data:** sessions checked **48 → 46**, exactly **2 dropped**, both
+  `demo-student@brainscribe.io`; **0 non-demo sessions dropped**.
+
+### Part 2 — standing admin verdicts (resolved / not_relevant / watching + note)
+New `draft_integrity_reviews` (PK `session_id` → one standing verdict, cascade; RLS enabled with
+**no client policies**, service-role only — mirrors `access_codes`/045). **Deliberately NOT
+`draft_feedback`**: that is the STUDENT's own report and an admin verdict must never overwrite a
+child's answer (verified: this change only ever READS draft_feedback).
+- `resolved`/`not_relevant` drop out of the default view; `watching` always shows; a
+  "Show resolved (N)" toggle brings them back.
+- **Stale-resolved guard:** each verdict stores a `signal` fingerprint of the alert's determining
+  state at review time. Every recheck recomputes it; a mismatch resurfaces the alert and badges it
+  **STALE**. A resolved verdict can never outlive the state it answered.
+- PATCH asserts on the **returned row's values** (`session_id`/`status`), never the status code —
+  a PostgREST write that matched nothing returns success with no row.
+- Client-supplied `signal` was attacked specifically: it **cannot** pin an alert hidden —
+  suppression requires stored == current at every future GET, so a wrong/stale signal resurfaces.
+
+### Verification
+- `npm run test:run` **260/260 green** (15 files; 17 new assertions in `draftIntegrityReview.test.js`).
+- `npm run build` green.
+- **Reappearance proved** (route-shaped fixtures): resolved + unchanged → hidden; student reports
+  missing work → **resurfaces, marked stale**; draft repaired / scaffold appears → **resurfaces**.
+
+### Adversarial review (Fable, 2026-08-08) — 3 blocking findings, all fixed
+Run because a bug here HIDES data-loss alerts — the same invisible class as the 2026-07-20 loss.
+1. **HIGH — scaffold-less sessions could be hidden forever.** The `noScaffold` branch `continue`d
+   BEFORE the student-report lookup and built a flag with no `studentReportedMissing` key, so the
+   fingerprint was identical before and after a student reported missing work → a `resolved`
+   verdict kept suppressing it. Worst case on the exact population the backstop exists for.
+   **Fixed:** student report resolved ONCE above the scaffold branch; the noScaffold flag now
+   carries the report and escalates to `alert`. Regression tests use the route's REAL shapes
+   (the original fixtures all carried every field, which is why they missed it).
+2. **MED-HIGH — a "looks fine" could shadow "work is missing."** `draft_feedback` allows two rows
+   per session (`unique(session_id, source)`, migration 053) but the route mapped by `session_id`
+   alone, so an arbitrary row won. **Fixed:** a `matches=false` report always wins.
+3. **MED-HIGH — re-reports were treated as already-addressed forever.** `reportAddressed` compared
+   the repair against `created_at`, which a re-report (UPSERT) never moves. **Fixed:** compare
+   against `updated_at`.
+Also fixed: bulk reads swallowed errors and could render a confident "no open alerts" from a
+partial read (now fails loudly); demo rows consuming the limit window; counts lighting the red
+banner on a fully-triaged board with `showResolved=1`; "Saving…" stuck after a `watching` save.
+
+### Manual check (admin, after 057 is applied + deployed)
+- [ ] Panel shows 3 alerts (not 5) — no Demo Student rows.
+- [ ] Mark one `resolved` with a note → it leaves the list; "Show resolved (1)" brings it back.
+- [ ] `watching` stays visible; note + verdict persist across reload.
+- [ ] A resolved session whose draft is later repaired/re-reported reappears badged STALE.

@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+// Single source of truth — the draft-integrity alert filters on these same emails so
+// seeded sessions are never flagged as real student work.
+import { DEMO_EMAILS } from '@/lib/demoAccounts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/seed-demo   — create/refresh a demo parent + teacher + student
@@ -20,12 +23,6 @@ import { randomUUID } from 'crypto'
 // (a) get its avatar suppressed and (b) be eaten by the 7-day auto-deletion cron,
 // which would make a "repeatable" persona anything but. Keep it 13plus.
 // ─────────────────────────────────────────────────────────────────────────────
-
-const DEMO_EMAILS = [
-  'demo-student@brainscribe.io',
-  'demo-parent@brainscribe.io',
-  'demo-teacher@brainscribe.io',
-]
 
 const STUDENT = { email: 'demo-student@brainscribe.io', full_name: 'Demo Student — Mia R.', role: 'student' }
 const PARENT  = { email: 'demo-parent@brainscribe.io',  full_name: 'Demo Parent — Rosa R.',  role: 'parent'  }
