@@ -1,7 +1,7 @@
--- 057 — Draft-integrity admin triage
--- ⚠️ CONFIRM THIS NUMBER WITH focus/infra BEFORE APPLYING: focus/coaching-session (v2)
--- is also claiming 057. If they took it, rename this file to the next free number —
--- nothing in the app depends on the number, only on the table name.
+-- 058 — Draft-integrity admin triage
+-- Renumbered 057 → 058 by the conductor: focus/coaching-session won the race for 057
+-- (session continuation), and 057 was applied to prod on 2026-08-08 before this landed.
+-- Nothing in the app depends on the number, only on the table name.
 --
 -- Standing ADMIN verdict on a session the draft-integrity alert flagged, so the same
 -- five alerts stop reappearing with no way to answer them.
