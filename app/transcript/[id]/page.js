@@ -15,7 +15,7 @@ import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
-import { computeActualFromDraft, chipState } from '@/lib/requirements'
+import { computeActualFromDraft, targetDisplay } from '@/lib/requirements'
 
 export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
@@ -113,9 +113,14 @@ export default async function TranscriptPage({ params, searchParams }) {
   // which already falls back to scaffoldLines when paragraphs is empty.
   const reqTargets = session.requirements?.targets ?? []
   const reqActual = reqTargets.length ? computeActualFromDraft(paragraphs ?? [], scaffold?.components) : null
-  const reqLine = reqTargets.length
-    ? reqTargets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')
-    : null
+  // Count first, then the Rule 14a recommended range where the assignment states a
+  // ceiling — same derivation as the live session and the coach, so a parent reading
+  // the finished piece sees the number their child was working toward.
+  const reqDisplays = reqTargets
+    .map(t => targetDisplay(t, reqActual, { assignmentType: scaffold?.assignment_type ?? 'default' }))
+    .filter(Boolean)
+  const reqLine = reqDisplays.length ? reqDisplays.map(d => d.full).join(' · ') : null
+  const reqTargetLine = reqDisplays.find(d => d.range)?.label ?? null
   const backHref = profile?.role === 'parent' ? '/parent' : profile?.role === 'teacher' ? '/teacher' : '/folder'
   const backLabel = profile?.role === 'parent' ? 'Parent dashboard' : profile?.role === 'teacher' ? 'Teacher dashboard' : 'Dashboard'
   const coachPersona = getPersona(session.persona)
@@ -249,7 +254,9 @@ export default async function TranscriptPage({ params, searchParams }) {
             {essay && <CopyButton text={essay} />}
           </div>
           {reqLine && (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{reqLine}</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {reqLine}{reqTargetLine ? ` · ${reqTargetLine}` : ''}
+            </p>
           )}
           {!paragraphs?.length && scaffoldLines.length > 0 ? (
             <div className="space-y-1">

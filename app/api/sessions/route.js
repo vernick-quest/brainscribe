@@ -44,7 +44,8 @@ async function generateSessionMeta(assignmentText, userId) {
 "requirements": a JSON array of the NUMERIC targets that the assignment explicitly states FOR THE PIECE AS A WHOLE, for the progress tracker (it measures the student's full draft). Only include numbers that are actually given; otherwise use []. Item shapes:
 - words: { "type": "words", "min": <int, optional>, "max": <int, optional>, "label": "<e.g. 300–400 words>" } — "300–400 words" → min 300, max 400; "at least 500 words" / "500 words minimum" / "500 words" → min 500; "no more than 200 words" / "up to 200 words" → max 200. NEVER from a count scoped to one section ("conclusion of at least 100 words" is NOT a words item — put it in that section's outline checklist).
 - paragraphs: { "type": "paragraphs", "target": <int>, "label": "<e.g. 5 paragraphs>" } — "five paragraphs" → target 5; "intro, 3 body paragraphs, conclusion" → target 5.
-Only words and paragraphs are supported — ignore line/syllable/sentence counts.
+- chars: { "type": "chars", "max": <int>, "label": "<e.g. 1600 characters>" } — ONLY when the limit is stated in CHARACTERS ("1,600 characters maximum", "no more than 250 characters"). A character limit is never also a words item — emit one or the other, not both.
+Only words, paragraphs and chars are supported — ignore line/syllable/sentence counts.
 
 "outline": a JSON array of the sections the student must write. STRUCTURE RULES — follow strictly:
 - "one paragraph"/"a paragraph" → exactly 1 section
@@ -96,6 +97,13 @@ ${assignmentText}`,
         const min = toInt(r.min), max = toInt(r.max)
         if (min == null && max == null) return null
         return { type: 'words', ...(min != null ? { min } : {}), ...(max != null ? { max } : {}), label: r.label }
+      }
+      // A CHARACTER limit (the 1,600-character community essay shape). Only a
+      // ceiling is meaningful — a character MINIMUM is vanishingly rare and would
+      // need its own display path, so it is dropped rather than half-supported.
+      if (r.type === 'chars') {
+        const max = toInt(r.max)
+        return max != null ? { type: 'chars', max, label: r.label } : null
       }
       return null
     })

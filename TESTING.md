@@ -2642,3 +2642,28 @@ Replaces the watcher branch of the FTUE. Students are unaffected — verify that
 - [ ] Mobile width: no horizontal scroll on any of the 4 screens; 44px tap targets.
 - [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
       they took the practice offer — `practiced` is derived from sessions, not the flag.
+
+## 2026-08-08 — Recommended word-count targets (Rule 14a)
+
+Automated (green at commit): 275 Vitest tests incl. 26 in `lib/wordCountTargets.test.js` and
+6 for `targetDisplay`; `npm run build`; `npm run test:prompts` (live model probe — coach
+states the range in words, says no percentage, invents nothing, and stays silent when the
+assignment states no limit).
+
+Manual — needs a real session:
+- [ ] Start an assignment stating ONLY a maximum ("no more than 500 words"). The Draft panel
+      shows `Target: 400–450 · Max: 500` and a bar under the header. Ask the coach "how long
+      does this need to be?" — it should answer with the range, never a percentage.
+- [ ] Bar colour: neutral below the range → green inside it → amber past it → red over the
+      stated maximum. Verify green appears at 400, not at 500.
+- [ ] An assignment with a stated RANGE (300–400 words): target reads 370–390 (70% rule), and
+      the coach quotes those numbers, not 80% of 400.
+- [ ] An assignment with NO stated limit: no bar, no target line, and the coach never raises
+      length unless the student does.
+- [ ] Finish under target: the coach frames it as opportunity ("anything that got left out?
+      no pressure"), does NOT call the piece too short, and still signs off.
+- [ ] Go over the maximum: the coach flags it and asks what to cut rather than cutting.
+- [ ] Watcher view: the transcript shows the same count and target range as the live session.
+- [ ] A character-limited assignment ("1,600 characters max") parses to a `chars` target and
+      displays as words (~240–267). **Untested end-to-end — the parse-side change has not
+      been run against a real character-limited assignment yet.**

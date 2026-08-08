@@ -6,13 +6,20 @@ Deferred features and improvements, with enough detail to pick up cold.
 
 # PRIORITIZED — added 2026-08-05, out of the six-drop-path incident
 
-## P0 — Move the prompt harness into the repo
+## P0 — Move the prompt harness into the repo  ◐ STARTED 2026-08-08
 **Why:** It lives in a scratchpad under `/private/tmp`, which gets swept. The thing that
 finally caught two unverified prompt changes is one cleanup away from not existing.
-**Build:** `scripts/prompt-harness/` + `"test:prompts"` in package.json. Four scripts already
-exist and work — parse-vs-worksheet, coach first turn, the "???" fabrication replay, the
-warm-up redirect. Each builds the prompt FROM SOURCE so it tests what ships. Fixtures
-committed but **SYNTHETIC ONLY** (this repo is public). Key from `.env.local`. ~4s, ~$0.01.
+**Done:** `scripts/prompt-harness/lib/harness.mjs` (shared runner — builds the prompt FROM
+SOURCE, sends it in the same two blocks `/api/tutor` does) + `word-target.mjs` +
+`npm run test:prompts`. ~4s, ~$0.01 per probe.
+**Still to port — and this is the blocker, not the file move:** the three scratchpad probes
+(coach first turn, the "???" fabrication replay, the warm-up redirect) **replay real student
+turns verbatim** — Baron's book-report answers and Bruce's Civil War exchange are sitting in
+those files. This repo is PUBLIC. Each fixture has to be re-authored as a synthetic
+reconstruction that still triggers the same behaviour before it can be committed. Copying
+them across as-is would publish student writing; do not do it in a hurry.
+Scratchpad originals (until swept):
+`/private/tmp/claude-501/-Users-robert/71d976c2-*/scratchpad/ocrtest/`
 
 ## P0 — Scaffold-less sessions invisible to the integrity detector  ✅ DONE 2026-08-05
 9 of 27 completed sessions have no `paragraph_scaffolds` row, so every detector signal (they

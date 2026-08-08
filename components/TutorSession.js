@@ -17,7 +17,7 @@ import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
-import { computeActual, chipState } from '@/lib/requirements'
+import { computeActual, targetDisplay } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
@@ -2184,6 +2184,19 @@ export default function TutorSession({
   const reqActual    = computeActual(paragraphs)
   const currentMeta  = PERSONA_META[persona]
 
+  // Rule 14a — "what does good look like?" when the assignment states only a
+  // ceiling. targetDisplay derives the recommended range from the SAME pure
+  // function lib/prompts.js builds the coach's line from, so the range on screen
+  // and the range the coach says out loud are the same numbers by construction.
+  // assignment_type only exists once the scaffold has been emitted; before that
+  // the default band applies, which is the right conservative answer.
+  const targetChips = (session.requirements?.targets ?? [])
+    .map(t => targetDisplay(t, reqActual, { assignmentType: scaffold?.assignment_type ?? 'default' }))
+    .filter(Boolean)
+  // The bar tracks the FIRST word-shaped target that has a recommended range —
+  // one bar, never a stack of them.
+  const targetBar = targetChips.find(d => d.range)
+
   // ── "You can stop here" affordance ──────────────────────────────────────────
   // The mirror of resume: make it safe and INVITING to stop, so a fatiguing student
   // banks and leaves instead of abandoning. Show a quiet permission line when there's
@@ -2754,7 +2767,7 @@ export default function TutorSession({
                   paragraph count when the assignment states no numeric requirement. */}
               {session.requirements?.targets?.length > 0 ? (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
-                  {session.requirements.targets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')}
+                  {targetChips.map(d => d.full).join(' · ')}
                 </span>
               ) : scaffold && scaffold.total_paragraphs > 1 && (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
@@ -2769,6 +2782,36 @@ export default function TutorSession({
               </button>
             )}
           </div>
+
+          {/* Rule 14a — the finish line. "Under 500 words" gives a student nothing to
+              aim at; a range does. Deliberately quiet: the bar fills against the BOTTOM
+              of the range so reaching the target reads as arriving, and it is a nudge,
+              never a gate — nothing here blocks or scolds a shorter piece. The
+              percentage that produced the range is never shown. */}
+          {targetBar && (
+            <div className="px-6 pt-2 pb-1 shrink-0">
+              {/* The bar is decoration; the line under it carries the same information
+                  as text, so screen readers get the numbers rather than a width. */}
+              <div className="h-1 rounded-full overflow-hidden" aria-hidden="true" style={{ backgroundColor: 'var(--border-default)' }}>
+                <div
+                  className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
+                  style={{
+                    width: `${Math.round(targetBar.fill * 100)}%`,
+                    backgroundColor:
+                      targetBar.zone === 'over-max' ? 'var(--status-error)'
+                      : targetBar.zone === 'over'   ? 'var(--status-thin)'
+                      : targetBar.zone === 'in'     ? 'var(--status-success)'
+                      : 'var(--text-subtle)',
+                  }}
+                />
+              </div>
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-subtle)' }}>
+                {targetBar.zone === 'over-max'
+                  ? `${targetBar.label} — over the limit`
+                  : targetBar.label}
+              </p>
+            </div>
+          )}
 
           {/* Research & Citations v1: the sources shelf. Form-gated to essays; a mis-
               emitted [SOURCE:] on a non-essay never reaches here (sourcesEnabled). */}
