@@ -50,6 +50,14 @@ begin
 end;
 $$;
 
+-- Pin search_path (conductor pre-apply review). The function is SECURITY INVOKER, so this
+-- is not the definer-escalation case migration 041 fixed — but the body resolves the name
+-- `sessions` at RUNTIME against the caller's search_path. A caller who can get a table
+-- named `sessions` in front of `public` makes the ownership check consult a table they
+-- control, and the check passes. Pinning removes the question entirely, and matches how
+-- 041/043 hardened every other function in this schema. One line, no behavior change.
+alter function public.enforce_continuation_owner() set search_path = public;
+
 drop trigger if exists sessions_continuation_owner on sessions;
 create trigger sessions_continuation_owner
   before insert or update of continued_from on sessions
