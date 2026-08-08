@@ -13,6 +13,7 @@ import DraftSatisfactionCheck from '@/components/DraftSatisfactionCheck'
 import RestorationNotice from '@/components/RestorationNotice'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
+import KeepWorkingButton from '@/components/KeepWorkingButton'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { computeActualFromDraft, targetDisplay } from '@/lib/requirements'
@@ -105,6 +106,17 @@ export default async function TranscriptPage({ params, searchParams }) {
     : scaffoldLines.join('\n')
   const isStudent = profile?.role === 'student'
   const isComplete = session.status === 'complete'
+  // "Keep working on this": show the CTA only to the owner of a finished, non-practice
+  // assignment (never a watcher, never mid-impersonation — the endpoint blocks it too).
+  const isOwner = session.student_id === effectiveUserId
+  const canContinue = isOwner && isComplete && !session.is_onboarding && !imp
+  // Continuation cross-links (decision c): this session's child (v2) if any, and its
+  // parent (v1) via continued_from. Guarded so a missing column (pre-migration 057)
+  // degrades to no chip rather than throwing.
+  const { data: childRow } = await db
+    .from('sessions').select('id, status').eq('continued_from', id)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const continuedFrom = session.continued_from ?? null
   // Truly-empty transcript (e.g. an in-progress session opened by a watcher
   // before any writing happened): show one graceful empty state instead of two
   // separate "nothing yet" lines across the draft + conversation cards.
@@ -263,6 +275,20 @@ export default async function TranscriptPage({ params, searchParams }) {
               {reqLine}{reqTargetLine ? ` · ${reqTargetLine}` : ''}
             </p>
           )}
+          {/* Continuation cross-links — so v1 and v2 never read as duplicate work. */}
+          {continuedFrom && (
+            <a href={`/transcript/${continuedFrom}`} className="no-print inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent-text)' }}>
+              ← Continued from an earlier draft
+            </a>
+          )}
+          {childRow?.id && (
+            // Owner opens an active child in the writer (/assignment); a watcher can only
+            // read it (/assignment bounces them to /folder), so send them to /transcript.
+            <a href={(childRow.status !== 'complete' && isOwner) ? `/assignment/${childRow.id}` : `/transcript/${childRow.id}`}
+              className="no-print inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent-text)' }}>
+              Continued in a new draft →
+            </a>
+          )}
           {!paragraphs?.length && scaffoldLines.length > 0 ? (
             <div className="space-y-1">
               {scaffoldLines.map((line, i) => (
@@ -296,6 +322,18 @@ export default async function TranscriptPage({ params, searchParams }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* "Keep working on this" — offered to the owner of a finished piece when it
+              hasn't already been continued (if it has, the cross-link above points to
+              the existing draft instead of minting another). */}
+          {canContinue && !childRow?.id && (
+            <div className="pt-2">
+              <KeepWorkingButton sessionId={id} />
+              <p className="text-xs mt-1.5 no-print" style={{ color: 'var(--text-muted)' }}>
+                Starts a fresh draft with everything here carried over — your finished version stays saved.
+              </p>
             </div>
           )}
 

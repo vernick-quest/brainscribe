@@ -69,9 +69,10 @@ function MenuItem({ label, color = 'var(--text-body)', icon, onClick }) {
   )
 }
 
-function AssignmentRow({ session, teachers, canManage, canInvite = canManage, watcherHref = '/transcript', onDeleted, onRenamed }) {
+function AssignmentRow({ session, teachers, canManage, canInvite = canManage, watcherHref = '/transcript', continuation = null, onDeleted, onRenamed }) {
   const router = useRouter()
   const [menu, setMenu] = useState(false)
+  const [continuing, setContinuing] = useState(false)
   const [picking, setPicking] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(session.title ?? '')
@@ -102,6 +103,20 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
   const lastModifiedDate = (done && session.completed_at) ? session.completed_at : (session.last_active_at ?? session.updated_at ?? session.created_at)
 
   function close() { setMenu(false); setPicking(false) }
+
+  // "Keep working": mint (or reuse) a v2 continuation and open it. Same endpoint the
+  // transcript button uses; the endpoint reuses an existing child rather than sprawling.
+  async function handleKeepWorking() {
+    close()
+    if (continuing) return
+    setContinuing(true)
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/continue`, { method: 'POST' })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.newSessionId) { router.push(`/assignment/${data.newSessionId}`); return }
+    } catch { /* fall through to re-enable */ }
+    setContinuing(false)
+  }
   // The writer (canManage) opens the active-writing view for in-progress work and
   // the read-only transcript for completed work. A WATCHER (!canManage) never
   // enters the writing view; it lands on `watcherHref/<id>` — parents on the
@@ -178,6 +193,28 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
                 )}
               </div>
             )}
+            {/* Continuation cross-link — so v1 and v2 don't read as duplicate work. */}
+            {(continuation?.parentId || continuation?.child) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '5px 0 0' }}>
+                {session.version > 1 && (
+                  <span style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--accent-text)', background: 'var(--accent-soft)', borderRadius: 'var(--radius-pill)', padding: '1px 8px' }}>
+                    Draft {session.version}
+                  </span>
+                )}
+                {continuation?.parentId && (
+                  <a href={`/transcript/${continuation.parentId}`} onClick={e => e.stopPropagation()}
+                    style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--accent-text)', textDecoration: 'none' }}>
+                    ← Continued from an earlier draft
+                  </a>
+                )}
+                {continuation?.child && (
+                  <a href={continuation.child.status === 'complete' ? `/transcript/${continuation.child.id}` : `/assignment/${continuation.child.id}`} onClick={e => e.stopPropagation()}
+                    style={{ font: 'var(--type-meta)', fontWeight: 'var(--fw-semibold)', color: 'var(--accent-text)', textDecoration: 'none' }}>
+                    Continued in a new draft →
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Overflow menu — top-right (Rename / Assign teacher / Open / Delete). */}
@@ -206,6 +243,9 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
           <MenuItem label="Rename" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11.5 2.5l2 2-9 9H2.5v-2l9-9z" strokeLinejoin="round"/></svg>} onClick={() => { setDraft(session.title ?? ''); setRenaming(true); close() }} />
           <MenuItem label={teacher ? 'Change teacher' : 'Assign teacher'} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>} onClick={() => { setMenu(false); setPicking(true) }} />
           <MenuItem label="Open" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>} onClick={() => { close(); open() }} />
+          {done && !continuation?.child && (
+            <MenuItem label={continuing ? 'Starting…' : 'Keep working'} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>} onClick={handleKeepWorking} />
+          )}
           <div style={{ height: 1, background: 'var(--border-default)', margin: '6px 8px' }} />
           <MenuItem label="Delete" color="var(--status-error)" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" strokeLinejoin="round" strokeLinecap="round"/></svg>} onClick={handleDelete} />
         </div>
@@ -274,6 +314,11 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
   const [filter, setFilter] = useState(() => initial.some(s => s.status !== 'complete') ? 'active' : 'complete')
   const [page, setPage] = useState(1)
 
+  // Continuation links (decision c): map each v1 → its v2 child from the loaded set, so a
+  // finished card can show "Continued in a new draft →" and the v2 "← Continued from…".
+  const childByParent = {}
+  for (const s of sessions) if (s.continued_from) childByParent[s.continued_from] = { id: s.id, status: s.status }
+
   const visible = sessions.filter(s =>
     filter === 'all' ? true : filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
   )
@@ -333,6 +378,7 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
             canManage={canManage}
             canInvite={canInvite}
             watcherHref={watcherHref}
+            continuation={{ parentId: s.continued_from ?? null, child: childByParent[s.id] ?? null }}
             onDeleted={id => setSessions(prev => prev.filter(x => x.id !== id))}
             onRenamed={(id, title) => setSessions(prev => prev.map(x => x.id === id ? { ...x, title } : x))}
           />
