@@ -47,8 +47,23 @@ export async function POST(request) {
   // row). For any NON-admin an RLS-null read means "not yours" — reject rather than
   // run the model on attacker-supplied text (previously any non-owner fell through
   // to the body). Admins are trusted; the impersonation path is preserved.
-  const { data: sessionRow } = await supabase
-    .from('sessions').select('assignment_text, is_onboarding, requirements').eq('id', sessionId).single()
+  const BASE_COLS = 'assignment_text, is_onboarding, requirements'
+  // `continued_from` arrives with migration 057, which is applied BY HAND — so this
+  // deploy can land first. PostgREST answers a select naming a missing column with an
+  // ERROR and data:null, and a null sessionRow sends every non-admin down the 404
+  // branch below: shipping this unguarded would take the coach offline for every
+  // student until someone pasted the SQL. Same fail-soft shape as the migration-056
+  // handling in the commitment writer further down.
+  let { data: sessionRow, error: sessionErr } = await supabase
+    .from('sessions').select(`${BASE_COLS}, continued_from`).eq('id', sessionId).single()
+  // 42703 = undefined_column, i.e. 057 hasn't been pasted yet. Retry ONLY on that —
+  // an RLS-filtered/not-found read also sets `error` (PGRST116) and must keep falling
+  // through to the admin-impersonation branch below without a wasted second query.
+  if (sessionErr?.code === '42703') {
+    console.error('[tutor] sessions.continued_from missing (migration 057 unapplied) — continuation coaching is OFF until it is applied')
+    ;({ data: sessionRow } = await supabase
+      .from('sessions').select(BASE_COLS).eq('id', sessionId).single())
+  }
   let effectiveAssignment
   if (sessionRow?.assignment_text != null) {
     effectiveAssignment = sessionRow.assignment_text
@@ -60,6 +75,14 @@ export async function POST(request) {
   // Read the practice flag from the DB, not the client — the onboarding coaching
   // tone is server-authoritative.
   const isOnboarding = sessionRow?.is_onboarding === true
+  // "Keep working on this" v2 (migration 057). Server-derived, NOT client-supplied,
+  // deliberately unlike `resume` below: this flag tells the coach NOT to emit
+  // [COMPLETE] on an all-complete scaffold, so a client that could set it could
+  // suppress a legitimate completion on an ordinary session. `continued_from` is
+  // written only by /api/sessions/[id]/continue and is trigger-guarded to a session
+  // the same student owns. Null/absent (incl. pre-migration, and the admin
+  // impersonation path where RLS returns no row) → false → today's behavior exactly.
+  const isContinuation = sessionRow?.continued_from != null
 
   // Claude API only allows 'user' and 'assistant' roles, and the first message must be 'user'.
   // The local greeting is never saved to the DB, so the history sent from the client can start
@@ -90,7 +113,7 @@ export async function POST(request) {
     if (agg.checkedCount > 0) scaffold.coachContribRatio = agg.coachContribRatio
   }
 
-  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements, resume: resume === true })
+  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements, resume: resume === true, continuation: isContinuation })
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',

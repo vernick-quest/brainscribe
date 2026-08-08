@@ -71,6 +71,37 @@ export async function POST(request) {
 
   const { sessionId, scribedText, rawSpokenText, position, isThin } = await request.json()
 
+  // ── Continuation backstop ("Keep working on this", v2) ──────────────────────────────
+  // The upsert below is the right primitive for a normal session: a position is written
+  // once, and re-saving it is a genuine redo. On a v2 continuation it is a data-loss
+  // primitive. v2 carries v1's paragraphs AND v1's cursor, which v1 parks at
+  // components.length — so successive dictations all compute the SAME position and each
+  // one silently replaces the last (reproduced 2026-08-08: two saves, one row id, 204-ish
+  // success both times, the first addition gone). An in-range position is no safer: it
+  // holds carried text, and this route replaces the row rather than appending to it.
+  //
+  // The client already refuses to compute either (TutorSession resolveParagraphWriteIndex),
+  // but a client-side guard is one regression away from silence and the failure mode here
+  // returns 200 — indistinguishable from a save. So refuse here too, and say so LOUDLY.
+  // Scoped to continuations: a session with no continued_from behaves exactly as before.
+  const { data: sess } = await supabase
+    .from('sessions').select('continued_from').eq('id', sessionId).single()
+  if (sess?.continued_from) {
+    const { data: occupied } = await supabase
+      .from('paragraphs').select('id').eq('session_id', sessionId).eq('position', position).maybeSingle()
+    if (occupied) {
+      console.error(
+        `[continuation-guard] REFUSED paragraph save: session ${sessionId} continues ${sess.continued_from} ` +
+        `and position ${position} already holds row ${occupied.id}. Upserting would have replaced carried ` +
+        `student writing. Nothing was written.`
+      )
+      return Response.json({
+        error: "That paragraph already has your earlier writing in it — I'm not going to overwrite it.",
+        code: 'continuation_would_overwrite',
+      }, { status: 409 })
+    }
+  }
+
   // Upsert, not insert: paragraphs(session_id, position) is unique (migration 027),
   // so re-saving a position replaces the row instead of erroring or duplicating.
   const { data, error } = await supabase

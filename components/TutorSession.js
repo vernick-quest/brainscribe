@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite } from '@/lib/scaffoldWrite'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -834,6 +834,24 @@ export default function TutorSession({
   const [recoveredDictation, setRecoveredDictation] = useState(null) // raw spoken text to restore
   const [scribeNotice, setScribeNotice]             = useState(null) // warm retry line
 
+  // "Keep working on this" (v2). This session carries a FINISHED draft forward, including
+  // v1's cursor — which v1 parked at components.length as its "all done" sentinel. Every
+  // write path keys off that cursor, and on a continuation both of its out-of-range
+  // behaviours destroy student writing (reproduced 2026-08-08):
+  //   · paragraph saves take position = cursor, so the 2nd addition upserts over the 1st
+  //     on (session_id, position) — same row id, no error, no log;
+  //   · component writes go through resolveWriteIndex, whose redirect-to-last-section
+  //     rescue lands on a paragraph already full of the student's carried v1 words.
+  // Nothing tells us which paragraph the student picked (the continuation prompt leaves
+  // that to them, by design), so there is no safe guess. Writes REFUSE and say so until a
+  // coach-driven paragraph target exists. See lib/scaffoldWrite.js resolveWriteIndex.
+  // Derived from the session ROW, not only the `isContinuation` prop: a future caller that
+  // renders TutorSession without passing the prop would silently disable this guard, which
+  // is precisely the class of failure it exists to prevent. Either signal turns it on.
+  const guardContinuation = isContinuation || !!session?.continued_from
+  const CONTINUATION_BLOCK_NOTICE =
+    "I can't tell which paragraph to put that in yet — tell me which part you're working on, then say it again. Your words are still here."
+
   const chatBottomRef     = useRef(null)
   const titleInputRef     = useRef(null)
   const hasGreeted        = useRef(false)
@@ -1266,6 +1284,19 @@ export default function TutorSession({
     return m[0] + fullText.slice(0, m.index) + fullText.slice(m.index + m[0].length)
   }
 
+  // resolveWriteIndex + the continuation refusal in one place, so no component-write path
+  // can forget it. Returns null when the write must be refused (see guardContinuation above).
+  function resolveWriteIndexGuarded(sc) {
+    return resolveWriteIndex(sc, { blockWhenOutOfRange: guardContinuation })
+  }
+
+  // Which paragraph POSITION a dictated save targets; null = refuse. The rules live in
+  // lib/scaffoldWrite.js (PURE brain) so they are unit-testable without React — same
+  // reason resolveWriteIndex lives there.
+  function paragraphWriteIndex() {
+    return resolveParagraphWriteIndex({ scaffold, paragraphs, isContinuation: guardContinuation })
+  }
+
   async function parseAndApplyScaffoldTokens(rawFullText, currentScaffold) {
     const fullText = hoistScaffoldToken(rawFullText)
     // Sections whose prose is already assembled. Their `paragraphs` row is what the Final
@@ -1312,7 +1343,8 @@ export default function TutorSession({
 
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
-        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
+        const paraIdx = resolveWriteIndexGuarded(sc)   // never out of range (Net D); null = refuse (continuation)
+        if (paraIdx === null) continue
         const activeTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
         if (activeTarget) sc = updateComponentItem(sc, activeTarget.paraIdx, activeTarget.id, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
@@ -1330,7 +1362,8 @@ export default function TutorSession({
           if (!nuggetText.trim()) {
             console.error(`[scaffold] ignored empty [NUGGET:${componentId}:] — keeping the existing candidate text`)
           } else {
-          const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
+          const paraIdx = resolveWriteIndexGuarded(sc)   // never out of range (Net D); null = refuse (continuation)
+          if (paraIdx === null) continue
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
           const nugTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
@@ -1350,7 +1383,8 @@ export default function TutorSession({
         const colonIdx = payload.indexOf(':')
         const componentId = colonIdx === -1 ? payload : payload.slice(0, colonIdx)
         const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
-        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
+        const paraIdx = resolveWriteIndexGuarded(sc)   // never out of range (Net D); null = refuse (continuation)
+        if (paraIdx === null) continue
         // Net E: the coach may name a component this scaffold doesn't have (standard prose
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
@@ -2011,6 +2045,24 @@ export default function TutorSession({
     // A fresh dictation attempt clears any prior scribe-failure recovery state.
     setRecoveredDictation(null)
     setScribeNotice(null)
+
+    // Continuation guard, BEFORE the scribe call: on a v2 whose carried cursor sits past
+    // the last section there is no paragraph this dictation can safely land in, and the
+    // save would upsert over the previous addition on (session_id, position). Refuse
+    // here — with the student's words restored to the composer, exactly like a scribe
+    // failure — rather than scribing text we would then silently overwrite.
+    if (paragraphWriteIndex() === null) {
+      console.error(
+        `[continuation-guard] refusing dictation on continuation session ${session.id}: ` +
+        `cursor ${scaffold?.current_paragraph_index} is past the last of ${scaffold?.components?.length} ` +
+        `carried section(s). Student's words preserved in the composer; nothing written.`
+      )
+      setRecoveredDictation(spokenText)
+      setScribeNotice(CONTINUATION_BLOCK_NOTICE)
+      setPhase('dictating')
+      return
+    }
+
     const userMessage = { role: 'user', content: spokenText }
     const newHistory  = [...messages, userMessage]
     setMessages(newHistory)
@@ -2050,7 +2102,7 @@ export default function TutorSession({
       return
     }
 
-    const sectionIndex = scaffold?.current_paragraph_index ?? paragraphs.length
+    const sectionIndex = paragraphWriteIndex()
     const confirmMsg = buildConfirmMessage(persona, scribed.paragraph, scribed.isThin, scribed.thinNote)
     const historyWithConfirm = [...newHistory, { role: 'assistant', content: confirmMsg, persona }]
     setPendingScribe({
@@ -2115,16 +2167,51 @@ export default function TutorSession({
   // ── Save paragraph (after student confirms the scribed/assembled preview) ────
 
   async function saveParagraph(text, rawText, isThin) {
-    const sectionIndex = pendingScribe?.sectionIndex ?? (scaffold?.current_paragraph_index ?? paragraphs.length)
+    const sectionIndex = pendingScribe?.sectionIndex ?? paragraphWriteIndex()
     const position = sectionIndex
 
+    // Second gate (the preview sits between the first one and here, and pendingScribe
+    // carries a sectionIndex computed a turn ago). A null target means we have nowhere
+    // safe to put this — never fall through to a write that would replace carried work.
+    if (position === null || position === undefined) {
+      console.error(
+        `[continuation-guard] refusing paragraph save on session ${session.id}: no safe target ` +
+        `(cursor ${scaffold?.current_paragraph_index} vs ${scaffold?.components?.length} section(s)). ` +
+        `Nothing written; the student's text stays in the preview.`
+      )
+      setScribeNotice(CONTINUATION_BLOCK_NOTICE)
+      setPhase('preview')
+      return
+    }
+
     if (!pendingScribe?.fromAssembly) {
-      // Dictation path — assembly path already saved in /api/assemble
-      await fetch('/api/paragraphs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.id, scribedText: text, rawSpokenText: rawText, position, isThin }),
-      })
+      // Dictation path — assembly path already saved in /api/assemble.
+      // CHECK THE RESPONSE. This used to be a bare `await fetch(...)` with the result
+      // dropped: a 409, a 500, or an RLS-filtered write all looked identical to success,
+      // and the optimistic setParagraphs below then showed the student a draft growing
+      // with words the DB never received. A save that didn't land must never be silent.
+      let saveRes
+      try {
+        saveRes = await fetch('/api/paragraphs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: session.id, scribedText: text, rawSpokenText: rawText, position, isThin }),
+        })
+      } catch (err) {
+        console.error('[saveParagraph] network failure — paragraph NOT saved:', err)
+      }
+      if (!saveRes?.ok) {
+        const body = await saveRes?.json().catch(() => null)
+        console.error(
+          `[saveParagraph] REFUSED/FAILED for session ${session.id} position ${position}: ` +
+          `${saveRes?.status ?? 'network'} ${body?.code ?? ''} ${body?.error ?? ''} — local state NOT updated`
+        )
+        // Do not advance the cursor, do not push into `paragraphs`, do not tell the coach
+        // it's done. Keep the words in front of the student so they can retry.
+        setScribeNotice(body?.error ?? "That didn't save — your words are still here, let's try again.")
+        setPhase('preview')
+        return
+      }
     }
 
     setParagraphs(prev => {

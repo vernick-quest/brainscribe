@@ -2746,3 +2746,110 @@ sees the continuation chip but no "Keep working" button.
   — flagged as a small follow-up. Verified CLEAN by the review: gate parity (no bypass),
   ownership/RLS, text-integrity byte-compare, rollback cascade, inheritance drops.
 Re-gate after fixes: build green + test:run 289 passed.
+
+## 2026-08-08 — "Keep working" (v2): coach-side continuation signal (coach-ai / coaching-session)
+
+Closes M3(b) from the 2026-08-08 adversarial pass above: v2's SUBSEQUENT coach turns saw an
+all-complete scaffold and could re-[COMPLETE] instead of helping the student extend.
+
+**Shipped**
+- `lib/prompts.js` — new CONTINUING A FINISHED DRAFT block in the DYNAMIC tail (never the cached
+  prefix), gated on `opts.continuation`. Rides EVERY turn, not just the first (unlike `resume`):
+  the all-complete scaffold state persists all session, so the misread does too.
+- `app/api/tutor/route.js` — the flag is SERVER-derived from `sessions.continued_from`
+  (migration 057), deliberately not client-supplied: a client that could set it could suppress a
+  legitimate [COMPLETE]. Falls back to the old column list on PostgREST 42703 so this deploy is
+  safe to land BEFORE 057 is pasted (unguarded, a missing column would have 404'd the coach for
+  every student).
+- `lib/prompts.js` — 🔴 FIXED A PRE-EXISTING ERASE PATH found while building this. On any
+  all-paragraphs-done scaffold the cursor parks AT `components.length`, so `components[N]` was
+  undefined and the tail printed **"(no components yet — emit [SCAFFOLD:type:count] to
+  initialize)"** — the prompt instructing the coach to emit the one token that erases every
+  locked paragraph — plus "Working on: paragraph 4 of 3 (unknown)". Barely reachable in v1 (a
+  complete session redirects to the transcript); it is the NORMAL opening state of a v2.
+- `lib/auditJudge.js` — continuation clause in the guardrail judge. A v2 transcript legitimately
+  opens with finished work no STUDENT turn in it produced (v1's messages aren't copied), which
+  the false_progress rule as written would flag on EVERY v2 session.
+
+**Verified**
+- `npm run build` green · `npm run test:run` 307 passed (18 files).
+- NEW `lib/prompts.test.js` (13) — erase instruction gone, no "paragraph 4 of 3", ordinary
+  mid-essay tail unchanged, block absent by default, block stays out of the cached prefix,
+  [COMPLETE] still reachable in the text.
+- NEW `lib/auditJudge.test.js` (4) — PROVES the judge prompt is BYTE-IDENTICAL when the flag is
+  off, so the audit-probes calibration cannot have moved.
+- NEW `npm run test:prompts` probe (`scripts/prompt-harness/continuation.mjs`, ~$0.05, now part
+  of the same command as word-target): real model, real prompt.
+  - arrival with a stated goal → no [COMPLETE], no "your essay is done", no [SCAFFOLD], grounds
+    itself in the carried thesis/paragraphs, cites only the given word numbers.
+  - arrival on a bare "hi" (weakest input, where the all-done branch is most tempting) → same.
+  - later turn, addition made + both review gates run + word count in range → [COMPLETE] STILL
+    FIRES. Runs the identical turn with the block OFF as a diagnostic control so a failure can
+    be attributed; the control is deliberately NOT a pass/fail (it lands on both sides of a
+    genuine judgement call across runs).
+- `node scripts/audit-probes.mjs` → **17/17 correct** (re-run after the judge edit).
+
+**Not covered by any of the above — needs a human pass**
+- End-to-end in a real v2 session (needs migration 057 applied first; until then the route logs
+  `sessions.continued_from missing` and continuation coaching is simply OFF).
+- Whether a RESUMED v2 (leave and come back to the continuation) reads well with both the
+  RESUMING and CONTINUING blocks present — the prompt now reconciles them explicitly
+  ("ignore its 'pick up the next paragraph'"), but that combination has not been run live.
+
+**Probe-3 flakiness, measured (2026-08-08):** the first staging of the finishing turn went red
+~20% of runs. Measured at n=5 per arm, [COMPLETE] fired 4/5 with the continuation block ON and
+4/5 with it OFF — identical, so the block does NOT make completion harder. Both misses had the
+same unrelated cause: the coach ADDING the new paragraph's words on top of the given count
+("372 plus about 40, so ~410 — over the limit") and asking for a trim. That is compute-instead-of-
+read drift on the word-count rule, present with the block off, and it is worth a look on its own.
+The probe now states the count as already including the addition, so it measures one variable;
+green on 3 consecutive runs after the change.
+
+---
+
+## 2026-08-08 — "Keep working on this" (v2): three silent data-loss paths, blocked
+
+**Reported as one derived (not reproduced) chain; reproduction found three, and confirmed the
+precondition is common in real data.** Of 21 finished scaffolded sessions in prod, **13 sit at
+`current_paragraph_index == components.length`** — v1's "all done" sentinel, which v2 inherits.
+
+Reproduced live with sentinels (synthetic session, torn down), asserting on values not status codes:
+
+1. **Two dictated additions overwrote each other.** Both computed position 3; `/api/paragraphs`
+   upserts on `(session_id, position)`, so the second returned **the same row id** as the first.
+   Success status both times, no throw, no log. First addition gone.
+2. **An in-range target was no safer.** It holds carried text, and a dictated save writes only the
+   newly spoken words — so "strengthen paragraph 1" would have replaced paragraph 1 with a fragment.
+3. **Component writes overwrote carried v1 text.** `resolveWriteIndex`'s redirect-to-last-section
+   rescue is correct for a normal session but inverts on a continuation, where every section is
+   already full: work meant for paragraph 0 landed on paragraph 2 and replaced it.
+
+**Fix — fail closed, loudly (decision: block now, retarget later).** There is no safe fallback target
+because nothing tells the client which paragraph the student chose; the continuation prompt leaves
+that to them by design. So every write path REFUSES rather than guessing:
+- `resolveWriteIndex(sc, { blockWhenOutOfRange })` → `null` + `console.error` on a continuation.
+- New `resolveParagraphWriteIndex()` in `lib/scaffoldWrite.js` (PURE brain, unit-tested) refuses an
+  out-of-range cursor **and** an in-range position that already holds writing. Filling a section v1
+  left genuinely empty is still allowed — the one continuation write that is safe today.
+- `/api/paragraphs` POST backstop, scoped to `continued_from` sessions only: 409 + `console.error`
+  rather than an upsert that replaces carried work. Normal sessions are byte-for-byte unchanged.
+- `saveParagraph` now **checks the fetch response**. It previously dropped it entirely, so a 409,
+  a 500 or an RLS-filtered write all looked like success and the optimistic local update showed the
+  student a draft growing with words the DB never received.
+- The guard reads `session.continued_from` as well as the `isContinuation` prop, so a caller that
+  forgets the prop cannot silently disable it.
+
+**Verification**
+- `npm run test:run` → **321 passed** (18 files; +9 new covering both resolvers).
+- `npm run build` → clean.
+- `npm run test:continuation` (**new**, `scripts/continuation-gate.mjs`) → **GATE GREEN**. Drives the
+  real resolver + the real upsert against the real table and reads the values back; carried
+  paragraphs byte-intact, no two saves resolve to the same position, normal-session redirect
+  behaviour unregressed. Re-run this after any change to the continuation or paragraph write paths.
+
+**Not covered — needs a human pass**
+- The student-facing refusal copy in a real v2 (`CONTINUATION_BLOCK_NOTICE`) — the block is proven,
+  the wording is not. Right now a fully-finished v2 accepts NO dictation at all, by design.
+- **Phase 2 (not built): the retarget.** A coach-driven paragraph target so the student's choice
+  sets the cursor, plus append-vs-replace semantics for revising a carried paragraph. Until then
+  "Keep working on this" can only fill sections v1 left empty. Needs the `coach-prompt` skill.
