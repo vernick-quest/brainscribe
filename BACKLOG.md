@@ -6,6 +6,36 @@ Deferred features and improvements, with enough detail to pick up cold.
 
 # PRIORITIZED — added 2026-08-05, out of the six-drop-path incident
 
+## P1 — A pause switch for the whole service, toggleable without a deploy
+**Why (2026-08-08, Robert):** "we need a way to pause the service for users when we find a
+major problem. we probably don't want people doing work if we are changing things around."
+
+Today the only tool is a per-feature kill switch compiled into the source — that is what
+switched "Keep working" off when the v2 cursor drop path surfaced. It works, but the loop is
+**edit a constant, run the gate, build, ship** — minutes during which students are still
+writing into a path we already believe is losing their words. And it is per-feature: there is
+no way to say "stop everything for ten minutes while I change something underneath."
+
+**What it needs to do**
+- **Block NEW work, never destroy in-flight work.** A student mid-session must still be able
+  to save and finish what is on screen — cutting them off mid-sentence would cause exactly
+  the loss the pause exists to prevent. Stop new sessions, new continuations, new dictation
+  starts; let an open session drain.
+- **Toggle without a deploy.** A row in the DB (or an env flag read per request) an admin
+  flips from /admin. The reason it must not be a code constant is speed: the moment you know
+  writing is being lost, the fix window is seconds, not a build.
+- **Say something true and kind.** Not "500". Something like "We're fixing something — your
+  work is saved and nothing is lost. Back in a few minutes." Under-13 students read this too.
+- **Never block the admin.** Whoever is diagnosing must still reach /admin and the transcript
+  pages, or the pause blinds the person fixing it.
+- **Scope levels.** At minimum: everything / new-sessions-only / one named feature. The
+  per-feature switches we hand-roll (CONTINUATION_ENABLED) should collapse into this.
+- **Loud while it is on.** A banner for admins on every page, and an entry in TESTING.md or a
+  log so a pause left on overnight is impossible to miss. A silent pause is its own outage.
+
+**Watch out for:** the check runs on every request, so it must fail OPEN on a read error —
+a paused-because-the-lookup-failed service is a worse outage than the bug. Cache it briefly.
+
 ## P0 — Move the prompt harness into the repo  ◐ STARTED 2026-08-08
 **Why:** It lives in a scratchpad under `/private/tmp`, which gets swept. The thing that
 finally caught two unverified prompt changes is one cleanup away from not existing.
