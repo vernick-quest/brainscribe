@@ -2676,3 +2676,73 @@ Manual — needs a real session:
 - [ ] A character-limited assignment ("1,600 characters max") parses to a `chars` target and
       displays as words (~240–267). **Untested end-to-end — the parse-side change has not
       been run against a real character-limited assignment yet.**
+
+## 2026-08-08 — "Keep working on this" (v2 continuation) — focus/coaching-session
+
+Spec: docs/specs/brainscribe-keep-working-spec.md (APPROVED — Robert: v2-copy only;
+expand-existing-structure scope). A finished assignment (v1) stays FROZEN (it's the
+watcher record + integrity baseline); "Keep working" mints a v2 that carries forward the
+scaffold + final draft + sources + requirements and links back via continued_from.
+
+- **lib/sessionContinuation.js** (pure): builds v2 INSERT payloads. WHITELIST of copy-forward
+  columns (fail-safe: a future sessions column can't leak into v2); recomputes
+  requirements.actual from the carried draft (never copies stale); forces status='active',
+  is_onboarding=false; drops completed_at/writing_profile/gym_session_id. vitest 14/14.
+- **POST /api/sessions/[id]/continue**: same access/COPPA gate + impersonation block + daily
+  rate limit as /api/sessions POST (no gate bypass); owner + complete + non-onboarding only;
+  child-exists guard (routes to the existing v2 instead of sprawling); bulk-copy
+  scaffold/paragraphs/sources; READ-BACK verify (paragraph text byte-identical + counts +
+  scaffold component count) before returning; on any failed insert, rolls back the v2
+  (cascade) and fails loud — never hands back a half-built v2.
+- **migration 057** (infra owns number/apply): continued_from uuid (on delete set null) +
+  version int + a **UNIQUE** partial index on continued_from — one child per parent, which
+  also closes the double-tap race transactionally (the losing insert 23505s and the endpoint
+  returns the winner's child).
+- **UI:** transcript "Keep working on this →" button (owner, finished, not-yet-continued);
+  SessionsList "Keep working" menu item + cross-link chips ("← Continued from an earlier
+  draft" / "Continued in a new draft →") + "Draft N" badge, so v1/v2 never read as duplicates.
+
+**Pre-migration safety:** the folder's continuation links are fetched in a SEPARATE query that
+degrades to no-chips if 057 isn't applied (the main baseCols select is untouched, so the
+dashboard never empties). ⚠️ SEQUENCING: apply migration 057 BEFORE deploying (same contract
+as 045) — the continue endpoint's v2 insert needs the columns, and the transcript "Keep
+working" button shows pre-migration but 500s on click until it's applied.
+
+Gate: build green + test:run green (289 passed, incl. 14 new). Adversarial pass (Fable) on the
+copy/persistence path per CLAUDE.md (student-work persistence blast radius).
+
+Manual checks owed (live, post-migration): (1) finish an essay → transcript "Keep working" →
+v2 opens with the same draft/scaffold/sources/targets, coach doesn't restart blank; v1
+transcript unchanged + shows "Continued in a new draft". (2) double-tap "Keep working" → one
+v2, not two. (3) a haiku/custom finish → v2 carries the lines. (4) a gated (non-Beta) or
+under-13-no-consent account cannot reach a coach via "Keep working". (5) watcher viewing v1
+sees the continuation chip but no "Keep working" button.
+
+**Adversarial pass outcome (Fable) + fixes folded in before commit:**
+- H1 (HIGH) — a swallowed v1 read error would mint an EMPTY v2 that the read-back verify
+  PASSED (compared v2 against the same corrupted baseline). FIXED: the endpoint now checks
+  every v1 read's error and aborts (503) BEFORE any v2 exists — the verify baseline is trusted.
+- M1 (MED) — decoy-child DoS: any user could INSERT a session with continued_from = a victim's
+  session id, take the unique slot, and permanently 23505 the victim's "Keep working". FIXED:
+  migration 057 adds a trigger requiring continued_from to reference a session owned by the
+  SAME student, so a user can only continue their OWN work.
+- M2 (MED) — abort() ignored the delete result (a failed rollback left an active half-built v2
+  while claiming "nothing changed"). FIXED: checks delErr, logs loudly, tells the truth.
+- M3 (MED) — v2 opened with the "your essay is done!" congratulation (all-complete scaffold +
+  no persisted greeting → buildGreeting's allDone branch). FIXED (client): a `isContinuation`
+  greeting branch ("your whole draft's here — what do you want to build on?"). ⚠️ M3(b) RELAYED
+  to coach-ai: the coach's SUBSEQUENT turns still see an all-complete scaffold and need a
+  prompt-level continuation signal so /api/tutor doesn't re-[COMPLETE] instead of helping extend.
+- M4 (MED) — last_active_at dropped and not re-seeded → v2 sorted to the bottom / off the
+  limit(50) folder window ("keep working → new draft looks missing"). FIXED: seeded at insert.
+- L1 — a completed gym/Skill-Studio session's transcript offered "Keep working" (would become a
+  watcher-visible real assignment). FIXED: endpoint refuses gym_session_id.
+- L4 — active-child cross-link sent watchers to /assignment (bounces to /folder). FIXED:
+  owner→/assignment, watcher→/transcript.
+- H2 + L2 were already resolved before the reviewer's snapshot (baseCols reverted to a separate
+  graceful-degrade query; copy switched to a whitelist).
+- Known/accepted: L3 (sub-second reused:true window can hand back a mid-copy child — no data
+  loss); watcher parent/teacher dashboards don't yet show the Draft-N chip (student folder does)
+  — flagged as a small follow-up. Verified CLEAN by the review: gate parity (no bypass),
+  ownership/RLS, text-integrity byte-compare, rollback cascade, inheritance drops.
+Re-gate after fixes: build green + test:run 289 passed.

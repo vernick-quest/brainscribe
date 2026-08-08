@@ -180,6 +180,7 @@ export default async function AssignmentPage({ params }) {
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       initialSources={sources ?? []}
+      isContinuation={!!session.continued_from}
       watcherCount={watcherCount}
       country={geoCountry}
       user={user}

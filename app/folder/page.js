@@ -78,7 +78,20 @@ export default async function DashboardPage() {
       .order('last_active_at', { ascending: false, nullsFirst: false })
       .limit(50)
   }
-  const sessions = sessionsRes.data
+  let sessions = sessionsRes.data
+
+  // Continuation links (continued_from/version, migration 057) fetched SEPARATELY so a
+  // pre-migration missing column degrades to "no chips" instead of erroring the whole
+  // baseCols select and emptying the dashboard for everyone. supabase-js returns
+  // {error} (never throws), so a failed select just yields no links. Merge onto the rows.
+  if (sessions?.length) {
+    const { data: contRows } = await service
+      .from('sessions').select('id, continued_from, version').eq('student_id', targetId)
+    if (contRows) {
+      const contById = Object.fromEntries(contRows.map(r => [r.id, r]))
+      sessions = sessions.map(s => ({ ...s, ...(contById[s.id] ?? {}) }))
+    }
+  }
 
   // Pending connection invites addressed to this user — they were invited AFTER
   // already having an account, so the signup trigger never auto-claimed them and

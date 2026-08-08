@@ -184,7 +184,7 @@ function liveDisplay(raw) {
 
 // ── Greeting ───────────────────────────────────────────────────────────────────
 
-function buildGreeting(persona, name, scaffold, onboarding = false) {
+function buildGreeting(persona, name, scaffold, onboarding = false, isContinuation = false) {
   // Practice (onboarding) session: the student already met Owen in the tour and
   // just picked a prompt seconds ago. Don't re-introduce, don't call it an
   // "assignment", and never ask whether they've written anything — there's
@@ -203,6 +203,24 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
     // includes the existing-work variant: pass the same flag the server passed, or the
     // fallback silently reverts to "have you written anything?" on work we can see.
     return newSessionGreeting(persona, name, { existingWork: hasExistingWork(session?.assignment_text) })
+  }
+
+  // "Keep working" continuation (v2): the carried scaffold is all-complete, so WITHOUT
+  // this the allDone branch below would congratulate the student that their essay is
+  // finished — seconds after they chose to keep going. Open by naming the carried draft
+  // and inviting them to strengthen or add. (The coach's SUBSEQUENT turns still need a
+  // prompt-level continuation signal so /api/tutor doesn't re-[COMPLETE] on an all-done
+  // scaffold — flagged to coach-ai.)
+  if (isContinuation) {
+    const g = {
+      deon: `Hey ${name}. Your whole draft's right here — nothing lost. What do you want to make stronger, or add to?`,
+      zoe: `Welcome back, ${name}! Your finished draft is all here. Want to add more, or make a part even better? Let's do it!`,
+      alistair: `Hello ${name}. Alistair here. Your finished draft carried over in full. What would you like to strengthen or add?`,
+      matilda: `Hi ${name} — Tilly here, welcome back. Your whole draft's here, safe and sound. What would you like to build on?`,
+      owen: `Hi ${name}. Owen here. Your finished draft is all here — nothing's lost. What do you want to work on next — making a part stronger, or adding more?`,
+      jade: `hey ${name}! your whole draft's here, don't worry. wanna add more or make a part better? let's go.`,
+    }
+    return g[persona] ?? g.owen
   }
 
   if (allDone) {
@@ -736,6 +754,9 @@ export default function TutorSession({
   user = null,
   profile = null,
   onboarding = false,
+  // v2 of a "Keep working" continuation — opens with a "keep going" greeting instead of
+  // the all-complete "your essay is done" congratulation (the carried scaffold is all done).
+  isContinuation = false,
   impersonation = null,
   // ── Writing Gym reuse seams (additive; defaults preserve assignment-mode behavior) ──
   // The gym runs the exact same coaching surface against a different backend: a
@@ -1044,7 +1065,7 @@ export default function TutorSession({
     // Pin the greeting text, avatar, and TTS voice to the SAME resolved persona so a
     // legacy/retired session key can't produce a mismatched "I'm <other coach>" open.
     const activePersona = resolvePersona(session.persona)
-    const greeting = buildGreeting(activePersona, studentName, initialScaffold, onboarding)
+    const greeting = buildGreeting(activePersona, studentName, initialScaffold, onboarding, isContinuation)
     deliverTutorMessage(greeting, [], activePersona)
   }, [])
 
