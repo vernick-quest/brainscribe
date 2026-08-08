@@ -33,6 +33,19 @@ no way to say "stop everything for ten minutes while I change something undernea
 - **Loud while it is on.** A banner for admins on every page, and an entry in TESTING.md or a
   log so a pause left on overnight is impossible to miss. A silent pause is its own outage.
 
+**Two reasons to pause, and they want different behaviour** (Robert, 2026-08-08: "kill switch
+was for future fixes, down time"):
+- **Emergency** — you just found something losing student work. No warning is possible; the
+  point is speed. Stop new work THIS SECOND, drain what's open, apologise afterwards.
+- **Planned** — you're changing something underneath and want the app quiet while you do it.
+  Here you DO get to warn: a scheduled window, a banner some hours ahead ("BrainScribe will
+  be down for about 20 minutes at 7pm"), and ideally a nudge in-session ("good moment to lock
+  in what you've got"). A student who loses their thread because the app went dark
+  mid-sentence is the same harm the pause exists to prevent, just self-inflicted.
+
+Both flow through one switch; the planned path is the emergency path plus a scheduled start
+and pre-announcement. Build the emergency path first — it is the one you cannot improvise.
+
 **Watch out for:** the check runs on every request, so it must fail OPEN on a read error —
 a paused-because-the-lookup-failed service is a worse outage than the bug. Cache it briefly.
 
