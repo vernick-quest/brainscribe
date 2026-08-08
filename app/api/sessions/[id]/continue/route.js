@@ -19,10 +19,22 @@ import {
   buildContinuationScaffold,
   buildContinuationParagraphs,
   buildContinuationSources,
+  CONTINUATION_ENABLED,
 } from '@/lib/sessionContinuation'
 
 export async function POST(request, { params }) {
   const { id } = await params
+
+  // Kill switch (lib/sessionContinuation.js) — off while the v2 cursor drop path is
+  // unresolved. Guarded HERE as well as on the button, because hiding a CTA is not a
+  // control: this endpoint is a plain POST any signed-in owner could still call.
+  if (!CONTINUATION_ENABLED) {
+    return Response.json(
+      { error: "Keep working is switched off for a moment while we fix something. Your finished draft is safe — nothing has changed.", code: 'continuation_disabled' },
+      { status: 503 }
+    )
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })

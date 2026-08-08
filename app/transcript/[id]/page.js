@@ -17,6 +17,7 @@ import KeepWorkingButton from '@/components/KeepWorkingButton'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { computeActualFromDraft, targetDisplay } from '@/lib/requirements'
+import { CONTINUATION_ENABLED } from '@/lib/sessionContinuation'
 
 export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
@@ -109,7 +110,10 @@ export default async function TranscriptPage({ params, searchParams }) {
   // "Keep working on this": show the CTA only to the owner of a finished, non-practice
   // assignment (never a watcher, never mid-impersonation — the endpoint blocks it too).
   const isOwner = session.student_id === effectiveUserId
-  const canContinue = isOwner && isComplete && !session.is_onboarding && !imp
+  // CONTINUATION_ENABLED is the kill switch (see lib/sessionContinuation.js) — off
+  // while the v2 cursor drop path is unresolved. The endpoint refuses too; hiding a
+  // button is a courtesy, not a control.
+  const canContinue = CONTINUATION_ENABLED && isOwner && isComplete && !session.is_onboarding && !imp
   // Continuation cross-links (decision c): this session's child (v2) if any, and its
   // parent (v1) via continued_from. Guarded so a missing column (pre-migration 057)
   // degrades to no chip rather than throwing.
