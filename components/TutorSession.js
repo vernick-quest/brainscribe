@@ -17,7 +17,7 @@ import { SUBJECTS, getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
-import { computeActual, targetDisplay } from '@/lib/requirements'
+import { computeActual, computeActualFromDraft, targetDisplay } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
@@ -2190,8 +2190,17 @@ export default function TutorSession({
   // and the range the coach says out loud are the same numbers by construction.
   // assignment_type only exists once the scaffold has been emitted; before that
   // the default band applies, which is the right conservative answer.
+  //
+  // ⚠️ Counts from the DRAFT, not from `reqActual` (paragraphs only). A non-prose
+  // final — a haiku, a letter, any short form — lives in the scaffold with NO
+  // paragraphs row, so a paragraphs-only count reads 0 for work plainly on screen.
+  // That already put "31 / 0–200 words" on a parent's card for a 151-word letter;
+  // with a progress BAR the same bug would park it at empty for a whole session and
+  // have the coach's check-ins disagree with the student's own eyes. The transcript
+  // fixed this with computeActualFromDraft — use the same precedence here.
+  const targetActual = computeActualFromDraft(paragraphs, scaffold?.components)
   const targetChips = (session.requirements?.targets ?? [])
-    .map(t => targetDisplay(t, reqActual, { assignmentType: scaffold?.assignment_type ?? 'default' }))
+    .map(t => targetDisplay(t, targetActual, { assignmentType: scaffold?.assignment_type ?? 'default' }))
     .filter(Boolean)
   // The bar tracks the FIRST word-shaped target that has a recommended range —
   // one bar, never a stack of them.
