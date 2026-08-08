@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { createNotificationsForSession } from '@/lib/notifications'
 import { analyzeWriting } from '@/lib/analyzeWriting'
 import { assembleParagraphText } from '@/lib/assembleParagraph'
 import { persistRequirementsActual } from '@/lib/requirements'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
 import { upsertScaffoldSnapshot } from '@/lib/scaffoldSnapshot'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { NextResponse, after } from 'next/server'
 
 // Build flowing prose for any scaffold paragraph whose components are confirmed but
@@ -117,6 +119,15 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 })
   }
 
+  // Coach reachability gate (lib/access.js) — completion runs analyzeWriting +
+  // assembleParagraphText (both model calls), so an unconsented under-13 OR an authed
+  // user with no Beta access must not reach them. Checked after ownership, BEFORE any
+  // model call. Enforces BOTH COPPA and access_granted; fails CLOSED.
+  const { data: gate } = await supabase
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
+
   // Already complete — idempotent, just return ok
   if (session.status === 'complete') {
     return NextResponse.json({ ok: true })
@@ -137,6 +148,29 @@ export async function PATCH(request, { params }) {
   if (error) {
     console.error('[sessions complete]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Finishing the onboarding session IS finishing onboarding — mark it here, at the
+  // real completion event.
+  //
+  // It used to be written only when the user LANDED on the finale (/onboarding/complete,
+  // or the transcript with ?onboarding=1). Close the tab when the coach says done, or
+  // navigate straight to the folder, and the flag never set: 3 of the first 9 people to
+  // finish onboarding stayed flagged incomplete — and because /parent and /teacher
+  // redirect on !onboarding_complete, two real parents were bounced back into onboarding
+  // on every visit, a loop they couldn't escape. The finale pages still write it (a
+  // harmless idempotent repeat); this makes the flag independent of whether the last
+  // page was ever viewed. Service role: onboarding_complete is a 020-locked gate column.
+  if (session.is_onboarding) {
+    try {
+      await createServiceClient()
+        .from('profiles')
+        .update({ onboarding_complete: true, onboarding_completed_at: new Date().toISOString() })
+        .eq('id', session.student_id)
+        .eq('onboarding_complete', false)   // don't overwrite an earlier, truer timestamp
+    } catch (e) {
+      console.error('[sessions complete] onboarding flag', e)   // never fail the completion
+    }
   }
 
   // Fetch student name for notification message

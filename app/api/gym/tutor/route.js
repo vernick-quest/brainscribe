@@ -5,7 +5,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse, ageInYears } from '@/lib/coppa'
+import { ageInYears } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getSkill, getGradeBand } from '@/lib/gymCurriculum'
 import { getChallenge } from '@/lib/gymChallengeBank'
 
@@ -26,11 +27,14 @@ export async function POST(request) {
     return rateLimited("You've reached today's coaching limit — it resets tomorrow.")
   }
 
-  // COPPA coach age gate — re-checked here, not just at session creation (RLS lets a
-  // student insert rows directly). Admins pass (remote-in runs as admin).
+  // Coach reachability gate (lib/access.js) — re-checked here, not just at session
+  // creation (RLS lets a student insert rows directly). Enforces BOTH COPPA and the
+  // Beta access gate. birthdate is an endpoint-specific extra (grade band below).
+  // Admins pass (remote-in runs as admin). Fails CLOSED on a missing/odd access_granted.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given, birthdate').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(`${COACH_GATE_COLUMNS}, birthdate`).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const { sessionId, messages, persona = 'owen', scaffold = null } = await request.json()
   if (!sessionId || !messages) {

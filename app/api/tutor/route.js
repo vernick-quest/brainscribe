@@ -5,7 +5,9 @@ import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
+import { createServiceClient } from '@/lib/supabase/service'
+import { parseCommitments } from '@/lib/coachCommitments'
 
 const anthropic = new Anthropic()
 
@@ -20,13 +22,16 @@ export async function POST(request) {
     return rateLimited("You've reached today's coaching limit — it resets tomorrow.")
   }
 
-  // COPPA coach age gate (lib/coppa.js) — re-checked here, not just at session
+  // Coach reachability gate (lib/access.js) — re-checked here, not just at session
   // creation: RLS lets a student insert a sessions row directly (client-side
   // supabase-js), which would otherwise skip /api/sessions' gate and let an
-  // unconsented under-13 talk to the coach. Admins pass (remote-in runs as admin).
+  // unconsented under-13 — OR an authed 13+ user with no Beta access — talk to the
+  // coach. Enforces BOTH COPPA and access_granted. Admins pass (remote-in runs as
+  // admin). Fails CLOSED on a missing/odd access_granted.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const { sessionId, messages, assignment, persona = 'owen', scaffold = null, resume = false } = await request.json()
 
@@ -37,11 +42,21 @@ export async function POST(request) {
   // Source the assignment from the DB rather than trusting the client. The user
   // client + RLS returns the row only if the caller may read this session, so a
   // student can't run the coach against arbitrary text on someone else's session.
-  // Falls back to the body when RLS doesn't grant a read (e.g. an admin who is
-  // impersonating a student) — an acceptable trust boundary since admins are trusted.
+  // The fallback to the request-body `assignment` exists ONLY for a real admin who
+  // is impersonating a student (RLS returns null for the admin reading the student's
+  // row). For any NON-admin an RLS-null read means "not yours" — reject rather than
+  // run the model on attacker-supplied text (previously any non-owner fell through
+  // to the body). Admins are trusted; the impersonation path is preserved.
   const { data: sessionRow } = await supabase
     .from('sessions').select('assignment_text, is_onboarding, requirements').eq('id', sessionId).single()
-  const effectiveAssignment = sessionRow?.assignment_text ?? assignment
+  let effectiveAssignment
+  if (sessionRow?.assignment_text != null) {
+    effectiveAssignment = sessionRow.assignment_text
+  } else if (gate?.role === 'admin') {
+    effectiveAssignment = assignment                       // admin impersonation path
+  } else {
+    return Response.json({ error: 'Not found.' }, { status: 404 })
+  }
   // Read the practice flag from the DB, not the client — the onboarding coaching
   // tone is server-authoritative.
   const isOnboarding = sessionRow?.is_onboarding === true
@@ -126,14 +141,68 @@ export async function POST(request) {
         controller.error(err)
       } finally {
         const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
-        resolveResult({ inputTokens, outputTokens, savedText })
+        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText })
       }
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText } = await resultReady
+    const { inputTokens, outputTokens, savedText, rawText } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+
+    // Record what the coach PROMISED it saved, from the raw stream before the tokens are
+    // stripped. Deliberately a different path from the client-side scaffold write it will
+    // later be reconciled against: if the same code recorded both, a dropped write would
+    // drop its own evidence — which is how two silent-drop bugs went a month unnoticed.
+    // Service role, because a client that could forge or delete a commitment could hide
+    // its own loss. Never blocks or fails the turn.
+    try {
+      const { components, inlineText } = parseCommitments(rawText)
+      if (components.length) {
+        const svc = createServiceClient()
+        // Carry the inline words too (migration 056). Without them a broken promise is
+        // provable but unrecoverable.
+        //
+        // TWO calls, deliberately. postgrest-js builds the column list from the UNION of
+        // all rows' keys and defaults missing values to NULL, so a single mixed call —
+        // [DONE:body] bare alongside [DONE:closing:text] — would write inline_text = NULL
+        // over the stored body text. Re-emitting a bare DONE in a recap is normal, so the
+        // feature meant to preserve the last copy of a student's words would have been the
+        // thing that erased it.
+        const withText = components.filter(id => inlineText[id])
+        const withoutText = components.filter(id => !inlineText[id])
+
+        if (withText.length) {
+          const { error } = await svc.from('coach_commitments').upsert(
+            withText.map(component_id => ({
+              session_id: sessionId, component_id, inline_text: inlineText[component_id],
+            })),
+            { onConflict: 'session_id,component_id' },
+          )
+          if (error) {
+            // Migration 056 is applied BY HAND, so this deploy can land first. Losing the
+            // recovery text is a downgrade; losing the commitment itself would blind the
+            // detector entirely. Fall back to recording the promise without the text.
+            console.error('[tutor] commitment (with text) failed, retrying without inline_text:', error.message)
+            const { error: retryErr } = await svc.from('coach_commitments').upsert(
+              withText.map(component_id => ({ session_id: sessionId, component_id })),
+              { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+            )
+            if (retryErr) console.error('[tutor] commitment fallback failed:', retryErr.message)
+          }
+        }
+        if (withoutText.length) {
+          // ignoreDuplicates: a bare DONE must never blank text an earlier turn captured.
+          const { error } = await svc.from('coach_commitments').upsert(
+            withoutText.map(component_id => ({ session_id: sessionId, component_id })),
+            { onConflict: 'session_id,component_id', ignoreDuplicates: true },
+          )
+          if (error) console.error('[tutor] commitment (bare) failed:', error.message)
+        }
+      }
+    } catch (err) {
+      console.error('[tutor] commitment record threw:', err?.message)
+    }
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,

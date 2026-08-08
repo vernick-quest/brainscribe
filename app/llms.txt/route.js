@@ -15,6 +15,12 @@ export function GET() {
     '',
     'BrainScribe helps students in grades 6–12 — including kids with ADHD and dysgraphia — who freeze at the blank page. The student talks; a scribe cleans their own words into a paragraph they approve; parents and teachers can read the full transcript. It never writes for the student.',
     '',
+    // Access status, stated plainly. This file exists so assistants quote the
+    // CURRENT position; an omitted access line is how "free to start" kept
+    // getting repeated back at us. Update this the day access or pricing changes.
+    '## Access',
+    'BrainScribe is in invite-only early access. There is no open sign-up and no announced pricing. Families join with an invite from an existing member, or by joining the waitlist on the home page. Existing members sign in at ' + `${CANONICAL_URL}/login` + '.',
+    '',
     '## Key pages',
     `- [Home](${CANONICAL_URL}/): what BrainScribe is and how the voice-first coach works`,
     `- [Writing-help guides](${CANONICAL_URL}/writing-help): common reasons kids struggle to write, and how to help`,

@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
+import { resolveWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite } from '@/lib/scaffoldWrite'
+import MissingWorkFlag from '@/components/MissingWorkFlag'
+import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
 import MicButton from './MicButton'
 import ImpersonationBanner from './ImpersonationBanner'
@@ -16,7 +19,7 @@ import InviteTeacherForm from '@/components/InviteTeacherForm'
 import Icon from '@/components/Icon'
 import { computeActual, chipState } from '@/lib/requirements'
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
-import { newSessionGreeting } from '@/lib/greeting'
+import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
@@ -144,18 +147,6 @@ function buildComponentTree(type, count, customLabels = null) {
   })
 }
 
-function updateComponentItem(scaffold, paraIdx, componentId, updater) {
-  return {
-    ...scaffold,
-    components: scaffold.components.map((p, i) =>
-      i !== paraIdx ? p : {
-        ...p,
-        items: p.items.map(item => item.id === componentId ? updater(item) : item),
-      }
-    ),
-  }
-}
-
 // Strips scaffold stream tokens + [DICTATE] + [CARE] + [SOURCE] from display text.
 // [CARE] is the child-safety signal (drives the out-of-band CrisisResourceCard);
 // [SOURCE] is the research/citations capture signal (drives the SourceCaptureCard).
@@ -208,8 +199,10 @@ function buildGreeting(persona, name, scaffold, onboarding = false) {
 
   if (!hasScaffold) {
     // Single source of truth (lib/greeting.js) — same text the server persists as
-    // the first assistant message on session creation, so display can't drift.
-    return newSessionGreeting(persona, name)
+    // the first assistant message on session creation, so display can't drift. That
+    // includes the existing-work variant: pass the same flag the server passed, or the
+    // fallback silently reverts to "have you written anything?" on work we can see.
+    return newSessionGreeting(persona, name, { existingWork: hasExistingWork(session?.assignment_text) })
   }
 
   if (allDone) {
@@ -533,7 +526,7 @@ function VoiceToggleButton({ readAloud, onToggle, saving = false }) {
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -541,6 +534,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // Briefly true right after Send so a trailing STT final can't repopulate the box
   // we just cleared (dictate-then-Send used to leave the spoken words behind).
   const justSubmittedRef = useRef(false)
+  // Fires onSpeechStart once per mic activation the moment REAL speech is transcribed,
+  // so the coach's read-aloud pauses when the student starts talking (not only on Send).
+  // Reset on each mic (re)start — onInterim('') — so the next utterance can fire again.
+  const spokeRef = useRef(false)
 
   useEffect(() => {
     const el = textareaRef.current
@@ -600,7 +597,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // (re)start fires onInterim('') which re-enables transcription.
   function handleInterim(t) {
     if (justSubmittedRef.current) return   // ignore the tail of the just-sent utterance
-    if (t === '') { editingRef.current = false; setText(''); return }
+    if (t === '') { editingRef.current = false; spokeRef.current = false; setText(''); return }
+    // First real words of this utterance → pause the coach's read-aloud (barge-in on
+    // speech, not just on Send). Once per activation; harmless if nothing is playing.
+    if (!spokeRef.current) { spokeRef.current = true; onSpeechStart?.() }
     if (!editingRef.current) setText(t)
   }
   // Any manual edit (typing or paste) silently stops the mic so it can't keep
@@ -746,11 +746,24 @@ export default function TutorSession({
   completeEndpoint = null,
   gym = null,
 }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const [messages, setMessages]           = useState(
     initialMessages.map(m => m.role === 'assistant' ? { ...m, persona: resolvePersona(session.persona) } : m)
   )
   const [paragraphs, setParagraphs]       = useState(initialParagraphs)
   const [scaffold, setScaffold]           = useState(initialScaffold)
+  // LIVE mirror of `scaffold`. The token parse and the completion snapshot both run
+  // seconds after the render that captured them, and the server PATCH is a whole-tree
+  // overwrite with no merge — so reading the closure means writing a stale tree over
+  // whatever the student did in between. Found 2026-08-04: the manual "Lock it in" flow
+  // destroyed the student's typed line deterministically this way, because the coach's
+  // acknowledgment turn parsed against the PRE-lock tree and PATCHed it back.
+  const [saveWarning, setSaveWarning] = useState(null)
+  const scaffoldRef = useRef(initialScaffold)
+  const applyScaffold = (next) => { scaffoldRef.current = next; setScaffold(next) }
   const captionRef                        = useRef(null)
   // True only on the FIRST coach turn of a genuinely resumed session (set when the
   // resume greeting fires); sent to /api/tutor so the coach's dynamic-tail RESUMING
@@ -807,6 +820,12 @@ export default function TutorSession({
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
   const tutorRunRef       = useRef(0)       // bumps each coach turn; a superseded turn's leftover audio bails
+  // True while the component is mounted. Both the detached <audio> (audioRef) and
+  // window.speechSynthesis are browser globals that keep playing after unmount, and
+  // an in-flight /api/speak can resolve after the student has navigated back to the
+  // Folder — every playback-start point checks this so nothing speaks off a dead
+  // session. Mirrors lib/useCoachVoice.js's seqRef+stop discipline.
+  const mountedRef        = useRef(true)
   const audioUnlockedRef  = useRef(false)
   const pendingGreetingRef = useRef(null)   // greeting that got autoplay-blocked, to re-speak on first gesture
   const everPlayedRef     = useRef(false)   // has any clip actually started playing yet?
@@ -1048,13 +1067,34 @@ export default function TutorSession({
     window.speechSynthesis?.cancel()
   }
 
+  // Hard stop on unmount (nav back to Folder, route change, etc.). stopCurrentAudio
+  // is never otherwise called on the way out, so without this the coach keeps talking
+  // off a page the student already left. Bump both sequence counters so any resolved-
+  // but-not-yet-played clip and any in-flight coach turn both bail, fully tear down
+  // the detached <audio>, and flush the speechSynthesis queue. Re-set mountedRef on
+  // (re)mount so React StrictMode's dev mount→unmount→remount doesn't leave it false.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      playSeqRef.current++
+      tutorRunRef.current++
+      if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
+      const el = audioRef.current
+      if (el) { try { el.pause(); el.currentTime = 0; el.src = '' } catch {} }
+      window.speechSynthesis?.cancel()
+    }
+  }, [])
+
   // Plays a TTS blob URL on the single unlocked element. Resolves when the clip
   // ends, errors, or is superseded by a newer playback. onMeta(durationMs) fires
   // once metadata loads (used by the word-sync caption).
   function playClip(url, onMeta) {
-    const el = getAudioEl()
     const seq = ++playSeqRef.current
     return new Promise((resolve) => {
+      // Navigated away between fetch and play → don't start audio on a dead session.
+      if (!mountedRef.current) return resolve()
+      const el = getAudioEl()
       const done = () => { if (playSeqRef.current === seq) resolve() }
       el.onended = done
       el.onerror = () => { try { URL.revokeObjectURL(url) } catch {} ; done() }
@@ -1130,6 +1170,7 @@ export default function TutorSession({
       captionRef.current?.set(words.join(' '))
       try { URL.revokeObjectURL(url) } catch {}
     } catch {
+      if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
       const utterance = new SpeechSynthesisUtterance(cleanText)
       utterance.rate = 0.95
       window.speechSynthesis?.speak(utterance)
@@ -1171,6 +1212,7 @@ export default function TutorSession({
       await playClip(url)
       try { URL.revokeObjectURL(url) } catch {}
     } catch {
+      if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
       await new Promise(resolve => {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.rate = 0.95
@@ -1190,7 +1232,25 @@ export default function TutorSession({
 
   // ── Scaffold token parsing ───────────────────────────────────────────────────
 
-  async function parseAndApplyScaffoldTokens(fullText, currentScaffold) {
+  // A turn can emit [NUGGET:hook:…] BEFORE its [SCAFFOLD:…]. The handlers below all require
+  // `sc`, so those tokens used to be skipped silently — the only drop class leaving no
+  // trace at all. Hoisting the SCAFFOLD token to the front of the turn means the tree
+  // exists before anything needs to write into it. Order within the rest is preserved.
+  function hoistScaffoldToken(fullText) {
+    const m = String(fullText || '').match(/\[SCAFFOLD:[^\]]*\]/)
+    if (!m || m.index === 0) return fullText
+    const before = fullText.slice(0, m.index)
+    if (!/\[(NUGGET|DONE|ACTIVE|THESIS|PARA_DONE):/.test(before)) return fullText
+    console.warn('[token-safety-net] tokens arrived before [SCAFFOLD:] — reordering so they are not dropped')
+    return m[0] + fullText.slice(0, m.index) + fullText.slice(m.index + m[0].length)
+  }
+
+  async function parseAndApplyScaffoldTokens(rawFullText, currentScaffold) {
+    const fullText = hoistScaffoldToken(rawFullText)
+    // Sections whose prose is already assembled. Their `paragraphs` row is what the Final
+    // Draft renders, so a scaffold-only write there would update a checklist the
+    // deliverable no longer reads — see resolveComponentWrite.
+    const assembledIndexes = (paragraphs ?? []).map(p => p.paragraph_index ?? p.position)
     let sc = currentScaffold ? JSON.parse(JSON.stringify(currentScaffold)) : null
     let changed = false
     let newScaffoldCreated = false
@@ -1203,7 +1263,7 @@ export default function TutorSession({
 
       // A scaffold is built once. Ignore any re-emitted SCAFFOLD once one exists,
       // so a repeated token can't wipe the student's already-locked components.
-      if (type === 'SCAFFOLD' && !currentScaffold?.components?.length) {
+      if (type === 'SCAFFOLD' && !sc?.components?.length) {
         const parts = payload.split(':')
         const assignType = parts[0]
         const count = parseInt(parts[1])
@@ -1218,18 +1278,22 @@ export default function TutorSession({
           sc = { assignment_type: assignType, total_paragraphs: totalParas, current_paragraph_index: 0, components, thesis: null }
           newScaffoldCreated = true
           changed = true
-          await fetch(`/api/scaffold/${session.id}`, {
+          const createRes = await fetch(`/api/scaffold/${session.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignmentType: assignType, totalParagraphs: totalParas, components }),
-          })
+          }).catch(e => ({ ok: false, status: e?.message }))
+          // Not fatal any more — the PATCH route upserts, so a later write recreates the
+          // row. Worth knowing about all the same.
+          if (!createRes?.ok) console.error(`[scaffold] create POST failed (${createRes?.status}) — later writes will recreate the row`)
         }
       }
 
       else if (type === 'ACTIVE' && sc) {
         const componentId = payload
-        const paraIdx = sc.current_paragraph_index ?? 0
-        sc = updateComponentItem(sc, paraIdx, componentId, item =>
+        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
+        const activeTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
+        if (activeTarget) sc = updateComponentItem(sc, activeTarget.paraIdx, activeTarget.id, item =>
           item.status === 'confirmed' ? item : { ...item, status: 'working' }
         )
         changed = true
@@ -1240,13 +1304,20 @@ export default function TutorSession({
         if (colonIdx !== -1) {
           const componentId = payload.slice(0, colonIdx)
           const nuggetText = payload.slice(colonIdx + 1)
-          const paraIdx = sc.current_paragraph_index ?? 0
+          // A blank payload must never erase words we already captured — resolveDoneText
+          // refuses to save blanks for the same reason.
+          if (!nuggetText.trim()) {
+            console.error(`[scaffold] ignored empty [NUGGET:${componentId}:] — keeping the existing candidate text`)
+          } else {
+          const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
-          sc = updateComponentItem(sc, paraIdx, componentId, item =>
+          const nugTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
+          if (nugTarget) sc = updateComponentItem(sc, nugTarget.paraIdx, nugTarget.id, item =>
             item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
           )
           changed = true
+          }
         }
       }
 
@@ -1258,12 +1329,33 @@ export default function TutorSession({
         const colonIdx = payload.indexOf(':')
         const componentId = colonIdx === -1 ? payload : payload.slice(0, colonIdx)
         const inlineText  = colonIdx === -1 ? '' : payload.slice(colonIdx + 1).trim()
-        const paraIdx = sc.current_paragraph_index ?? 0
-        sc = updateComponentItem(sc, paraIdx, componentId, item => {
-          const text = inlineText || item.nuggetText || item.text || ''
-          // Never confirm a component with no content — it'd render a blank "✓" line.
-          if (!text) return item
-          return { ...item, status: 'confirmed', text }
+        const paraIdx = resolveWriteIndex(sc)   // never out of range (Net D)
+        // Net E: the coach may name a component this scaffold doesn't have (standard prose
+        // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
+        // 151 words of Baron's Gratitude Letter on 2026-08-04.
+        const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
+        if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
+          // On an INEXACT match we are guessing which component was meant, so never let
+          // the guess overwrite real text — confirm what the student already has. Their
+          // words outrank our inference about which slot they belong in.
+          if (!doneTarget.exact && (item.text || item.nuggetText)) {
+            return { ...item, status: 'confirmed', text: item.text || item.nuggetText, writeDropped: false }
+          }
+          // A late recap quoting only part of a confirmed line must not truncate it. Only
+          // guards the case where the new text is contained in the old — a genuine revision
+          // (different words) still wins, which is what revisions are for.
+          if (item.status === 'confirmed' && item.text && inlineText
+              && item.text.length > inlineText.length
+              && item.text.toLowerCase().includes(inlineText.trim().toLowerCase())) {
+            console.warn(`[token-safety-net] [DONE:${componentId}:…] quoted a fragment of the confirmed text — keeping the longer version`)
+            return item
+          }
+          const { text, dropped } = resolveDoneText(item, inlineText)
+          // Still never confirm a component with no content — a blank "✓" renders as
+          // nothing. But no longer walk away quietly: record the drop on the item so the
+          // integrity check can tell "the coach skipped this" from "we lost this".
+          if (dropped) return { ...item, writeDropped: true }
+          return { ...item, status: 'confirmed', text, writeDropped: false }
         })
         changed = true
       }
@@ -1399,14 +1491,9 @@ export default function TutorSession({
     // tree, so without this PATCH the confirmed component never reaches the DB and the
     // reveal/transcript come up blank.
     if (changed && sc) {
-      await fetch(`/api/scaffold/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          components: sc.components,
-          thesis: sc.thesis,
-          current_paragraph_index: sc.current_paragraph_index,
-        }),
+      await patchScaffold(sc.components, {
+        thesis: sc.thesis,
+        current_paragraph_index: sc.current_paragraph_index,
       })
     }
 
@@ -1431,7 +1518,7 @@ export default function TutorSession({
           assignment: session.assignment_text,
           messages: history,
           persona: activePersona,
-          scaffold,
+          scaffold: scaffoldRef.current ?? scaffold,
           resume: wasResume,
         }),
       })
@@ -1484,8 +1571,10 @@ export default function TutorSession({
       }
 
       // Parse scaffold tokens and update scaffold state
-      const newScaffold = await parseAndApplyScaffoldTokens(full, scaffold)
-      if (newScaffold !== scaffold) setScaffold(newScaffold)
+      // Parse against the LIVE tree, never the closure — see scaffoldRef above.
+      const live = scaffoldRef.current ?? scaffold
+      const newScaffold = await parseAndApplyScaffoldTokens(full, live)
+      if (newScaffold !== live) applyScaffold(newScaffold)
 
       if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
 
@@ -1680,7 +1769,9 @@ export default function TutorSession({
     // must not depend on an earlier fire-and-forget PATCH having landed. Prefer the
     // freshly-parsed scaffold passed by the caller; fall back to state. (setScaffold
     // is async, so the `scaffold` closure may still be one turn stale here.)
-    const snapshot = finalScaffold ?? scaffold
+    // Ignore anything that isn't a scaffold: this is also used as an onClick handler, and
+    // React passes a SyntheticEvent, which is truthy and defeated the ?? fallback.
+    const snapshot = finalScaffold?.components ? finalScaffold : (scaffoldRef.current ?? scaffold)
     try {
       const res = await fetch(completeEndpoint ?? `/api/sessions/${session.id}/complete`, {
         method: 'PATCH',
@@ -1718,15 +1809,11 @@ export default function TutorSession({
   // ── Nugget panel actions ─────────────────────────────────────────────────────
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
+    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
       ...item, status: 'confirmed', text: nuggetText,
     }))
-    setScaffold(newScaffold)
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    applyScaffold(newScaffold)
+    await patchScaffold(newScaffold.components)
     const note = {
       role: 'user',
       content: `[Student locked in their ${componentId} from the panel: "${nuggetText}". Acknowledge in one sentence in your persona's voice, emit [DONE:${componentId}], then move to the next component.]`,
@@ -1735,15 +1822,11 @@ export default function TutorSession({
   }
 
   async function skipNugget(paraIdx, componentId) {
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, item => ({
+    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
       ...item, status: 'working', nuggetText: null,
     }))
-    setScaffold(newScaffold)
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    applyScaffold(newScaffold)
+    await patchScaffold(newScaffold.components)
     const note = {
       role: 'user',
       content: `[Student wants to keep developing their ${componentId} — they passed on locking in that phrase. Continue coaching this component.]`,
@@ -1805,24 +1888,54 @@ export default function TutorSession({
     askTutor([...messages, note], persona, messages)
   }
 
+  // Every scaffold write went out fire-and-forget with no res.ok check, so a transient
+  // failure was indistinguishable from success — the student kept writing into a tree that
+  // was no longer being persisted. One retry, then a visible notice: silence is the one
+  // response this system has repeatedly proven it cannot afford.
+  async function patchScaffold(components, extra = {}) {
+    // Carry the shape too. The PATCH route upserts, so a row recreated after a failed
+    // create POST would otherwise store assignment_type=NULL and total_paragraphs=1 — after
+    // a reload that hides the sources shelf on an essay and tells the coach it is a
+    // single-paragraph piece.
+    const live = scaffoldRef.current ?? scaffold
+    const body = JSON.stringify({
+      components,
+      ...(live?.assignment_type ? { assignmentType: live.assignment_type } : {}),
+      ...(live?.total_paragraphs ? { totalParagraphs: live.total_paragraphs } : {}),
+      ...extra,
+    })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`/api/scaffold/${session.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body,
+        })
+        if (res.ok) { setSaveWarning(null); return true }
+        console.error(`[scaffold] PATCH failed (${res.status}), attempt ${attempt + 1}/2`)
+      } catch (e) {
+        console.error(`[scaffold] PATCH threw, attempt ${attempt + 1}/2:`, e?.message)
+      }
+      // A moment between attempts — a retry fired instantly rides out the same blip.
+      if (attempt === 0) await new Promise(r => setTimeout(r, 600))
+    }
+    setSaveWarning("We're having trouble saving right now — please keep this tab open.")
+    return false
+  }
+
   // ── Direct component edit ────────────────────────────────────────────────────
 
   async function saveComponentEdit(paraIdx, componentId, newText) {
-    const item = scaffold?.components[paraIdx]?.items?.find(i => i.id === componentId)
+    const live = scaffoldRef.current ?? scaffold
+    const item = live?.components[paraIdx]?.items?.find(i => i.id === componentId)
     const oldText = item?.text || item?.nuggetText || ''
     if (newText === oldText) { setEditingComponent(null); return }
 
-    const newScaffold = updateComponentItem(scaffold, paraIdx, componentId, i => ({
+    const newScaffold = updateComponentItem(live, paraIdx, componentId, i => ({
       ...i, text: newText, nuggetText: newText, status: 'confirmed',
     }))
-    setScaffold(newScaffold)
+    applyScaffold(newScaffold)
     setEditingComponent(null)
 
-    await fetch(`/api/scaffold/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ components: newScaffold.components }),
-    })
+    await patchScaffold(newScaffold.components)
 
     const label = COMPONENT_LABELS[componentId] ?? componentId
     const clip = (t) => t.length > 150 ? t.slice(0, 150) + '…' : t
@@ -2000,27 +2113,29 @@ export default function TutorSession({
       } else {
         updated.push({ scribed_text: text, is_thin: isThin, paragraph_index: sectionIndex })
       }
-      return updated
+      // Keep display order by POSITION, not array slot — with a skipped paragraph the two
+      // diverge, and the readers elsewhere already match on paragraph_index.
+      return updated.sort((a, b) => (a.paragraph_index ?? a.position ?? 0) - (b.paragraph_index ?? b.position ?? 0))
     })
 
-    // If scaffold-tracked, mark the paragraph complete
-    const totalParas = scaffold?.total_paragraphs ?? 1
-    if (scaffold) {
+    // If scaffold-tracked, mark the paragraph complete.
+    // LIVE tree, not the closure: this advances the cursor and then calls askTutor, whose
+    // parse PATCHes the whole tree. Building from a stale closure here is how the cursor
+    // regressed — and a regressed cursor makes the NEXT dictation upsert over the
+    // paragraph just saved, because /api/paragraphs is keyed on (session_id, position).
+    const live = scaffoldRef.current ?? scaffold
+    const totalParas = live?.total_paragraphs ?? 1
+    if (live) {
       const newScaffold = {
-        ...scaffold,
-        current_paragraph_index: Math.min(sectionIndex + 1, scaffold.components.length),
-        components: scaffold.components.map((p, i) =>
+        ...live,
+        current_paragraph_index: Math.min(sectionIndex + 1, live.components.length),
+        components: live.components.map((p, i) =>
           i === sectionIndex ? { ...p, status: 'complete' } : p
         ),
       }
-      setScaffold(newScaffold)
-      fetch(`/api/scaffold/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          components: newScaffold.components,
-          current_paragraph_index: newScaffold.current_paragraph_index,
-        }),
+      applyScaffold(newScaffold)
+      patchScaffold(newScaffold.components, {
+        current_paragraph_index: newScaffold.current_paragraph_index,
       })
     }
 
@@ -2575,7 +2690,9 @@ export default function TutorSession({
               coach's text is committed, after which a send interrupts the read-aloud.
               Keeping the same instance mounted across phases preserves typed text. */}
           {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
-            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation} coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
+            <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation}
+              onSpeechStart={() => { tutorRunRef.current++; stopCurrentAudio() }}
+              coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
           )}
 
           {phase === 'dictating' && (
@@ -2616,6 +2733,15 @@ export default function TutorSession({
           )}
 
         </div>
+
+        {saveWarning && (
+          <div role="alert" className="mx-4 mt-3 shrink-0 rounded-xl px-4 py-2.5 flex items-start gap-2"
+            style={{ backgroundColor: 'var(--status-warning-bg, #FFFBEB)', border: '1px solid var(--status-warning, #D97706)' }}>
+            <p className="text-xs leading-snug" style={{ color: 'var(--status-warning, #D97706)' }}>
+              {saveWarning}
+            </p>
+          </div>
+        )}
 
         {/* ── Essay panel ── */}
         <div className={`flex-1 flex-col min-h-0 border-t-2 md:border-t-0 md:border-l-2 ${activeTab === 'essay' ? 'flex' : 'hidden md:flex'}`}
@@ -2690,45 +2816,6 @@ export default function TutorSession({
             </div>
           )}
 
-          {sessionComplete && (
-            <div className="mx-4 mt-4 rounded-2xl px-5 py-4 flex items-start gap-3 shrink-0"
-              style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
-              <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
-              <div className="flex-1 min-w-0">
-                {gym ? (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <a href={gym.portfolioHref ?? '/skill-studio/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                        See your portfolio →
-                      </a>
-                      <a href={gym.backHref ?? '/skill-studio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
-                        Back to Skill Studio
-                      </a>
-                    </div>
-                  </>
-                ) : onboarding ? (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
-                    <a href="/onboarding/complete" className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      See your opening line →
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done. Your full essay is below.</p>
-                    <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
-                      View transcript →
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* ── Scaffold / essay body ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
 
@@ -2755,8 +2842,10 @@ export default function TutorSession({
               const assembledPara = paragraphs.find(p => (p.paragraph_index ?? p.position) === paraIdx)
               const isPending     = isCurrentPara && phase === 'preview' && pendingScribe?.sectionIndex === paraIdx
               const allConfirmed  = (para.items ?? []).length > 0 && (para.items ?? []).every(c => c.status === 'confirmed') && !assembledPara && !isPending
-              // Completed paragraphs collapse by default; toggled via header click
-              const isExpanded    = isComplete ? (expandedParas[paraIdx] === true) : true
+              // Completed sections stay EXPANDED by default — the finished work must
+              // not disappear the moment it locks in (only the green flip should signal
+              // "done"). Still collapsible via the header toggle for a long essay.
+              const isExpanded    = isComplete ? (expandedParas[paraIdx] !== false) : true
               const heading       = sectionHeading(para, paraIdx, scaffold.total_paragraphs)
 
               return (
@@ -2780,37 +2869,31 @@ export default function TutorSession({
                   {/* Paragraph header — clickable to collapse/expand when complete */}
                   <div
                     className={`px-4 pt-3 pb-2 flex items-center justify-between gap-2${isComplete ? ' cursor-pointer select-none' : ''}`}
-                    onClick={isComplete ? () => setExpandedParas(prev => ({ ...prev, [paraIdx]: !prev[paraIdx] })) : undefined}
+                    onClick={isComplete ? () => setExpandedParas(prev => ({ ...prev, [paraIdx]: !isExpanded })) : undefined}
                   >
+                    {/* Section header. No leading dot on the active/locked states — a
+                        bullet made "WRITING NOW" read as a list item, not a title
+                        (Robert). Colour + label carry the state; complete keeps its ✓. */}
                     <div className="flex items-center gap-2">
                       {isComplete ? (
                         <>
                           <span className="text-sm" style={{ color: 'var(--status-success)' }}>✓</span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
+                          <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--status-success)' }}>
                             {heading || 'Done'}
                           </span>
                         </>
                       ) : isPending ? (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {heading ? `${heading} — confirming…` : 'Confirming…'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+                          {heading ? `${heading} — confirming…` : 'Confirming…'}
+                        </span>
                       ) : isCurrentPara ? (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-                            {heading ? `${heading} — writing now` : 'Writing now'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+                          {heading ? `${heading} — writing now` : 'Writing now'}
+                        </span>
                       ) : (
-                        <>
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: 'var(--border-strong)' }} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
-                            {heading || 'Locked'}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
+                          {heading || 'Locked'}
+                        </span>
                       )}
                     </div>
                     {/* Collapse chevron for completed paragraphs */}
@@ -2868,8 +2951,14 @@ export default function TutorSession({
                               <button
                                 onClick={() => { setEditDraft(assembledPara.scribed_text); setEditingParaIdx(paraIdx) }}
                                 title="Edit paragraph"
-                                className="absolute top-0 right-0 opacity-0 group-hover/para:opacity-100 transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
-                                style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                /* Always visible. Component-level Revise is hidden once a
+                                   paragraph is assembled, so this is the ONLY way left to
+                                   fix a line — and it used to be an opacity-0 hover-reveal,
+                                   which does not exist on touch. On an iPad that left a
+                                   child looking at a mistake with no visible way to correct
+                                   it. Undiscoverable is worse than disabled. */
+                                className="absolute top-0 right-0 transition text-[11px] font-semibold rounded-md px-2"
+                                style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)', minHeight: 44 }}
                               >
                                 Edit
                               </button>
@@ -2880,7 +2969,7 @@ export default function TutorSession({
 
                       {/* Component items — for both complete (checklist) and current (in-progress) paragraphs */}
                       {!isPending && para.items?.length > 0 && (isComplete || isCurrentPara) && (
-                        <div className={`px-4 pb-3 space-y-1.5${assembledPara ? ' pt-2 border-t border-green-100 mt-0' : ''}`}>
+                        <div className={`px-4 pb-3 space-y-3${assembledPara ? ' pt-2 border-t border-green-100 mt-0' : ''}`}>
                           {para.items.map(item => {
                             const isConfirmed = item.status === 'confirmed'
                             // For completed paragraphs, skip items with no content to show
@@ -2906,17 +2995,28 @@ export default function TutorSession({
                                 )}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: sc.dot }}>
                                       {item.label}
                                       {!isComplete && (item.status === 'confirmed' ? ' ✓' : item.status === 'working' ? ' →' : item.status === 'candidate' ? ' ◆' : '')}
                                     </span>
-                                    {/* Revise sits right after the ✓ on a locked-in part (was far-right, too detached). */}
-                                    {isConfirmed && itemText && !isEditingThis && (
+                                    {/* Revise = an orange filled button (white text) so it reads
+                                        as a tappable control, not a label (Robert). Orange = action
+                                        per the design system.
+                                        HIDDEN once the paragraph is assembled: saveComponentEdit
+                                        writes the scaffold ONLY, and from that moment the paragraphs
+                                        row is what the transcript, Copy essay, teacher view and Final
+                                        Draft all render. A revision made here would sit in the
+                                        checklist under unchanged prose and never reach the
+                                        deliverable — invisible to the orphan check too, since an
+                                        edit sharing >40% of its words doesn't read as orphaned. The
+                                        prose editor below (saveDirectEdit) is the right tool then,
+                                        and it does write /api/paragraphs. */}
+                                    {isConfirmed && itemText && !isEditingThis && !assembledPara && (
                                       <button
                                         onClick={() => { setComponentEditDraft(itemText); setEditingComponent({ paraIdx, componentId: item.id }) }}
                                         title="Revise this"
-                                        className="transition text-[10px] font-semibold rounded-md px-1.5 py-0.5"
-                                        style={{ color: 'var(--accent)', backgroundColor: 'var(--surface-spark)' }}
+                                        className="transition text-[11px] font-semibold rounded-md px-2 py-0.5 hover:opacity-90"
+                                        style={{ color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)' }}
                                       >
                                         Revise
                                       </button>
@@ -2954,7 +3054,7 @@ export default function TutorSession({
                                         </div>
                                       </div>
                                     ) : (
-                                      <p className="text-xs leading-snug mt-0.5" style={{ color: sc.text }}>
+                                      <p className="text-sm leading-relaxed mt-1" style={{ color: sc.text }}>
                                         "{itemText}"
                                       </p>
                                     )
@@ -3046,7 +3146,7 @@ export default function TutorSession({
                           {isCurrentPara && allConfirmed && !onboarding && (
                             para.type === 'custom' ? (
                               <button
-                                onClick={markSessionComplete}
+                                onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
                                 disabled={phase !== 'listening' || sessionComplete}
                                 className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
                                 style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
@@ -3140,6 +3240,68 @@ export default function TutorSession({
                 Renders null when there are no sources (WorksCitedCard guards). */}
             {sourcesEnabled && (
               <WorksCitedCard sources={sources} style={citationStyle} onStyleChange={setCitationStyle} />
+            )}
+
+            {/* Completion card — lives at the BOTTOM of the draft, under the finished
+                work: everything above it builds to this. (Was pinned above the draft.) */}
+            {sessionComplete && (
+              <div className="rounded-2xl px-5 py-4 flex items-start gap-3"
+                style={{ backgroundColor: 'var(--status-success-bg)', border: '1.5px solid var(--status-success)' }}>
+                <Icon name="sparkles" size={20} style={{ color: 'var(--status-success)' }} />
+                <div className="flex-1 min-w-0">
+                  {gym ? (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>{gym.skillLabel} — practiced!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Nice rep. This one's in your portfolio now.</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <a href={gym.portfolioHref ?? '/skill-studio/portfolio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                          See your portfolio →
+                        </a>
+                        <a href={gym.backHref ?? '/skill-studio'} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                          Back to Skill Studio
+                        </a>
+                      </div>
+                    </>
+                  ) : onboarding ? (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Your opening line is ready!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>That's the warm-up done — let's take a look at what you wrote.</p>
+                      {/* TWO doors, not one. A student finished the warm-up, found no route
+                          onward, and simply carried on typing here — writing a real Civil
+                          War paragraph into a practice session whose scaffold holds ONE
+                          line, so none of it could be saved. The warm-up must say plainly
+                          where real homework goes. */}
+                      <div className="flex flex-col gap-2 mt-3">
+                        <a href="/assignment/new"
+                          className="inline-flex items-center justify-center gap-1 rounded-full px-4 text-xs font-bold transition"
+                          style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', minHeight: 44 }}>
+                          Got real homework? Start an assignment →
+                        </a>
+                        <a href="/onboarding/complete" className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--text-link)' }}>
+                          See your opening line first
+                        </a>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold" style={{ color: 'var(--status-success)' }}>Assignment complete!</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>Every section is done — your finished piece is right above.</p>
+                      <a href={`/transcript/${session.id}`} className="inline-flex items-center gap-1 mt-2 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                        View transcript →
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Quiet escape hatch: a student who notices something missing WHILE writing
+                needs somewhere to say so. Elio said exactly this mid-session on
+                2026-07-01, the coach told him not to worry about it, and his report
+                reached nobody for a month. Only once there's a draft to be missing from,
+                and never during the onboarding hook. */}
+            {!session.is_onboarding && scaffold?.components?.length > 0 && (
+              <MissingWorkFlag sessionId={session.id} draftWords={reqActual?.words ?? null} />
             )}
           </div>
         </div>

@@ -31,7 +31,7 @@ The proof isn't a promise — it's a transcript. Every session records the quest
 
 That's the whole design goal: take the mechanical wall, leave the thinking with the kid. Not cognitive offloading — the opposite of it.
 
-[Try a session](/login) — it's free to start.
+[Request an invite](/#waitlist) — BrainScribe is invite-only while we're in early access.
 
 <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-default)">
 <p style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">The cognitive offloading series</p>

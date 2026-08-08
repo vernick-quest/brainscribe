@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/Avatar'
+import { useTabTitle } from '@/components/TabTitle'
 
 // The breadcrumb word shown next to the logo — reflects the section of the site
 // the current URL is in. Empty string → show just the logo.
@@ -24,6 +25,10 @@ function sectionLabel(pathname) {
 export default function Navbar({ user, profile }) {
   const renderedUserId = user?.id ?? null
   const section = sectionLabel(usePathname())
+  // Name the browser tab for THIS account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in `profile` is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const isParent = profile?.role === 'parent'

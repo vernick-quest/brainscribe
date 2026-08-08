@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { displayNameNeedsConfirm } from '@/lib/displayName'
 import Icon from '@/components/Icon'
+import { UNDER13_SETUP_COPY } from '@/lib/parentFirst'
 
 const ROLES = [
   {
@@ -207,13 +208,17 @@ function WelcomeContent() {
     // keep the spinner up until navigation
   }
 
-  // Called from parent-email step
-  async function handleSendConsent() {
+  // Called from parent-email step.
+  //
+  // PARENT-FIRST: this asks a parent to CREATE AN ACCOUNT. It does not create a pending
+  // consent record and there is no token in the email — so there is nothing a child can
+  // cause to be approved, which was the hole in the old flow (Fable red-team #3).
+  async function handleRequestParentSetup() {
     if (!parentEmail) return
     setSendingEmail(true)
     setError('')
 
-    const res = await fetch('/api/coppa/initiate', {
+    const res = await fetch('/api/coppa/request-parent-setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ parentEmail }),
@@ -226,7 +231,35 @@ function WelcomeContent() {
       return
     }
 
-    router.push('/coppa/pending')
+    setStep('parent-asked')
+  }
+
+  // ── Step: parent asked (under-13 dead end) ──
+  // Deliberately terminal. There is no button that grants access, nothing to poll, and
+  // nothing to resend — because nothing is pending. The child's next action is to sign
+  // back in AFTER a parent has made the account.
+  if (step === 'parent-asked') {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%', backgroundColor: 'var(--surface-spark)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem',
+          }}>
+            <Icon name="mail" size={28} style={{ color: 'var(--accent)' }} />
+          </div>
+          <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
+            Sent &mdash; over to them
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+            {UNDER13_SETUP_COPY.sent}
+          </p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: 1.5, margin: 0 }}>
+            Nothing to do here in the meantime &mdash; you can close this page.
+          </p>
+        </div>
+      </Card>
+    )
   }
 
   // ── Step: Beta Circle access code (fresh self-signup, no code + no invite) ──
@@ -565,11 +598,10 @@ function WelcomeContent() {
             <Icon name="mail" size={28} style={{ color: 'var(--accent)' }} />
           </div>
           <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: '0.5rem' }}>
-            Let's get your parent's OK
+            {UNDER13_SETUP_COPY.heading}
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            Since you're under 13, we need a parent or guardian to approve your
-            account. We'll send them a quick email — no payment needed.
+            {UNDER13_SETUP_COPY.body}
           </p>
         </div>
 
@@ -595,7 +627,7 @@ function WelcomeContent() {
                 outline: 'none',
                 boxSizing: 'border-box',
               }}
-              onKeyDown={e => { if (e.key === 'Enter' && parentEmail) handleSendConsent() }}
+              onKeyDown={e => { if (e.key === 'Enter' && parentEmail) handleRequestParentSetup() }}
             />
           </div>
 
@@ -612,7 +644,7 @@ function WelcomeContent() {
           )}
 
           <button
-            onClick={handleSendConsent}
+            onClick={handleRequestParentSetup}
             disabled={!parentEmail || sendingEmail}
             style={{
               width: '100%',
@@ -627,12 +659,11 @@ function WelcomeContent() {
               transition: 'background-color 0.15s',
             }}
           >
-            {sendingEmail ? 'Sending…' : 'Send consent request →'}
+            {sendingEmail ? 'Sending…' : UNDER13_SETUP_COPY.cta}
           </button>
 
           <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
-            Your account will be ready once approved.
-            If not approved within 7 days, it will be automatically deleted.
+            If nobody sets it up within 7 days, we delete everything we&rsquo;ve collected.
           </p>
         </div>
       </Card>

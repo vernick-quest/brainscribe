@@ -43,4 +43,4 @@ For the kid who freezes at the start of every essay, Skill Studio is a place to 
 
 Assignments show a student they can finish tonight's work. The gym shows them they're becoming a writer. Both are theirs.
 
-[Try a session](/login) and find the gym next to your student's assignments.
+[Request an invite](/#waitlist) — and once you're in, you'll find the gym next to your student's assignments.

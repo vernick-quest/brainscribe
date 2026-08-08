@@ -259,7 +259,7 @@ export default function AboutPage() {
           }}>
             BrainScribe asks the questions. They find the words. The essay is theirs.
           </p>
-          <a href="/login"
+          <a href="/#waitlist"
             style={{
               display: 'inline-block',
               backgroundColor: 'var(--surface-card)',
@@ -271,7 +271,7 @@ export default function AboutPage() {
               textDecoration: 'none',
               letterSpacing: '0.01em',
             }}>
-            Try BrainScribe free
+            Request an invite
           </a>
         </div>
 

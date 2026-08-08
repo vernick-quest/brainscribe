@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getSubject } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { chipState } from '@/lib/requirements'
+import { formatLastModified } from '@/lib/dates'
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -21,17 +22,6 @@ function ClientDate({ dateStr }) {
   const [label, setLabel] = useState('')
   useEffect(() => { setLabel(formatDate(dateStr)) }, [dateStr])
   return <span suppressHydrationWarning>{label}</span>
-}
-
-// "Last modified" label: WEEKDAY + time within the last week (e.g. "WED, 9:00 pm"),
-// switching to the actual date once it's older than a week (e.g. "Jul 10, 9:00 pm").
-function formatLastModified(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const diffDays = Math.floor((new Date() - date) / 86400000)
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
-  if (diffDays < 7) return `${date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}, ${time}`
-  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`
 }
 
 // Client-computed (locale/timezone dependent) so it can't cause a hydration mismatch.
@@ -130,8 +120,12 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
   }
   async function handleDelete() {
     close()
-    onDeleted(session.id)
+    onDeleted(session.id)                                        // optimistic local removal
     await fetch(`/api/sessions/${session.id}`, { method: 'DELETE' })
+    // Invalidate the App Router cache so the deletion sticks across navigation.
+    // Without this the folder re-renders from the client cache on back-nav and the
+    // deleted row reappears until a hard refresh (it was already gone server-side).
+    router.refresh()
   }
   async function sendInvite() {
     const email = inviteEmail.trim()
@@ -248,7 +242,29 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
 
 // Beta: the free-session limit is disabled (no paid plans yet). The meter markup
 // is kept behind this flag so it can be switched on when plans land.
+// One pager control. 44px tap target; a disabled end-of-range button stays visible
+// (rather than vanishing) so the row doesn't reflow as you page.
+function PagerButton({ label, disabled, onClick }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{
+        font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', minHeight: 44, padding: '8px 16px',
+        borderRadius: 'var(--radius-pill)', background: 'var(--surface-card)',
+        border: '1px solid var(--border-default)',
+        color: disabled ? 'var(--text-subtle)' : 'var(--text-link)',
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
+      }}>
+      {label}
+    </button>
+  )
+}
+
 const SHOW_USAGE_METER = false
+
+// Assignments per page. Tuned so the common case never paginates: a term's worth of
+// live work fits on one page, while a long All/Done history pages instead of becoming
+// a scroll wall. Cards run ~120px, so this is roughly a screen-and-a-half on a phone.
+const PAGE_SIZE = 8
 
 export default function SessionsList({ sessions: initial, teachersBySession = {}, canManage = true, canInvite = canManage, watcherHref = '/transcript' }) {
   const [sessions, setSessions] = useState(initial)
@@ -256,11 +272,22 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
   // the default view is never empty (e.g. a parent viewing a child whose assignments
   // are all complete lands on Done).
   const [filter, setFilter] = useState(() => initial.some(s => s.status !== 'complete') ? 'active' : 'complete')
+  const [page, setPage] = useState(1)
 
   const visible = sessions.filter(s =>
     filter === 'all' ? true : filter === 'complete' ? s.status === 'complete' : s.status !== 'complete'
   )
-  const filters = [['active', 'In progress'], ['complete', 'Done'], ['all', 'All']]
+  // Tab ORDER is All → In Progress → Done (same for every role). The default
+  // SELECTION is still the useful one rather than the first one: land on live work,
+  // or on Done when everything is finished, so the opening view is never empty.
+  const filters = [['all', 'All'], ['active', 'In Progress'], ['complete', 'Done']]
+
+  // Paging — long lists are a scroll wall on a phone and exactly what an ADHD-prone
+  // reader loses their place in. Most people never see this: only a filter holding
+  // more than PAGE_SIZE assignments pages at all.
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)          // a shrinking list can strand us past the end
+  const paged = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   return (
     <section>
@@ -285,7 +312,7 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
         {filters.map(([key, label]) => {
           const on = filter === key
           return (
-            <button key={key} onClick={() => setFilter(key)}
+            <button key={key} onClick={() => { setFilter(key); setPage(1) }}
               style={{
                 font: 'var(--type-ui)', fontWeight: 'var(--fw-semibold)', cursor: 'pointer', padding: '7px 16px', borderRadius: 'var(--radius-pill)',
                 background: on ? 'var(--primary)' : 'var(--surface-card)', color: on ? 'var(--text-on-dark)' : 'var(--text-muted)',
@@ -298,7 +325,7 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
       </div>
 
       <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
-        {visible.map(s => (
+        {paged.map(s => (
           <AssignmentRow
             key={s.id}
             session={s}
@@ -316,6 +343,27 @@ export default function SessionsList({ sessions: initial, teachersBySession = {}
           </div>
         )}
       </div>
+
+      {/* Pager — only when this filter actually overflows a page. */}
+      {totalPages > 1 && (
+        <nav aria-label="Assignment pages"
+          className="flex items-center justify-center"
+          style={{ gap: 'var(--space-4)', marginTop: 'var(--space-5)' }}>
+          <PagerButton
+            label="← Previous"
+            disabled={safePage <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          />
+          <span aria-live="polite" style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            Page {safePage} of {totalPages}
+          </span>
+          <PagerButton
+            label="Next →"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          />
+        </nav>
+      )}
     </section>
   )
 }

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { attributionToCapture } from '@/lib/attribution'
+import { safeNextPath } from '@/lib/redirect'
 
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url)
@@ -10,7 +11,7 @@ export async function GET(request) {
   // Sanitize `next` to a local path only — a value like `//evil.com` or `/\evil.com`
   // would otherwise produce an off-site redirect (open-redirect phishing).
   const rawNext = searchParams.get('next') ?? '/folder'
-  const next = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/folder'
+  const next = safeNextPath(rawNext)
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`)

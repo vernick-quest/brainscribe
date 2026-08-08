@@ -31,4 +31,4 @@ She wasn't upset. She was relieved — because for the first time she could see 
 
 That's the bar. Not "can a student produce an essay" — anything can do that now. The bar is: *did the student do the thinking, and can you tell?* With BrainScribe, the answer is yes, and you can.
 
-[Try a session for yourself](/login) — it's free to start.
+[Request an invite](/#waitlist) and see a session for yourself — BrainScribe is invite-only while we're in early access.

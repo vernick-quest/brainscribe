@@ -2,7 +2,7 @@ import { PERSONAS } from '@/lib/prompts'
 import { createClient } from '@/lib/supabase/server'
 import { logElevenLabsUsage } from '@/lib/usage'
 import { checkRateLimit } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 const MODEL_ID = 'eleven_turbo_v2_5'
 
@@ -11,9 +11,12 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
+  // Coach reachability gate (lib/access.js) — free TTS is a coach capability, so an
+  // unconsented under-13 OR an authed user with no Beta access must not reach it.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   if (!await checkRateLimit(`speak:${user.id}`, 60, 60)) return new Response('Too many requests', { status: 429 })
   // Daily per-account backstop against runaway TTS spend (fails open).

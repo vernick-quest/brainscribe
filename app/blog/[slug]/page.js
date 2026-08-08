@@ -2,7 +2,9 @@ import { Lora } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import { getAllSlugs, getPostBySlug } from '@/lib/blog'
 import { CANONICAL_URL } from '@/lib/site'
+import { blogPostingSchema } from '@/lib/schema'
 import SiteHeader from '@/components/SiteHeader'
+import JsonLd from '@/components/JsonLd'
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' })
 const serif = lora.style.fontFamily
@@ -58,28 +60,14 @@ export default async function BlogPostPage({ params }) {
   if (!post) notFound()
 
   const url = `${CANONICAL_URL}/blog/${post.slug}`
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BlogPosting',
-    headline: post.title,
-    description: post.summary || undefined,
-    datePublished: post.date || undefined,
-    dateModified: post.date || undefined,
-    url,
-    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
-    image: `${url}/opengraph-image`,
-    author: { '@type': 'Organization', name: 'BrainScribe', url: CANONICAL_URL },
-    publisher: {
-      '@type': 'Organization',
-      name: 'BrainScribe',
-      logo: { '@type': 'ImageObject', url: `${CANONICAL_URL}/brainscribe-logo.png` },
-    },
-  }
 
   return (
     <div style={{ backgroundColor: 'var(--brand-cream)', minHeight: '100vh', color: 'var(--brand-navy)' }}>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {/* Built by lib/schema.js like every other page's structured data — this
+          route used to hand-roll its own object + <script>, and that second,
+          unreviewed emitter is how stale claims survived. One builder, one tag. */}
+      <JsonLd data={blogPostingSchema(post, url)} />
 
       <SiteHeader active="blog" />
 

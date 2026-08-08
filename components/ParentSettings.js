@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTabTitle } from '@/components/TabTitle'
 import Navbar from '@/components/Navbar'
 import ProfileForm from '@/components/ProfileForm'
 import Avatar from '@/components/Avatar'
@@ -140,6 +141,10 @@ function PendingInviteRow({ invite }) {
 
 // ── Main ───────────────────────────────────────────────────────────────
 export default function ParentSettings({ user, profile, viewerId, children = [], pendingInvites = [], coParents = [], coparentOf = null, primaryParentName = null, maxChildren = 3, impersonating = false }) {
+  // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
+  // several signed-in tabs are tellable apart. During a remote-in this profile is
+  // already the impersonated user's, so the tab names whoever you're viewing.
+  useTabTitle(profile?.full_name, profile?.role)
   const atCap = children.length >= maxChildren
   const isCoParent = !!coparentOf
   const nothingYet = children.length === 0 && pendingInvites.length === 0

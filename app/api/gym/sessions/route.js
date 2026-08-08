@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse, ageInYears } from '@/lib/coppa'
+import { ageInYears } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getSkill, getGradeBand, getUnlockedSkills } from '@/lib/gymCurriculum'
 import { getChallenge } from '@/lib/gymChallengeBank'
 import { ensureGymProgress, getPracticedKeys } from '@/lib/gymAwards'
@@ -48,22 +49,17 @@ export async function POST(request) {
     return rateLimited("You've started a lot of practice sessions today — try again tomorrow.")
   }
 
-  // COPPA coach age gate (role-independent) — no one reaches the coach without a 13+
-  // assertion or completed consent. /api/gym/tutor + /api/scribe* re-check it too.
+  // Coach reachability gate — COPPA age gate AND the Beta access gate, via the shared
+  // helper (lib/access.js), same enforcement as POST /api/sessions. birthdate is an
+  // endpoint-specific extra (grade-band derivation below). /api/gym/tutor + /api/scribe*
+  // re-check reachability too. Fails CLOSED on a missing/odd access_granted. Requires
+  // migration 045 (access_granted column) — deploy AFTER it is applied or this throws.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, age_bracket, coppa_consent_required, coppa_consent_given, birthdate, access_granted')
+    .select(`${COACH_GATE_COLUMNS}, birthdate`)
     .eq('id', user.id).single()
-  if (!canUseCoach(profile)) return coachGateResponse()
-
-  // Beta-launch access gate (additive + independent of the COPPA gate above). Same
-  // enforcement as POST /api/sessions: block only a fresh, un-invited, un-redeemed
-  // self-signup. Block ONLY on an explicit non-true value so an odd row never crashes
-  // session creation. Requires migration 045 (access_granted column) — deploy AFTER
-  // it is applied or this select throws.
-  if (profile?.access_granted !== true) {
-    return Response.json({ error: 'Enter your Beta Circle code to start writing with a coach.', code: 'access_code_required' }, { status: 403 })
-  }
+  const gateFail = coachGateFailure(profile)
+  if (gateFail) return gateFail
 
   const { skillKey, persona = 'owen', warmup = false } = await request.json()
 

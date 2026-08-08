@@ -58,9 +58,13 @@ const FAQ = [
       'It depends on what the AI does. A tool that writes the essay for a student skips the learning. BrainScribe doesn’t write anything the student didn’t say — it coaches and organizes their own words, and the transcript makes the process visible. The work stays the student’s, which is what teachers care about.',
   },
   {
+    // Kept phrased as "is it free" because that's what parents actually search —
+    // but answered honestly: invite-only early access, no open sign-up, and no
+    // announced pricing. Do NOT reintroduce a price or a "free to start" claim
+    // here without the same change landing in lib/schema.js and the landing page.
     question: 'Is BrainScribe free?',
     answer:
-      'BrainScribe is free to start. You sign in with Google and can try a coaching session at no cost.',
+      'BrainScribe is in invite-only early access right now, so there is no open sign-up and no paid plan yet. Families join with an invite from someone already using it, or by joining the waitlist — we send invites as spots open up. Pricing has not been announced.',
   },
 ]
 
@@ -89,7 +93,7 @@ export default function FaqPage() {
           <p style={{ fontSize: '1rem', lineHeight: 1.65, color: 'var(--brand-navy)', margin: '0 0 18px' }}>
             {CANONICAL_DESCRIPTION}
           </p>
-          <a href="/login" style={ctaPrimary}>Try it free</a>
+          <a href="/#waitlist" style={ctaPrimary}>Request an invite</a>
         </section>
 
         <nav style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid var(--border-default)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>

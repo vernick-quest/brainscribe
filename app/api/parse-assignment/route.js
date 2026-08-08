@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 const anthropic = new Anthropic()
 
@@ -22,9 +22,13 @@ export async function POST(request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Coach reachability gate (lib/access.js) — assignment OCR is a coach capability
+  // (a model call), so an unconsented under-13 OR an authed user with no Beta access
+  // must not reach it.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   if (!await checkRateLimit(`parse-assignment:${user.id}`, 10, 60)) return rateLimited()
 
@@ -85,7 +89,25 @@ Capture everything the student needs to know about WHAT to write and HOW it must
 - required elements (thesis, evidence, specific sections, syllable counts, rhyme scheme, etc.)
 If a rubric or checklist describes structural or content requirements, INCLUDE those — that's often where the format is specified.
 
-Leave out only pure administrative noise that doesn't change what the student writes: teacher/student names, class headers, due dates, point values, and grading-only criteria (e.g. "Grammar — 10 pts").
+LAYOUT: worksheets are often TABLES. Read every cell, including the right-hand column — fields sitting beside each other on the same row are just as important as the ones below. Work through the grid cell by cell rather than reading straight down the page, or you will silently lose half of it.
+
+EVERY FIELD THE STUDENT MUST FILL IN IS PART OF THE ASSIGNMENT — include it even when it looks administrative:
+- "Author's Name:", "Book Title:", "Genre:" are things the STUDENT supplies. They are not the class header.
+- A rating scale the student marks ("give it 1-5 stars", "circle one") is a question they must answer, not a grading rubric.
+- Any blank, line, or box waiting to be completed.
+Leave out only what the student never has to write: the teacher's own name, class/period headers, due dates, the points an item is WORTH, and grading-only criteria (e.g. "Grammar — 10 pts"). If you cannot tell whether a field is for the student or the teacher, KEEP IT — a coach can skip something extra, but it cannot ask about a field it never saw.
+
+WORK THE STUDENT HAS ALREADY DONE — this is separate from the assignment and you must NOT throw it away. A student often uploads a worksheet they have partly filled in: handwriting in the blanks, typed answers under the printed prompts, a rating circled. Capture it, because a coach that cannot see it will ask them to redo work they have already finished.
+
+Transcribe their existing answers VERBATIM — their words, their spelling, their phrasing. Never tidy, complete, or improve them. If a field is blank, say nothing about it rather than inventing an answer.
+
+Put anything already written at the END, after everything else, under exactly this heading and nothing else:
+
+ALREADY WRITTEN BY THE STUDENT:
+<field label>: <their exact words>
+<field label>: <their exact words>
+
+Omit that whole section — heading included — if the page is blank. Everything above the heading is the assignment; everything below it is the student's own draft, and the two must never be mixed.
 
 If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
         },

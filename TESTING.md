@@ -2077,3 +2077,577 @@ headlessly — build + code reasoning is the bar here, live click-through owed t
 - [ ] ⬜ Live click-through in `/admin` (Robert): add student → count +1; remove →
       count −1 + slot freed; toggle `unblock` inactive then redeem is rejected; create
       a new code and redeem with it.
+
+## 2026-07-19 — Coaching-session draft-panel polish + barge-in-on-speech (Robert live feedback) — focus/coaching-session
+
+All in components/TutorSession.js (build + test:run green, 56/56):
+- **Completion card moved to the BOTTOM of the draft**, under the finished work (was pinned
+  above it) — "everything above builds to it". Copy: "…your finished piece is right above."
+- **Completed sections stay EXPANDED** on completion (was auto-collapsing → the work
+  "disappeared"). Only the orange→green flip signals done; still collapsible via the header
+  toggle (toggle rewired to flip on `!isExpanded` so one click works with the new default).
+- **Section header de-bulleted**: the active/locked paragraph header no longer shows a
+  status dot (it read as a list bullet, not a title) — colour + label carry the state;
+  complete keeps its ✓. Header + component labels bumped 10px→11px.
+- **Component list spacing** increased (space-y-1.5 → space-y-3) and locked-line text
+  bumped text-xs→text-sm/leading-relaxed for legibility ("small and jammed").
+- **"Revise"** is now an orange filled button with white text (was orange text on a soft
+  chip → read as a label). Orange = action per the design system.
+- **Barge-in on speech**: the coach's read-aloud now pauses the moment the student's mic
+  transcribes REAL words (first non-empty interim), not only on Send — `onSpeechStart`
+  → `stopCurrentAudio()` + supersede the trailing clip (tutorRunRef++). Stop-only, fires
+  once per mic activation (reset on mic restart), never reopens the mic → cannot regress
+  the half-duplex feedback-loop fix. Only wired on the listening composer (no dictation-mode
+  change).
+
+Manual checks owed (live): (1) finish a haiku → the 3 lines STAY visible with a green
+card, and the "Assignment complete" card sits UNDER them; (2) tap the mic while the coach
+is reading aloud and speak → the coach audio stops promptly; (3) "Revise" reads as a button;
+(4) the completed-section header collapses/expands in one click.
+
+RELAYED to coach-ai (NOT fixed here — their lane): the DOUBLE self-introduction. Root cause
+is deterministic — /api/tutor:55-56 strips the leading assistant message (API needs a
+leading user turn), so the model never sees the app's deterministic greeting and
+re-introduces every first turn. Fix = a coach-prompt rule "the app has already greeted the
+student by name — never open turn 1 with an introduction; respond directly." (Optionally a
+client `appGreeted` flag, but the prompt rule alone fixes it.)
+
+---
+
+# Testing checklist — 2026-07-19 (focus/coach-ai: fresh-session double-greeting fix)
+
+Change: added structural coaching **Rule 10b (FRESH-SESSION OPENING)** to
+`lib/prompts.js` — a companion to Rule 10 (SESSION RESUME). The app already delivers
+the deterministic by-name greeting (`lib/greeting.js` → `newSessionGreeting`) as the
+leading assistant message, which `/api/tutor` strips before the model call, so the
+coach never saw it and re-introduced on turn 1. Rule 10b tells the coach: on turn 1 do
+NOT open with an introduction / "I'm <name>" / "lovely to meet you"; respond directly
+to what the student said — same one-greeting-only rule as resume (Rule 10) and persona
+switch (Guardrail 8).
+
+Status key: ✅ verified · 🔧 changed today, needs (re)test · ⬜ not yet tested
+
+## Automated gate (this session)
+- [x] ✅ `npm run test:run` — 56/56 pass (greeting resolver + COPPA/OAuth/access invariants)
+- [x] ✅ `npm run build` — compiled successfully, all routes render
+
+## Fresh-session no-double-greeting (manual, per persona) — 🔧 needs live re-test
+For each persona, start a BRAND-NEW session (no prior scaffold), let the app deliver its
+by-name greeting, then send just "hi" as the first student message. The coach's turn-1
+reply must NOT re-introduce itself and must go straight into the first coaching step
+(settle topic → Rule 1 structure), with no second "I'm <name>" / "lovely/nice to meet you":
+- [ ] 🔧 Tilly (Matilda) — worst offender, greeting says "I'm Tilly, lovely to meet you"; turn 1 must not repeat it
+- [ ] 🔧 Owen — greeting says "I'm Owen"; turn 1 must not repeat it
+- [ ] 🔧 Alistair — greeting says "I'm Alistair"; turn 1 must not repeat it
+- [ ] 🔧 Deon — greeting is name-only ("Hey <name>"); turn 1 must not add an intro
+- [ ] 🔧 Zoe — greeting is name-only; turn 1 must not add an intro
+- [ ] 🔧 Jade — greeting is name-only ("hey <name>!"); turn 1 must not add an intro
+- [ ] 🔧 First message with real content (not "hi") → coach responds to the content, still no intro
+
+## Regression — resume still does NOT re-greet (Rule 10 unchanged) — ⬜ re-verify
+- [ ] ⬜ Resume a multi-paragraph essay from an earlier sitting → app delivers "welcome back"
+      line, coach picks up at the "Working on" paragraph, does NOT re-introduce or recap
+- [ ] ⬜ Onboarding warm-up (dynamic-tail rule) still opens without a re-introduction
+
+## Audit judge — no change required
+`lib/auditJudge.js:313` already treats "the coach is CORRECT to let the app deliver the
+welcome-back line rather than re-greeting" as CLEAN (never a breach). Rule 10b is
+consistent with that — it adds no new breach axis and contradicts nothing the judge keys
+on, so no auditJudge edit was made.
+
+---
+
+# Testing checklist — 2026-07-19 (focus/coaching-session: coach TTS unmount teardown)
+
+**Bug fix (Robert, 2026-07-19): coach kept talking after "back to Folder".** Root cause =
+no audio teardown on unmount. `window.speechSynthesis` (fallback TTS) and the detached
+`new Audio()` (audioRef) are browser globals that keep playing after the component unmounts,
+and an in-flight `/api/speak` could resolve post-navigation and start playing. Fix (mirrors
+lib/useCoachVoice.js's seqRef+stop discipline): a `mountedRef` + unmount-cleanup effect that
+pauses/resets audioRef (currentTime=0, src=''), cancels speechSynthesis, and bumps both
+playSeqRef + tutorRunRef so any resolved-but-unplayed clip and any in-flight coach turn bail.
+All three playback-start points (playClip's el.play(), both speechSynthesis.speak fallbacks)
+now check mountedRef, so a late fetch can't speak on a dead session. StrictMode-safe
+(mountedRef re-set true on mount). Manual check owed (live): start a session, let the coach
+read aloud, tap "← Folder" mid-sentence → audio stops immediately and stays silent.
+
+---
+
+# Testing checklist — 2026-07-20 (focus/auth-coppa: close the Beta access-gate bypass)
+
+**Security fix (Fable red-team finding #1): the Beta `access_granted` gate was enforced
+ONLY at session-CREATE.** Every other coach/model/voice endpoint checked only the COPPA
+predicate `canUseCoach`, NOT `access_granted`. So any authed 13+ user with no Beta code and
+no invite (`access_granted=false`) could call `/api/tutor`, `/api/speak`, `/api/scribe-token`,
+etc. directly and get the full coach + free TTS + a live ElevenLabs mic token — skipping the
+gate entirely. Root cause = a scattered gate (two create routes) instead of one shared unit.
+
+**Fix — centralized the gate in `lib/access.js`:**
+- `canReachCoach(profile)` — PURE; `canUseCoach(profile) === true && profile.access_granted === true`.
+  COMPOSES the COPPA predicate (imported from `@/lib/coppa`) — `lib/coppa.js` is byte-for-byte
+  unchanged (`git diff lib/coppa.js` empty). Fails CLOSED: anything but the literal `true`
+  for `access_granted` denies.
+- `COACH_GATE_COLUMNS` — the shared profile select (`role, age_bracket, coppa_consent_required,
+  coppa_consent_given, access_granted`) so every endpoint reads the same columns. (`fetchCoachGate`
+  helper also exported for convenience.)
+- `coachGateFailure(profile)` — returns the CORRECT early-return 403, preserving the TWO distinct
+  failure modes: COPPA fail → `coachGateResponse()` (`age_verification_required`, checked FIRST);
+  access fail → `{ code: 'access_code_required' }` (copy matches the create routes); else `null`.
+
+**Endpoints now gated (every route that called `canUseCoach`)** — each swapped its old
+`if (!canUseCoach(x)) return coachGateResponse()` for `const fail = coachGateFailure(x); if (fail)
+return fail`, and its select now uses `COACH_GATE_COLUMNS`:
+`/api/tutor`, `/api/scribe`, `/api/scribe-token`, `/api/speak`, `/api/parse-assignment`,
+`/api/source-metadata`, `/api/assemble-essay`, `/api/gym/tutor`, `/api/sessions/[id]/review`,
+`/api/sessions/[id]/rubric`, `/api/sessions/[id]/summary`. The two create routes
+(`/api/sessions`, `/api/gym/sessions`) were CONVERGED onto the same helper (dropping their
+inline duplicate access check). The two gym routes select `${COACH_GATE_COLUMNS}, birthdate`
+(birthdate is an endpoint-specific extra for grade-band derivation).
+
+**Ownership fix (`/api/tutor`):** the `effectiveAssignment = sessionRow?.assignment_text ?? assignment`
+fallback ran the model on client-supplied `assignment` on ANY RLS-null session read, so a
+non-owner could run the coach against arbitrary text. Now the body fallback applies ONLY when
+`gate.role === 'admin'` (the legit admin-impersonation path — RLS returns null for the admin
+reading a student's row). A NON-admin with an RLS-null read gets `404 Not found.` instead of
+running on body text. `/api/scribe` has no assignment fallback (it processes `spokenText`, never
+sources an assignment) so nothing to restrict there; `/api/gym/tutor` already rejects a non-owned
+session via `if (!sessionRow?.gym_session_id) return 400` (RLS-null → 400, no body fallback).
+
+**Reason-through (definition of done):**
+- A 13+ user with `access_granted=false` now gets `403 access_code_required` from ALL model/voice
+  endpoints, not just session-create. (Before: only create was gated.)
+- An access-granted user (existing/grandfathered/invited, `access_granted=true`) is unaffected —
+  `coachGateFailure` returns `null`.
+- An under-13 without consent still gets `403 age_verification_required` (COPPA checked first) —
+  behavior preserved.
+- A non-admin passing a `sessionId` they don't own no longer runs `/api/tutor` on body text (404).
+- Admin impersonation preserved.
+
+**Unit tests (`lib/access.test.js`, Vitest):** 13 new cases (56 → 69 total). `canReachCoach`:
+admin/consent/13plus each `+access→true` and `WITHOUT access→false` (the bug), COPPA-fail→false
+regardless of access, fail-closed on undefined/null/`'true'`/`1`, null/empty profile→false.
+`coachGateFailure`: null when reachable, COPPA-fail→`age_verification_required` (even with
+access true — COPPA first), COPPA-pass+no-access→`access_code_required`.
+
+**Verify:** `npm run test:run` → 69 passed. `npm run build` → compiled successfully.
+`git diff lib/coppa.js` → empty. No migration (the `access_granted` column is migration 045,
+already required by the pre-existing create-route gate).
+
+---
+
+# Testing checklist — 2026-07-20 (focus/auth-coppa: gate 4 model endpoints the grep missed)
+
+**Follow-up to the same-day access-gate fix.** The first pass enumerated by `grep canUseCoach`,
+which STRUCTURALLY missed four model-invoking endpoints that never called `canUseCoach` (so they
+had no gate at all — grep couldn't surface them). Fable re-probe found them. Re-enumerated by
+MODEL/VOICE INVOCATION (`assembleParagraphText`, `analyzeWriting`, `gradeAgainstRubric`/`reviewRubric`,
+`scorePlacement`/`gymPlacement`, `new Anthropic`, `xi-api-key`/elevenlabs) instead. All four now use
+the same shared `coachGateFailure` / `COACH_GATE_COLUMNS` pattern (lib/access.js):
+
+1. 🔴 HIGH — `POST /api/assemble` — previously the ONLY check was `if (!user)`. It ran
+   `assembleParagraphText` (Haiku) on ARBITRARY body `components`, with `sessionId`/`userId` used
+   only for usage logging (no ownership), and the RLS `paragraphs` upsert happened AFTER the model
+   ran. Added: (a) `coachGateFailure(gate)` early-return BEFORE assembly; (b) a `sessionId` presence
+   check; (c) an OWNERSHIP check — RLS-read the session, and if the caller isn't the owner and
+   isn't an admin → `404 Not found.` BEFORE assembly (mirrors /api/tutor). Closes the
+   ghostwriting-on-arbitrary-text side door.
+2. 🔴 MED — `POST /api/sessions/[id]/analyze-writing` — RLS ownership OK but no gate; ran
+   `analyzeWriting` (Haiku). Added `coachGateFailure(gate)` right after the auth check (the caller's
+   previously-unused `role`-only profile select was widened to `COACH_GATE_COLUMNS`).
+3. 🔴 MED — `PATCH /api/sessions/[id]/complete` — owner-gated (`student_id!==user.id → 404`) but no
+   gate; runs `analyzeWriting` + `assembleParagraphText`. Added `coachGateFailure(gate)` after the
+   ownership check, BEFORE any model call.
+4. 🔴 MED — `PATCH /api/gym/complete/[id]` — owner-gated but no gate; runs `assembleParagraphText` +
+   `scorePlacement`. Added `coachGateFailure(gate)` after the ownership check, BEFORE any award or
+   model call.
+
+**Coverage proof (by model/voice invocation, not by grep canUseCoach).** Every app/api route that
+reaches a model or voice now returns `coachGateFailure` on a failed gate, EXCEPT the two admin
+routes, which are role-gated instead (out of scope): `/api/admin/usage` (`role !== 'admin' → 403`)
+and `/api/admin/backfill-writing-profiles` (`if (!isAdmin && !bearerOk) → 403`; also runnable via
+the CRON_SECRET bearer). Full gated set: speak, assemble, assemble-essay, parse-assignment,
+scribe, scribe-token, summary, review, rubric, analyze-writing, complete, tutor, sessions (create),
+gym/sessions (create), gym/tutor, gym/complete/[id]. No app/api route reaches a model via an
+un-listed lib helper (checked lib modules that call Anthropic/ElevenLabs: analyzeWriting,
+assembleParagraph, gradeAgainstRubric, gymPlacement, auditJudge — auditJudge has no app/api caller).
+
+**Constraints held:** `lib/coppa.js` byte-for-byte unchanged (empty diff); fail CLOSED on
+`access_granted !== true`; admin/impersonation preserved (assemble + tutor allow the admin body
+path); no migration. `npm run test:run` → 69 passed. `npm run build` → compiled successfully.
+
+---
+
+## 2026-07-23 — Parents see the WIP draft + running word count (focus/transcript)
+
+**What changed.** During an IN-PROGRESS session the student's locked content lives in
+`paragraph_scaffolds.components[].items[].text|.nuggetText` until a paragraph is assembled into the
+`paragraphs` table. Before this change a linked parent/teacher (a) could not READ the scaffold (no
+watcher RLS policy on `paragraph_scaffolds`) and (b) saw a word count of 0 (recomputed from the
+empty `paragraphs` table). So the parent saw a blank draft + "0 of 250" while the child was clearly
+working. Fix: migration `048_scaffold_watcher_read.sql` (SELECT-only watcher policy via
+`relationships`, mirrors "paragraphs: watcher reads") + a draft-aware word count
+(`computeActualFromDraft` in `lib/requirements.js`) wired into the transcript and the parent
+dashboard's per-assignment card.
+
+**⚠️ Requires migration 048 to be applied by hand before the parent-side reads work.** Until then a
+real parent's RLS read of `paragraph_scaffolds` returns nothing (draft still blank, count still 0).
+The student's own view and the teacher view do not depend on 048 (they already had read policies).
+
+Manual checks (do after migration 048 is applied):
+
+- [ ] **Parent — WIP draft renders.** As a linked parent, open the transcript of a child's session
+      that is in progress with locked scaffold content but NO assembled paragraph yet. The
+      "Draft (in progress)" card shows the locked lines (not "Nothing written yet.").
+- [ ] **Parent — running word count.** Same session: the requirement readout shows the WIP count
+      (e.g. "118 / 250 words"), not "0 / 250". Paragraph target may still read "0 / N paragraphs"
+      until a paragraph assembles — expected.
+- [ ] **Parent dashboard card.** On `/parent`, the child's in-progress assignment card shows the
+      same live WIP count in its meta line (was "0 of 250"). Complete assignments unchanged.
+- [ ] **Complete unchanged.** A completed session's transcript + card show the assembled-paragraph
+      count exactly as before (draft-aware count prefers `paragraphs` when present).
+- [ ] **Student unaffected.** The student's own writing view (TutorSession) still shows the live
+      count it computes client-side; the transcript for the student owner is unchanged.
+- [ ] **Teacher unaffected.** A per-assignment teacher still sees the scaffold (via the existing
+      `scaffold_teacher_read`) and the same draft-aware count.
+- [ ] **Non-watcher denied.** A signed-in user with NO `relationships` row for the student cannot
+      read the scaffold (RLS returns nothing); the new policy grants only the watcher trust boundary.
+
+**Automated.** `lib/requirements.test.js` added (scaffold-only WIP → correct word count; paragraphs
+win once assembled; nuggetText counted; malformed shapes safe; `computeActual` semantics unchanged).
+`npm run test:run` → 77 passed (5 files). `npm run build` → compiled successfully.
+
+**Files:** `supabase/migrations/048_scaffold_watcher_read.sql` (NOT applied),
+`lib/requirements.js` (+`scaffoldDraftLines`, +`computeActualFromDraft`), `lib/requirements.test.js`,
+`app/transcript/[id]/page.js` (reqActual draft-aware), `app/parent/page.js` (`withWipActuals`
+enriches in-progress children's + own sessions before render).
+
+**Note for conductor:** the handoff named `app/profile/[studentId]/page.js` for the "per-assignment
+word count", but that page renders only AGGREGATE stats (assignments started / completed / by
+subject) — it has no per-assignment word count. The per-assignment "X of 250" a parent actually sees
+is `components/SessionsList.js` (rendered on `/parent` via `ParentDashboard` → `ChildBlock`), fed by
+the stored `session.requirements.actual`. That is the surface fixed here (`app/parent/page.js`). No
+change was made to `app/profile/[studentId]/page.js`.
+
+---
+
+## 2026-07-25 — Positioning sweep ("Try it free" → invite-only) + JSON-LD accuracy (focus/marketing)
+
+BrainScribe is invite-only behind a Beta Circle access code, but the public site still sold a free
+trial in BOTH the visible copy and the structured data (`SoftwareApplication.offers` claimed
+`price: '0'` / "Free to start"). Structured data is what Google and AI assistants quote back, so the
+stale offer was the more damaging half. Chosen CTA everywhere: **"Request an invite"**, pointing at
+the existing landing-page email capture (`NewsletterSignup`, `source="waitlist"`), now anchored as
+`#waitlist`. Sign-in stays reachable on every page (header "Sign in" link, plus an explicit
+"Already have an account? Sign in" under the hero and final CTA). No price is stated anywhere —
+paid tiers are not launched and there is no live `/pricing` route.
+
+**Manual checklist**
+
+- [ ] **Landing hero.** `/` shows "Request an invite" (orange pill) + the sub-line "Invite-only while
+      we're in early access · already have an account? Sign in". Clicking the CTA scrolls to the
+      "Get early access" email box; clicking the sub-link goes to `/login`.
+- [ ] **Landing final CTA.** The orange band reads "Get on the list now…", button "Request an
+      invite" (scrolls to the same box), with "Already have an account? Sign in" beneath it.
+- [ ] **Value anchor.** The $500/mo human-coach comparison still reads true and no longer ends with
+      "Free to start."
+- [ ] **Header, every public page.** `/`, `/about`, `/blog`, `/blog/[slug]`, `/faq`, `/compare`,
+      `/writing-help/*`, `/privacy`, `/terms` — nav CTA reads "Request an invite" and goes to
+      `/#waitlist`; the quiet "Sign in" link is still present next to it.
+- [ ] **Page CTAs.** The "About BrainScribe" card on `/faq`, `/compare`, `/writing-help/[topic]` and
+      the closing CTA on `/about` all read "Request an invite" → `/#waitlist`.
+- [ ] **FAQ answer.** "Is BrainScribe free?" now answers invite-only early access / no open sign-up /
+      no announced pricing — and the FAQPage schema string is byte-identical to the visible answer.
+- [ ] **Blog CTAs.** All 7 posts end with a "Request an invite" link to `/#waitlist`; none claims
+      "free to start".
+- [ ] **Waitlist still works.** Submitting an email in the "Get early access" box POSTs `/api/subscribe`
+      and shows "You're on the list!" (unchanged component, unchanged endpoint).
+- [ ] **Access code never printed.** No page, schema, or `/llms.txt` contains the actual Beta code.
+
+**Schema emitted per page (verified against the real build output, all `JSON.parse`-clean)**
+
+| Surface | JSON-LD types |
+| --- | --- |
+| Every page (root layout) | `Organization`, `SoftwareApplication` |
+| `/faq`, `/compare`, `/writing-help/[topic]` | + `FAQPage` |
+| `/blog/[slug]` | + `BlogPosting` |
+
+23 prerendered pages carry JSON-LD; every block parses, and a recursive scan found **zero**
+`offers` / `price` / `priceCurrency` keys and zero "Free to start" strings anywhere in the output.
+All 8 FAQ answers on `/faq` were confirmed present verbatim in the visible HTML (Google's
+mirror-visible-content requirement).
+
+**What changed in the schema layer**
+- `softwareApplicationSchema()` — `offers` block **deleted outright** (not replaced). Invite-only
+  with no live pricing page means any offer we emit is a claim we can't back; absent is neutral.
+- `blogPostingSchema(post, url)` **added to `lib/schema.js`**; `app/blog/[slug]/page.js` no longer
+  hand-rolls its own `jsonLd` object + raw `<script>` — it renders `<JsonLd>` like every other page.
+  That second, unreviewed emitter is how the stale offer survived, so the consolidation is the
+  actual fix, not housekeeping.
+- `dateModified` now falls back `post.updated → post.date`; `lib/blog.js` parses an optional
+  `updated: YYYY-MM-DD` frontmatter key (purely additive — existing posts behave identically).
+- `organizationSchema()` reads `SAME_AS` from `lib/site.js` and **omits `sameAs` while it's empty**.
+
+**🔵 Pending Robert — `sameAs` URLs.** `lib/site.js`'s `SAME_AS` ships EMPTY on purpose: there are no
+external BrainScribe profile URLs anywhere in the repo, and a guessed URL resolves the entity to the
+wrong thing. `sameAs` is the strongest entity signal available; adding real URLs to that array is the
+only step needed. Prime candidate: the ISTE listing, plus any official LinkedIn / X / YouTube.
+
+**Automated.** `lib/schema.test.js` added — well-formedness + `@id` wiring for every builder, the
+`sameAs` omit-when-empty rule (and that the plumbing emits verbatim once populated), `dateModified`
+fallback/preference, undefined-drops-on-serialize, FAQ verbatim mirroring, and a recursive
+**"no price claim of any kind"** regression guard on `SoftwareApplication` (the test that would have
+caught this bug). `npm run test:run` → **89 passed (6 files)**. `npm run build` → compiled
+successfully; rendered-HTML spot check on `/`, `/faq`, `/compare`, `/about`, `/writing-help/adhd`,
+`/blog/its-not-cheating` found "Request an invite" on each and zero stale free-trial strings.
+
+**Flagged, NOT changed (out of scope):**
+- `app/api/coppa/initiate/route.js:126` — the parent consent EMAIL still says "This is completely
+  free — no credit card required." Same staleness class as the landing page, but it's an API route
+  (explicitly out of this lane) and it's transactional copy to an already-invited family. Needs an
+  owner.
+- `components/SessionsList.js:275` — "Free sessions" usage meter. Already behind `SHOW_USAGE_METER`
+  (off for Beta), so nothing renders. No action needed unless the meter is re-enabled.
+- Backlog, deliberately not built: `Course`/`LearningResource` for Skill Studio, `AggregateRating`/
+  `Review` (no real testimonials exist — never fabricate), `WebSite`/`BreadcrumbList`, and named-
+  `Person` blog authorship (author stays `Organization`; that's Robert's call).
+## 2026-07-25 — Access-code redemption cap `max_uses` (focus/auth-coppa)
+
+**The gap.** `access_codes` has counted `uses` since migration 045 but nothing enforced a ceiling:
+`POST /api/access/redeem` set `access_granted = true` for anyone holding a valid ACTIVE code,
+unconditionally. The cap of 100 governs only `is_beta_circle` (the locked *rate*), never *access*.
+So a leaked or over-shared code = unbounded free coach + TTS + mic (denial-of-wallet). Migration 047
+already had to burn one leaked code (`unblock`) for exactly this reason. And the `uses` bump itself
+was a read-then-write — racy, fine as telemetry, useless as a cap.
+
+**The fix.** An OPTIONAL per-code ceiling (`access_codes.max_uses`; NULL = unlimited, so every
+existing code behaves exactly as before), claimed **atomically** in one SQL statement by a new
+`claim_access_code()` function, plus admin UI to set/clear a limit on a code that is already live.
+
+**⚠️ Requires migration `049_access_code_max_uses.sql` — APPLY BEFORE DEPLOY.** This one is NOT
+deploy-safe in either order: the redeem route calls `claim_access_code()` and the admin panel selects
+`max_uses`, so shipping the code first makes EVERY redemption 500 until the migration runs. Applying
+the migration first is harmless (the old code ignores both the column and the function). The
+migration's footer carries paste-back verification queries, including a throwaway-code smoke test of
+the claim — do not run that smoke test against the live code.
+
+Manual checks (do after migration 049 is applied AND the code is deployed):
+
+- [ ] **Unlimited code unchanged.** With every code still at `max_uses = NULL`, a fresh account
+      redeems the live code and gets coach access + (under the cap) a Beta Circle slot, exactly as
+      before 049. The admin panel shows that code as `N / ∞`.
+- [ ] **Admin can cap a LIVE code without rotating it.** `/admin` → Tools → Beta Circle → Access
+      codes → type a number in **Limit** next to the live code → **Save limit**. The row repaints as
+      `uses / limit` and the helper line reads "N redemptions left". No code value changed.
+- [ ] **Capped code stops at the cap.** Set the limit to `current uses + 1`. One more fresh account
+      redeems successfully (row now reads `limit / limit` with an amber **Exhausted** badge). The
+      NEXT fresh account is refused.
+- [ ] **The N+1 redeemer gets the RIGHT message.** That refused account sees "That code has been
+      fully claimed. Ask whoever invited you for a new one." — NOT "That code isn't valid."
+      (`/welcome` renders the server's `error` string verbatim, so no client change was needed.)
+- [ ] **A genuinely bad code still says invalid.** Same screen, type a code that does not exist →
+      "That code isn't valid. Check with whoever invited you."
+- [ ] **A DEACTIVATED code still says invalid, not exhausted.** Toggle a code to Inactive, redeem →
+      the invalid-code copy (deactivation must not leak that the code exists and merely filled up).
+- [ ] **Already-granted user burns no use.** Note a capped code's `uses`. As an account that ALREADY
+      has access, submit the code again (double-submit / back-button). The response succeeds and the
+      admin panel's `uses` is UNCHANGED.
+- [ ] **Clear the limit.** Press **Clear** on a capped code → it reads `N / ∞` again, the Exhausted
+      badge disappears, and a fresh account can redeem once more.
+- [ ] **Limit below current uses = "shut it off".** Set a limit lower than the code's `uses`. The row
+      shows **Exhausted** immediately and new redemptions get `code_exhausted`. (Deliberate: it stops
+      a leaked code while leaving it valid-looking. The Active toggle remains the way to hard-pause.)
+- [ ] **Bad limit input is refused, never "unlimited".** Try `abc`, `1.5`, `-3`, `0` → an inline error
+      and NO change to the code. Confirm `0` specifically is refused (the message points at the
+      Active toggle instead).
+- [ ] **Create with a limit.** Create a new code with **Limit** = `1`. It appears as `0 / 1`; one
+      account redeems it; it flips to `1 / 1` + Exhausted; a second account is refused.
+- [ ] **Create without a limit.** Leave **Limit** blank → the new code is `0 / ∞`, unlimited.
+- [ ] **Non-admin cannot reach any of this.** A student/parent hitting `/api/admin/beta-circle` still
+      gets 403 (`requireAdmin` unchanged), and `claim_access_code()` EXECUTE is revoked from `anon` +
+      `authenticated` — only the service role can burn a use.
+- [ ] **The coach gate is unmoved.** A user WITHOUT access still gets `access_code_required` from
+      `/api/tutor`, `/api/speak`, `/api/scribe-token`, `/api/sessions` (nothing in `lib/coppa.js`,
+      `canReachCoach`, `coachGateFailure` or `maybeGrantBetaCircle` changed).
+
+**Concurrency (cannot be exercised by hand — reasoned, and the reason the claim is SQL).** Two
+simultaneous redemptions at the boundary (`uses = max_uses - 1`) cannot both succeed: the single
+`update … where … and (max_uses is null or uses < max_uses) returning *` takes a row lock, and under
+READ COMMITTED the second transaction blocks on it and then re-evaluates its WHERE against the
+freshly committed row (EvalPlanQual re-check). Exactly one gets a row back; the other gets zero rows
+and is classified as `code_exhausted`. **Do not refactor this back into select-then-update** — that
+is the original bug.
+
+**Ordering tradeoff (commented in the route).** Claim FIRST, then grant. If the `access_granted`
+write fails after a successful claim, one use is consumed for nothing — accepted, because the inverse
+(grant, then fail to claim) hands out free access above the cap, which is the entire thing being
+prevented. An over-consumed use is a support ticket; an over-granted code is an unbounded model bill.
+
+**Automated.** `lib/access.test.js` extended with 17 tests covering `parseMaxUses` (blank → unlimited;
+positive ints as string/number; rejects `0`, negatives, floats, `1e3`, `NaN`/`Infinity`, booleans /
+objects / arrays, and values above the Postgres `integer` ceiling; every rejection carries a message,
+and no value leaks through on failure), `classifyClaimFailure` (missing → invalid; inactive → invalid
+even when exhausted; uncapped → never "exhausted"; at-ceiling → `code_exhausted`; limit-below-uses →
+`code_exhausted`; non-numeric `max_uses` is not a ceiling) and `claimFailureBody`.
+`npm run test:run` → **94 passed** (5 files; was 77). `npm run build` → compiled successfully.
+`npm run lint` → 179 problems, byte-identical to the pre-change baseline (no new findings).
+
+**Files:** `supabase/migrations/049_access_code_max_uses.sql` (**NOT applied**),
+`lib/access.js` (+`parseMaxUses`, +`classifyClaimFailure`, +`claimFailureBody`, +the two message
+constants — the existing gate/cohort exports are untouched), `lib/access.test.js`,
+`app/api/access/redeem/route.js` (already-granted short-circuit → atomic `.rpc('claim_access_code')`
+→ classify-on-miss → grant), `app/api/admin/beta-circle/route.js` (+`set_code_limit` action,
+`create_code` accepts `maxUses`, GET returns `max_uses`), `components/AdminDashboard.js`
+(`codeUsage()` helper; `uses / max` readout, Exhausted badge, per-code Limit input + Save/Clear,
+optional Limit on the create row).
+
+**Note for conductor.** No local Postgres was available in the worktree, so migration 049 was
+verified by review only — the SQL was never executed. The two things to eyeball before applying:
+(a) `returns setof public.access_codes` is used deliberately instead of a `returns table (…)` column
+list, which would create OUT-parameter name collisions with the table's own columns inside the body;
+(b) the `revoke … from public` strips `service_role`'s inherited EXECUTE, so the explicit
+`grant … to service_role` is load-bearing — without it redemption breaks entirely (same footgun 029
+documented). `app/(auth)/welcome/page.js` needed no change: it already renders the server's `error`
+string, so the new exhausted copy surfaces as-is.
+
+## 2026-07-25 — Skill Studio: parent visibility of a child's progress (gym lane)
+
+Ported `aa14423` onto current `main` (rebase). Two integration seams fixed while porting:
+the portfolio route had been renamed `/gym/portfolio` → **`/skill-studio/portfolio`**
+(`/gym` keeps only a ROOT redirect stub, which does NOT catch `/gym/portfolio`), and
+`app/parent/page.js` had gained `withWipActuals()` (in-progress draft word counts,
+migration 048) — both features now coexist on the parent dashboard.
+
+**No migration** — reuses the parent-filtered gym RLS shipped in 025 (a6db848). Parents
+already had DB read access to `gym_progress` / `gym_skill_state` / `portfolio_entries`
+via the relationships parent-filter (role-filtered to `parent`); this surfaces it.
+
+Automated (green): `npm run build` passes; `npm run test:run` = **112 tests / 7 files**
+(was 106/6 — `lib/gymAwards.test.js` is new: it covers `loadGymSummaries` with a fake
+PostgREST client and synthetic rows, asserting the Practiced/Locked-In split, the display
+level ladder, per-student keying, and that the returned shape carries no gate/percentage
+field).
+
+Manual checklist (parent account, or admin remote-in as a parent):
+- [ ] Parent dashboard shows a **Skill Studio** card per child: level (**Scribe /
+      Wordsmith / Stylist / Virtuoso** — the display ladder, not the stored keys),
+      "N of 24 skills practiced", the honest **"X practiced · Y locked in"** split, and a
+      week-streak when > 1.
+- [ ] **Both features together:** for a child with an in-progress assignment *and* gym
+      progress, the same block shows the Skill Studio card AND the assignment card with a
+      live "N of 250 words" readout (`withWipActuals`, migration 048). Neither replaced
+      the other; the Skill Studio card sits above the assignment list.
+- [ ] A child who hasn't started shows the gentle empty line ("… hasn't started
+      practicing in the Skill Studio yet"), not a broken/zeroed card.
+- [ ] "View portfolio →" opens **`/skill-studio/portfolio?student=<childId>`** (NOT
+      `/gym/portfolio`, which 404s) with the child's typed entries (pairs/blueprints
+      render structurally), child-framed headings, and a back-to-dashboard link.
+- [ ] The card/portfolio show **growth only** — no gate status, percentages, "on track",
+      or any countdown-computable data (design rule).
+- [ ] **RLS boundary:** a parent can only open portfolios for their **own** linked
+      children; an unlinked `?student=<id>` redirects to /parent (and RLS returns no
+      rows regardless). A **teacher** gets no automatic gym visibility — the server-side
+      authorize is role-filtered to `parent`/`admin`, mirroring 025's RLS, so a bare
+      `relationships` link does not open the portfolio (teacher = grant-only).
+- [ ] Impersonation: admin remoting into a parent sees the impersonated parent's
+      children's Skill Studio cards (service-client path), not the admin's — **and
+      "View portfolio →" from there opens the child's real entries** with the
+      impersonation banner still showing (the portfolio route now honours the remote-in
+      cookie the same way /parent does). An admin who is NOT remoting in sees an empty
+      portfolio (there is no admin arm in 025's RLS) — expected; remote in instead.
+- [ ] A student's own **`/skill-studio/portfolio`** (no `?student=`) is unchanged:
+      "Your portfolio", "Everything you've made in Skill Studio…", "In your words:",
+      "← Back to Skill Studio".
+
+## 2026-07-25 — Student badges tell the truth about profile credit (gym lane)
+
+**No migration.** Read-only change: `app/skill-studio/page.js` now also selects the
+`practiced_source` column that migration 025 already ships.
+
+**The bug.** `gym_skill_state` carries a `state` (`practiced` | `locked_in`) AND a
+`practiced_source` (`session` | `placement` | `profile`). A `profile` row was credited
+from the student's **writing profile** — the skill showed up in a real assignment, so
+it's genuinely theirs, but they never did a Skill Studio rep and it leaves nothing in
+the portfolio. `SkillBadge` collapsed both into **"Practiced"**, so a student's own
+badge wall claimed reps they never did (live case: 2 badges, zero completed gym
+sessions, empty portfolio). The parent side got the same fix in `213f666`; this is the
+student-voice half.
+
+**How the source is carried:** a parallel `skillSources` map (`{ skill_key:
+'session'|'profile' }`) — `skillStates`' `{ key: state }` shape is untouched. The
+labelling rule is one pure, tested function, `badgeCredit(state, source)` in
+`lib/gymCurriculum.js`; `'profile'` is the only value that means writing credit, so a
+missing/unknown source falls through to studio practice (never demote a real rep).
+`locked_in` outranks source and keeps its own label + gleam. The ladder semantics, the
+`needsWarmup` gate, and `lib/gymSuggest.js` (which deliberately does NOT re-suggest a
+profile-credited skill) are all unchanged.
+
+Automated (green): `npm run build` passes; `npm run test:run` = **121 tests / 8 files**
+(was 114/7 — `lib/gymCurriculum.test.js` is new: 7 cases over `badgeCredit` /
+`badgeCreditLabel` covering profile credit, session + placement, missing/unknown
+source, no row, and locked-in outranking source). `npx eslint` on the three changed
+files reports the same 3 pre-existing `react/no-unescaped-entities` errors as `main`
+— no new lint.
+
+Manual checklist (student account with at least one **profile**-sourced row — an
+existing assignment-mode student who has never opened Skill Studio is the natural case;
+otherwise flip one row's `practiced_source` to `'profile'` in a scratch account):
+- [ ] Badge wall: a **profile-credited** badge renders as a **tinted face with a
+      tier-coloured ring and navy letter** (not the full-colour fill), and its
+      tooltip/screen-reader name reads **"{Skill} — Spotted in your writing"** —
+      the word "Practiced" must not appear for it anywhere on the page.
+- [ ] A badge from a real Studio rep still renders the **full tier-colour fill** with a
+      white letter and reads **"{Skill} — Practiced"**.
+- [ ] A `locked_in` badge still gets the **spark gleam** and reads **"{Skill} — Locked
+      in"**, whichever source first earned the practiced rung.
+- [ ] A skill with **no row** is unchanged: sunken dashed socket, muted label, 0.55
+      opacity (only reachable in the All-skills list — the wall shows earned only).
+- [ ] Legend + intro line appear **only** when at least one badge is profile-credited
+      ("Some of these you already do in your own writing…" + the swatch key, with the
+      Locked-in swatch only when a locked-in badge exists). An all-Studio student sees
+      neither — no new noise.
+- [ ] Level meter line is honest: all-Studio → unchanged "N skills practiced so far";
+      all-profile → "N skills spotted in your writing so far"; mixed → "N skills so
+      far: A spotted in your writing, B practiced in Skill Studio".
+- [ ] All-skills list: a profile-credited row shows an **outline** pill "Spotted in your
+      writing" and its button says **"Practice"** (not "Practice again"); a
+      Studio-practiced row keeps the filled pill "Practiced" + "Practice again".
+- [ ] Unchanged behaviour: prereq unlocks still count profile-credited skills (a
+      dependant of a profile-credited skill is still unlocked); the suggestion engine
+      still does **not** suggest a profile-credited skill; the warm-up card still only
+      appears for a student with no writing profile at all.
+- [ ] Mobile 375px: the badge wall and the legend wrap without overflow.
+- [ ] ⚠️ Known, deferred: the tier-1 amber ring (`#D98A1F`) on cream is ~2.4:1 — under
+      the 3:1 non-text guidance. It is not the only carrier (accessible name, tooltip,
+      legend, and fill/tint all encode the state) and it matches the already-shipped
+      tier palette, so no new token was invented. Flag if a11y wants a darker tier-1.
+
+## 2026-08-01 — Parent/teacher onboarding (watcher FTUE)
+
+Replaces the watcher branch of the FTUE. Students are unaffected — verify that first.
+
+- [ ] **Student FTUE unchanged.** Sign in as a student with `onboarding_complete = false`:
+      intro → prompt pick → paragraph anatomy → practice session. Byte-for-byte as before.
+- [ ] **Parent** with `onboarding_complete = false` lands on the watcher flow, not the
+      prompt picker. 4 steps: intro → demo → what you'll see → invite.
+- [ ] Screen 2 plays `CoachDemo` and the filler words visibly grey out at the tidy step.
+      Two replay controls, correctly distinct: **"Replay Owen"** (audio) and the demo's own
+      **"Replay"** (animation).
+- [ ] Screen 3 shows the Final Draft + the exchange that produced it, with a derived word
+      count in the header ("28 words · complete" — never hardcoded). Static content —
+      confirm it does NOT read from the DB (no session needed, works on a fresh account).
+- [ ] Screen 3 states in-progress visibility, not just finished transcripts: Owen says you
+      can "look in while they're still working", caption reads "finished or still in
+      progress". Cross-check it's TRUE — open a parent account against a child with a live
+      WIP draft and confirm the draft and its word count are visible mid-session.
+- [ ] Screen 4: entering a child's email creates a real invite. Check `invites` for the row
+      and that the child can claim it → a `relationships` row appears → the child shows on
+      the parent dashboard.
+- [ ] **Nothing blocks.** All of these reach the dashboard: top-right "Skip onboarding" on
+      every screen · "I'll do this later" on screen 4 · closing the invite after sending.
+- [ ] "Or try writing one line yourself first" drops into the normal student prompt picker
+      and a practice session runs to completion.
+- [ ] **Teacher** role: same flow, copy says "your students" / "Invite my students".
+- [ ] `prefers-reduced-motion`: CoachDemo shows the full revealed demo, no autoplay.
+- [ ] Mobile width: no horizontal scroll on any of the 4 screens; 44px tap targets.
+- [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
+      they took the practice offer — `practiced` is derived from sessions, not the flag.

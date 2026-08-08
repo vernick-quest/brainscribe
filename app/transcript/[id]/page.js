@@ -9,11 +9,13 @@ import Icon from '@/components/Icon'
 import TranscriptToolbar from '@/components/TranscriptToolbar'
 import ConversationLog from '@/components/ConversationLog'
 import RubricReviewSection from '@/components/RubricReviewSection'
+import DraftSatisfactionCheck from '@/components/DraftSatisfactionCheck'
+import RestorationNotice from '@/components/RestorationNotice'
 import { PersonaAvatar, getPersona } from '@/lib/personas'
 import { formatBibliography } from '@/lib/citations'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
-import { computeActual, chipState } from '@/lib/requirements'
+import { computeActualFromDraft, chipState } from '@/lib/requirements'
 
 export default async function TranscriptPage({ params, searchParams }) {
   const { id } = await params
@@ -46,12 +48,18 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }, { data: restoration }] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     db.from('paragraph_scaffolds').select('components').eq('session_id', id).maybeSingle(),
     db.from('messages').select('role, content, created_at').eq('session_id', id).order('created_at'),
     db.from('rubrics').select('rubric_text, feedback_text').eq('session_id', id).maybeSingle(),
     db.from('sources').select('*').eq('session_id', id).order('position'),
+    // The student's own "does this match what you wrote?" answer, if they've given one.
+    db.from('draft_feedback').select('matches, note').eq('session_id', id).maybeSingle(),
+    // "We put some of your writing back" — present only on a session we repaired.
+    db.from('draft_restorations')
+      .select('session_id, words_before, words_after, summary, acknowledged_at')
+      .eq('session_id', id).maybeSingle(),
   ])
 
   // Auto-generated Works Cited (deterministic; MLA on the transcript). Metadata only.
@@ -99,9 +107,12 @@ export default async function TranscriptPage({ params, searchParams }) {
   const isEmpty = !hasDraft && !messages?.length
 
   // Neutral requirement readout (word/paragraph counts) — recomputed from the
-  // written paragraphs so it's accurate even if requirements.actual is stale.
+  // draft so it's accurate even if requirements.actual is stale. Draft-aware: when
+  // no paragraph is assembled yet (early WIP), counts the scaffold's locked items
+  // so a watcher sees the running WIP count, not 0 — matching the essay above,
+  // which already falls back to scaffoldLines when paragraphs is empty.
   const reqTargets = session.requirements?.targets ?? []
-  const reqActual = reqTargets.length ? computeActual(paragraphs ?? []) : null
+  const reqActual = reqTargets.length ? computeActualFromDraft(paragraphs ?? [], scaffold?.components) : null
   const reqLine = reqTargets.length
     ? reqTargets.map(t => chipState(t, reqActual)?.full).filter(Boolean).join(' · ')
     : null
@@ -273,6 +284,30 @@ export default async function TranscriptPage({ params, searchParams }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Repaired-draft notice. Student-owner only: a parent dismissing it would mean
+              the child never learns their essay was fixed. Sits above the satisfaction
+              check because it explains what they're about to read. */}
+          {isStudent && !imp && (
+            <div className="no-print">
+              <RestorationNotice restoration={restoration ?? null} />
+            </div>
+          )}
+
+          {/* "Does this match what you wrote?" — student-owner only, finished sessions
+              only, never during the onboarding hook (no real essay yet), and never while
+              an admin is remoted in. The student is the one witness who always knows
+              whether their draft is complete; every automated check we had passed the
+              session that lost a week of a kid's work. */}
+          {isStudent && !imp && isComplete && !session.is_onboarding && hasDraft && (
+            <div className="no-print">
+              <DraftSatisfactionCheck
+                sessionId={session.id}
+                finalWords={reqActual?.words ?? null}
+                existing={draftFeedback ?? null}
+              />
             </div>
           )}
         </section>

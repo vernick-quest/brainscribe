@@ -15,7 +15,43 @@ Invite-only AI **writing coach** for students (including under-13, behind a COPP
 ## Commands
 - Dev: `npm run dev` · Build: `npm run build` · Lint: `npm run lint`
 - Deploy: `vercel deploy --prod --yes` (production; aliases www.brainscribe.io). The remote build is atomic — a failed build won't swap prod.
-- **Definition of done: run `npm run build` and confirm it passes before calling any change finished.** There is no automated test suite — the manual checklist is `TESTING.md`; update it when you ship UI changes. `TESTING.md` is **append-only with dated section headers** — add a new dated section, never rewrite old ones (they're the audit trail; staleness is self-evident from the dates).
+- **Definition of done: run `npm run build` AND `npm run test:run`, and confirm BOTH pass, before calling any change finished.** The Vitest suite (fast, pure, deterministic) guards the safety/auth invariants — COPPA gate (`lib/coppa.js`), OAuth open-redirect (`lib/redirect.js`), access/Beta-Circle rules (`lib/access.js`), greeting resolver — and is enforced by the `deploy` skill's pre-flight gate, so a red test blocks the deploy. **Ratchet: when you add or change `lib/` logic, add/extend its `*.test.js` in the same change** (co-located, synthetic fixtures only — this repo is public). For UI/behavior the build can't prove, the manual checklist is `TESTING.md` — **append-only with dated section headers** (add a new dated section, never rewrite old ones; they're the audit trail).
+
+## Verification discipline — read before reporting a finding
+Six drop paths destroyed student writing before anything noticed, and nearly every wrong
+diagnosis along the way came from asserting instead of checking. These are the exact traps,
+and they all fail in the REASSURING direction:
+
+- **Assert on the VALUE, never the status code.** PostgREST returns `200 []` for an
+  RLS-filtered read and `204` for a PATCH that matched ZERO rows — both look like success.
+  Plant a sentinel, act, read it back. Check that `service_role` can still write, too: a
+  `revoke … from public` strips it along with everyone else.
+- **Reproduce the REAL request shape.** A test that doesn't is worthless: a raw `fetch`
+  omitted the `columns=` param supabase-js sends and a live data-destroying bug vanished
+  from the test. Build the request the client actually builds.
+- **State the check, or mark it UNVERIFIED.** "The OCR drops the right-hand column" was
+  stated flatly and was never established — it compared an image against text a human had
+  pasted. Say what you compared, or say you haven't checked.
+- **Every number you COMPUTE rather than READ can be wrong invisibly.** "182 words missing"
+  summed two OVERLAPPING texts; the truth was 151, and the repair contradicted the alert by
+  exactly the overlap. Derive counts from the artifact, never from arithmetic on top of it.
+- **Check the premise before building on it.** "Component ids are unique per template" was
+  false — every body paragraph shares `topic_sentence`/`evidence`/… — and the fix built on it
+  overwrote a finished paragraph. Grep the definition.
+- **Confirm which checkout you edited.** A chained `cd` left the shell in the main checkout
+  while the worktree copy sat untouched; tests passed in one and the module failed to export
+  in the other.
+- **A silent no-op is the enemy.** Every one of the six losses returned unchanged state with
+  no throw and no log. When a write can't land, say so loudly and record it.
+
+**Prompt changes are code.** `scripts/prompt-harness/` builds the prompt FROM SOURCE and runs
+it against the real model in ~4s for about a cent (`npm run test:prompts`). Two prompt "fixes"
+shipped unverified before it existed, and the first silently didn't fire. Run it.
+
+**Adversarial review before merge** for anything touching the scaffold write path,
+`lib/prompts.js`, or persistence of student work. A red-team pass found three high-severity
+bugs *in the fixes for the previous three* — one of which destroyed text. Self-review did not
+find them; being told to assume the author is wrong did.
 
 ## Architecture map
 - **Two model calls per writing turn**: a streaming Socratic coach (`/api/tutor`) and text cleanup/assembly (`/api/scribe`, `/api/assemble*`). Persona definitions and system prompts are in `lib/personas.js` and `lib/prompts.js` — change coaching behavior there, not inline. `/api/tutor`'s system prompt is split by `buildCoachSystemBlocks()` into a large static prefix (marked `cache_control: ephemeral` for Anthropic prompt caching) + a small dynamic tail; the stream carries an **inline control protocol** (`[SCAFFOLD:…]`, `[ACTIVE:…]`, `[NUGGET:…]`, `[DONE:…]`, `[THESIS:…]`, `[PARA_DONE:…]`, `[DICTATE]`, `[COMPLETE]`) the client parses and strips — don't break that token contract. Assignment text is re-read from the DB (via RLS), never trusted from the request body.

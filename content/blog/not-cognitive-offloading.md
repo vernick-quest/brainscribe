@@ -50,7 +50,7 @@ That's the part no other tool offers. Every BrainScribe session is a transcript 
 
 The danger was never that a tool helped. It's *which steps* it took over. BrainScribe takes the mechanical ones — the wall that stops so many kids before they start — and leaves the thinking exactly where it belongs.
 
-[Try a session](/login) — it's free to start.
+[Request an invite](/#waitlist) — BrainScribe is invite-only while we're in early access.
 
 <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-default)">
 <p style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">The cognitive offloading series</p>

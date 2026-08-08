@@ -11,7 +11,7 @@ Run this only when the user explicitly asks to deploy (it's outward-facing). Pro
 
 1. **Show what will ship.** Run `git status -s`, the current branch, and the last commit so it's clear what's going out. Note that `vercel deploy --prod` ships the working tree, not just committed code — call out any uncommitted changes.
 
-2. **Build gate.** Run `npm run build`. If it fails, STOP and report the errors — do not deploy.
+2. **Build + test gate.** Run `npm run build` AND `npm run test:run`. If EITHER fails, STOP and report — do not deploy. The Vitest suite is fast (~0.2s), pure, and deterministic, so a red test is a real regression in a safety/auth invariant (COPPA gate, open-redirect guard, access/Beta-Circle rules, greeting resolver), not flake. Do NOT add a skip/override flag and do NOT deploy around a red test — fix the code or, if the test itself is wrong, fix the test first.
 
 3. **Deploy.** Run `vercel deploy --prod --yes`.
 

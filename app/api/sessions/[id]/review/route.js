@@ -3,12 +3,12 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { reviewRubric, REVIEW_MODEL } from '@/lib/gradeAgainstRubric'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 // POST /api/sessions/[id]/review
 // Run the Head Grader against an attached rubric. Owner-only; requires a
 // COMPLETE session, an attached rubric, and a real essay (≥30 chars). Gated by
-// canUseCoach, 5/day. Persists a versioned envelope into rubrics.feedback_text
+// the coach reachability gate, 5/day. Persists a versioned envelope into rubrics.feedback_text
 // and returns the validated review. No GET — the transcript server component
 // reads the rubrics row directly.
 export async function POST(request, { params }) {
@@ -54,10 +54,11 @@ export async function POST(request, { params }) {
     return Response.json({ error: 'There isn’t enough written yet to check against a rubric.', code: 'essay_too_short' }, { status: 409 })
   }
 
-  // COPPA coach age gate.
+  // Coach reachability gate (lib/access.js) — COPPA age gate AND the Beta access gate.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   // Denial-of-wallet backstop (fails open) — the Sonnet review is the costly call.
   if (!await checkRateLimit(`review:day:${user.id}`, 5, 86400)) {

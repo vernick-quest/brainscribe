@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { scribeSystemPrompt } from '@/lib/prompts'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { canUseCoach, coachGateResponse } from '@/lib/coppa'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 const anthropic = new Anthropic()
 
@@ -14,12 +14,13 @@ export async function POST(request) {
 
   if (!await checkRateLimit(`scribe:${user.id}`, 30, 60)) return rateLimited()
 
-  // COPPA coach age gate (lib/coppa.js) — scribe processes a student's spoken
-  // words through a model, so an unconsented under-13 must not reach it even if
-  // they obtained a session row outside /api/sessions.
+  // Coach reachability gate (lib/access.js) — scribe processes a student's spoken
+  // words through a model, so an unconsented under-13 OR an authed user with no Beta
+  // access must not reach it even if they obtained a session row outside /api/sessions.
   const { data: gate } = await supabase
-    .from('profiles').select('role, age_bracket, coppa_consent_required, coppa_consent_given').eq('id', user.id).single()
-  if (!canUseCoach(gate)) return coachGateResponse()
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const { spokenText, sessionId, activeChecklist = [] } = await request.json()
 

@@ -1,5 +1,6 @@
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { persistRequirementsActual } from '@/lib/requirements'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { checkProvenance } from '@/lib/provenance'
@@ -12,7 +13,7 @@ import { checkProvenance } from '@/lib/provenance'
 // writer of paragraph_scaffolds.components (avoids a cross-route write race that
 // could clobber a lock). Hard-block is Phase 2, gated on full esl-drift-probes
 // calibration.
-async function shadowProvenanceCheck(supabase, { sessionId, position, scribedText, rawSpokenText }) {
+async function shadowProvenanceCheck(supabase, { sessionId, position, scribedText, rawSpokenText, studentId, trigger = 'create' }) {
   try {
     let raw = rawSpokenText
     if (raw === undefined) {
@@ -26,6 +27,7 @@ async function shadowProvenanceCheck(supabase, { sessionId, position, scribedTex
       .eq('session_id', sessionId).eq('role', 'user')
     const sources = [raw, ...(msgs ?? []).map(m => m.content)].filter(Boolean)
     const r = checkProvenance(scribedText, sources)
+
     if (!r.pass) {
       console.warn(
         `[provenance-shadow] session ${sessionId} paragraph ${position} save below threshold ` +
@@ -33,7 +35,27 @@ async function shadowProvenanceCheck(supabase, { sessionId, position, scribedTex
         `novel: ${r.novelWords.slice(0, 8).join(' ')}) — WOULD flag; save persisted (shadow mode)`
       )
     }
+
+    // Persist EVERY check (pass and fail), not just the warnings. A console line is
+    // invisible and unqueryable, so there was no way to know how often this fires or
+    // at what novelFraction — and therefore no way to pick a threshold. Recording the
+    // passes too gives the baseline distribution the failures have to be separated
+    // from. Still SHADOW: this never blocks a save.
+    //
+    // Service role: provenance_checks is deny-by-default (admin read only, migration
+    // 051) — it holds a fragment of a child's writing, so it is not client-readable.
+    await createServiceClient().from('provenance_checks').insert({
+      session_id: sessionId,
+      student_id: studentId ?? null,
+      position,
+      trigger,
+      passed: r.pass,
+      novel_fraction: Math.min(9.9999, Number(r.novelFraction ?? 0)),   // numeric(5,4)
+      novel_words: (r.novelWords ?? []).slice(0, 8).join(' ') || null,
+      content_count: r.contentCount ?? null,
+    })
   } catch (e) {
+    // Never let the signal break a student's save.
     console.error('[provenance-shadow] paragraph check failed:', e)
   }
 }
@@ -63,7 +85,7 @@ export async function POST(request) {
   // Keep sessions.requirements.actual fresh after each paragraph save — deferred
   // so it never adds latency to the student's save (no-op if no requirements set).
   after(() => persistRequirementsActual(supabase, sessionId))
-  after(() => shadowProvenanceCheck(supabase, { sessionId, position, scribedText, rawSpokenText }))
+  after(() => shadowProvenanceCheck(supabase, { sessionId, position, scribedText, rawSpokenText, studentId: user.id, trigger: 'create' }))
 
   return Response.json(data)
 }
@@ -89,7 +111,7 @@ export async function PATCH(request) {
 
   after(() => persistRequirementsActual(supabase, sessionId))
   // rawSpokenText undefined → the check fetches the stored raw dictation itself.
-  after(() => shadowProvenanceCheck(supabase, { sessionId, position, scribedText }))
+  after(() => shadowProvenanceCheck(supabase, { sessionId, position, scribedText, studentId: user.id, trigger: 'edit' }))
 
   return Response.json(data)
 }

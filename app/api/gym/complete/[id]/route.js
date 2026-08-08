@@ -11,6 +11,7 @@ import {
 } from '@/lib/gymPlacement'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
 import { upsertScaffoldSnapshot } from '@/lib/scaffoldSnapshot'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { NextResponse } from 'next/server'
 
 // Turn any confirmed-but-unassembled scaffold paragraphs into flowing prose before we
@@ -73,6 +74,15 @@ export async function PATCH(request, { params }) {
   if (!session || session.student_id !== user.id || !session.gym_session_id) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 })
   }
+
+  // Coach reachability gate (lib/access.js) — gym completion runs assembleParagraphText
+  // + scorePlacement (both model calls), so an unconsented under-13 OR an authed user
+  // with no Beta access must not reach them. Checked after ownership, BEFORE any award
+  // or model call. Enforces BOTH COPPA and access_granted; fails CLOSED.
+  const { data: gate } = await supabase
+    .from('profiles').select(COACH_GATE_COLUMNS).eq('id', user.id).single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   const { data: gymSession } = await supabase
     .from('gym_sessions').select('id, skill_key, tier, status, session_type, created_at').eq('id', session.gym_session_id).single()

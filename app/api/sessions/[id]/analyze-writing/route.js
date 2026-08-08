@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { analyzeWriting } from '@/lib/analyzeWriting'
+import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { NextResponse } from 'next/server'
 
 // POST /api/sessions/[id]/analyze-writing
@@ -13,11 +14,17 @@ export async function POST(request, { params }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await supabase
+  // Coach reachability gate (lib/access.js) — this runs a Haiku writing-analysis call,
+  // so an unconsented under-13 OR an authed user with no Beta access must not reach it.
+  // Enforces BOTH COPPA and access_granted; fails CLOSED. (Session access is still
+  // RLS-scoped below.)
+  const { data: gate } = await supabase
     .from('profiles')
-    .select('role')
+    .select(COACH_GATE_COLUMNS)
     .eq('id', user.id)
     .single()
+  const gateFail = coachGateFailure(gate)
+  if (gateFail) return gateFail
 
   // Fetch session — RLS enforces access
   const { data: session } = await supabase
