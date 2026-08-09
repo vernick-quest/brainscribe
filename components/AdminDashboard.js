@@ -24,8 +24,8 @@ const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="
 const ROLE_COLOR = {
   student: { bg: 'var(--accent-soft)', text: 'var(--accent)' },
   parent:  { bg: 'var(--status-success-bg)', text: 'var(--status-success)' },
-  teacher: { bg: '#EEF2FF', text: '#4338CA' },
-  admin:   { bg: '#FEF3C7', text: '#92400E' },
+  teacher: { bg: 'var(--primary-soft)', text: 'var(--text-link)' },
+  admin:   { bg: 'var(--status-thin-bg)', text: 'var(--text-body)' },
 }
 
 function formatDate(str) {
@@ -171,7 +171,7 @@ function DeleteUserButton({ userId, name }) {
         </span>
         <button onClick={handleDelete} disabled={deleting}
           className="text-[11px] font-bold rounded-full px-2.5 py-1 disabled:opacity-60"
-          style={{ backgroundColor: 'var(--status-error)', color: '#fff' }}>
+          style={{ backgroundColor: 'var(--status-error)', color: 'var(--text-on-accent)' }}>
           {deleting ? '…' : 'Delete'}
         </button>
         <button onClick={() => { setConfirming(false); setError('') }} disabled={deleting}
@@ -231,7 +231,7 @@ function OnboardingBadge({ userId, complete, practiced }) {
     practiced: { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' },
     // Amber, not green: nothing is wrong, but it is not the same thing and the panel
     // should never imply it is.
-    skipped: { backgroundColor: 'var(--status-warning-bg, #FFFBEB)', color: 'var(--status-warning, #D97706)' },
+    skipped: { backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' },
     none: { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' },
   }[state]
 
@@ -262,7 +262,7 @@ function AuthoredBadge({ count }) {
         : 'Has not authored any assignments of their own'}
       className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
       style={has
-        ? { backgroundColor: '#EEF2FF', color: '#4338CA' }
+        ? { backgroundColor: 'var(--primary-soft)', color: 'var(--text-link)' }
         : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
       {has ? `${count} authored` : 'None authored'}
     </span>
@@ -283,7 +283,7 @@ function AgeBadge({ ageBracket, consentGiven }) {
       style = { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
     } else {
       label = 'Under 13 ⏳'; title = 'Under 13 — parental consent pending (blocked from coaches)'
-      style = { backgroundColor: '#FEF3C7', color: '#92400E' }
+      style = { backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' }
     }
   } else {
     label = 'Age?'; title = 'Age not recorded yet'
@@ -451,8 +451,8 @@ function BackfillGreetings() {
 // Opening a finding remotes in as the student first (same fail-closed path as
 // SessionRow), then lands on the finished-work transcript.
 const SEVERITY_STYLE = {
-  high:   { label: 'High',   bg: '#FEE2E2', color: 'var(--status-error)' },
-  medium: { label: 'Medium', bg: '#FEF3C7', color: '#92400E' },
+  high:   { label: 'High',   bg: 'var(--status-error-bg)', color: 'var(--status-error)' },
+  medium: { label: 'Medium', bg: 'var(--status-thin-bg)', color: 'var(--text-body)' },
   low:    { label: 'Low',    bg: 'var(--surface-muted)', color: 'var(--text-muted)' },
 }
 const SEVERITY_ORDER = { high: 3, medium: 2, low: 1, none: 0 }
@@ -585,12 +585,12 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
       {(tech.token_leakage || (tech.truncated_turns ?? []).length > 0 || (a.process_notes ?? []).length > 0) && (
         <div className="flex flex-wrap gap-2">
           {tech.token_leakage && (
-            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEE2E2', color: 'var(--status-error)' }}>
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
               control-token leakage
             </span>
           )}
           {(tech.truncated_turns ?? []).length > 0 && (
-            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' }}>
               truncated turn(s): {tech.truncated_turns.join(', ')}
             </span>
           )}
@@ -823,7 +823,7 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       {nonStudentOwner && (
         <span title={`Authored by a ${ownerRole} as a writer (not created for a student)`}
           className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
-          style={{ backgroundColor: '#EEF2FF', color: '#4338CA' }}>
+          style={{ backgroundColor: 'var(--primary-soft)', color: 'var(--text-link)' }}>
           by {ownerRole}
         </span>
       )}
@@ -963,7 +963,7 @@ function UsageTab() {
     <p className="text-sm italic text-center py-12" style={{ color: 'var(--text-subtle)' }}>Loading usage data…</p>
   )
   if (error) return (
-    <p className="text-sm text-center py-12" style={{ color: 'var(--status-error, #dc2626)' }}>Failed to load: {error}</p>
+    <p className="text-sm text-center py-12" style={{ color: 'var(--status-error)' }}>Failed to load: {error}</p>
   )
 
   const { anthropic, elevenlabs, byCategory, byUser, unattributed } = data ?? {}
@@ -1023,20 +1023,20 @@ function UsageTab() {
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${elPct}%`,
-                    backgroundColor: elDanger ? '#dc2626' : elPct > 60 ? '#f59e0b' : 'var(--status-success)',
+                    backgroundColor: elDanger ? 'var(--status-error)' : elPct > 60 ? 'var(--status-thin)' : 'var(--status-success)',
                   }}
                 />
               </div>
               <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
                 <span>{elevenlabs.characterCount.toLocaleString()} used</span>
-                <span style={{ color: elDanger ? '#dc2626' : undefined, fontWeight: elDanger ? 700 : undefined }}>
+                <span style={{ color: elDanger ? 'var(--status-error)' : undefined, fontWeight: elDanger ? 700 : undefined }}>
                   {elRemaining.toLocaleString()} remaining of {elevenlabs.characterLimit.toLocaleString()}
                 </span>
               </div>
             </div>
             {elDanger && (
               <p className="text-xs font-semibold rounded-lg px-3 py-2 inline-flex items-center gap-1.5"
-                style={{ backgroundColor: '#FEF2F2', color: '#dc2626' }}>
+                style={{ backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
                 <Icon name="alert" size={14} style={{ color: 'var(--status-error)' }} /> Over 80% of your monthly character limit used — consider upgrading your plan.
               </p>
             )}
@@ -1396,7 +1396,7 @@ function BetaCircleManager({ initialCount = 0 }) {
                       <div className="flex items-center" style={{ gap: 'var(--space-2)', flexShrink: 0 }}>
                         <button onClick={() => removeMember(m.id)} disabled={busyKey === `remove:${m.id}`}
                           className="disabled:opacity-60"
-                          style={{ font: 'var(--type-meta)', fontWeight: 700, color: '#fff', background: 'var(--status-error)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer' }}>
+                          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-on-accent)', background: 'var(--status-error)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer' }}>
                           {busyKey === `remove:${m.id}` ? '…' : 'Confirm remove'}
                         </button>
                         <button onClick={() => setConfirmId('')} disabled={busyKey === `remove:${m.id}`}
@@ -1437,7 +1437,7 @@ function BetaCircleManager({ initialCount = 0 }) {
                 </select>
                 <button onClick={addMember} disabled={!pick || busyKey === 'add'}
                   className="disabled:opacity-60"
-                  style={{ font: 'var(--type-body)', fontWeight: 700, color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                  style={{ font: 'var(--type-body)', fontWeight: 700, color: 'var(--text-on-accent)', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
                   {busyKey === 'add' ? 'Adding…' : 'Add'}
                 </button>
               </div>
@@ -1651,7 +1651,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
     { label: 'Students',    tabId: 'students', value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',          iconColor: 'var(--navy-700)' },
     { label: 'Parents',     tabId: 'parents',  value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)', iconColor: 'var(--status-success)' },
     { label: 'Teachers',    tabId: 'teachers', value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',     iconColor: 'var(--accent)' },
-    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: '#EEF2FF',                  iconColor: '#4338CA' },
+    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: 'var(--primary-soft)',                  iconColor: 'var(--text-link)' },
   ]
 
   const selectTab = t => { setTab(t); setSearch('') }

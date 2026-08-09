@@ -2866,8 +2866,8 @@ export default function TutorSession({
 
         {saveWarning && (
           <div role="alert" className="mx-4 mt-3 shrink-0 rounded-xl px-4 py-2.5 flex items-start gap-2"
-            style={{ backgroundColor: 'var(--status-warning-bg, #FFFBEB)', border: '1px solid var(--status-warning, #D97706)' }}>
-            <p className="text-xs leading-snug" style={{ color: 'var(--status-warning, #D97706)' }}>
+            style={{ backgroundColor: 'var(--status-thin-bg)', border: '1px solid var(--status-thin)' }}>
+            <p className="text-xs leading-snug" style={{ color: 'var(--status-thin)' }}>
               {saveWarning}
             </p>
           </div>
@@ -2963,8 +2963,8 @@ export default function TutorSession({
           {/* Celebration toast */}
           {sectionJustCompleted && !sessionComplete && (
             <div className="mx-4 mt-4 shrink-0 rounded-2xl px-5 py-3 flex items-center gap-3"
-              style={{ backgroundColor: 'var(--accent)', color: '#fff', animation: 'fadeSlideIn 0.25s ease' }}>
-              <Icon name="sparkles" size={20} className="shrink-0" style={{ color: '#fff' }} />
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', animation: 'fadeSlideIn 0.25s ease' }}>
+              <Icon name="sparkles" size={20} className="shrink-0" style={{ color: 'var(--text-on-accent)' }} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold">Paragraph {sectionJustCompleted.number} of {sectionJustCompleted.total} done!</p>
                 <p className="text-xs opacity-90 mt-0.5 truncate">{sectionJustCompleted.title}</p>

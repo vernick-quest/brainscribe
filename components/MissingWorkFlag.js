@@ -90,14 +90,14 @@ export default function MissingWorkFlag({ sessionId, draftWords }) {
           fontFamily: 'inherit', resize: 'vertical',
         }}
       />
-      {error ? <p style={{ color: 'var(--status-danger, #DC2626)', marginTop: 6 }}>{error}</p> : null}
+      {error ? <p style={{ color: 'var(--status-error)', marginTop: 6 }}>{error}</p> : null}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button
           onClick={report}
           disabled={saving}
           style={{
             padding: '8px 14px', minHeight: 44, borderRadius: 8, border: 'none',
-            backgroundColor: 'var(--accent)', color: 'var(--on-accent, #fff)',
+            backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)',
             fontSize: '0.85rem', cursor: saving ? 'default' : 'pointer',
           }}
         >

@@ -164,7 +164,7 @@ function AssignmentRow({ session, teachers, canManage, canInvite = canManage, wa
             onBlur={saveRename}
             style={{ flex: 1, font: 'var(--type-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--ring)', outline: 'none' }} />
           <button onClick={saveRename} aria-label="Save name" style={{ display: 'flex', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: 7, cursor: 'pointer' }} title="Save">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ stroke: 'var(--text-on-accent)' }} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           </button>
         </div>
       ) : (

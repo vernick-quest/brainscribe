@@ -45,7 +45,7 @@ export default function InviteAgeGate({ token, role }) {
             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
               This invite can't be used on a under-13 account. If you're a student, you can set up your own account instead.
             </p>
-            <a href="/welcome" style={{ display: 'block', textAlign: 'center', padding: '0.9rem', borderRadius: 12, fontWeight: 700, fontSize: '0.9rem', color: '#fff', backgroundColor: 'var(--brand-orange)', textDecoration: 'none' }}>
+            <a href="/welcome" style={{ display: 'block', textAlign: 'center', padding: '0.9rem', borderRadius: 12, fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', textDecoration: 'none' }}>
               Set up a student account →
             </a>
           </div>

@@ -128,8 +128,8 @@ export default function AboutPage() {
 
         {/* Scene block */}
         <div style={{
-          backgroundColor: 'var(--brand-navy)',
-          color: 'var(--brand-cream)',
+          backgroundColor: 'var(--surface-ink)',
+          color: 'var(--text-on-dark)',
           padding: '36px',
           borderRadius: 16,
           margin: '48px 0',

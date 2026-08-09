@@ -170,8 +170,8 @@ function Landing() {
       {/* ── The writing is always theirs (anti-cheating) ── */}
       <section style={sectionWrap}>
         <div style={{
-          backgroundColor: 'var(--brand-navy)',
-          color: 'var(--brand-cream)',
+          backgroundColor: 'var(--surface-ink)',
+          color: 'var(--text-on-dark)',
           borderRadius: 24,
           padding: 'clamp(36px, 6vw, 56px)',
           textAlign: 'center',

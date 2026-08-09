@@ -97,7 +97,27 @@
   --status-error:      var(--red-500);
   --status-error-bg:   var(--red-100);
 
-  /* Tutor persona accents */
+  /* ── Coach identity colors ──────────────────────────────────
+     Per-coach ring / soft disc / label ink. lib/coachColors.js is the JS mirror
+     of this block and getCoachColor() returns var() references, so the six
+     coaches follow the theme with no JS and no re-render.
+
+     Roles: `--tutor-{key}` = the 3px avatar ring and card border (the identity);
+     `-tint` = the soft panel behind a SELECTED picker card; `-shade` = the coach
+     name/trait ink on that panel.
+
+     LIGHT values below are unchanged from what shipped — this lane does not touch
+     light mode. Dark values come from the v2 design package. */
+  --tutor-owen:      #8BA888;  --tutor-owen-tint:     #EAF0E9;  --tutor-owen-shade:     #5A7357;
+  --tutor-deon:      #C88A3D;  --tutor-deon-tint:     #F7EBD9;  --tutor-deon-shade:     #8F5E22;
+  --tutor-zoe:       #E08A7A;  --tutor-zoe-tint:      #FBEAE6;  --tutor-zoe-shade:      #A85647;
+  --tutor-alistair:  #7A94AB;  --tutor-alistair-tint: #E8EDF2;  --tutor-alistair-shade: #4C6377;
+  --tutor-tilly:     #5FA8A0;  --tutor-tilly-tint:    #E2F0EE;  --tutor-tilly-shade:    #367069;
+  --tutor-jade:      #9B6A93;  --tutor-jade-tint:     #F0E7EF;  --tutor-jade-shade:     #6B4165;
+  /* Translucent halo on the selected picker card. */
+  --tutor-ring-selected-alpha: 20%;
+
+  /* Tutor persona accents (legacy set — persona.color + gym strands) */
   --tutor-coach:  #2E9E6B;  /* Marcus  — green   */
   --tutor-spark:  #C4782A;  /* Zoe     — amber   */
   --tutor-sage:   #2A6191;  /* Alistair — navy   */
@@ -195,12 +215,149 @@
   --tap-min:     44px;
 
   /* ── Legacy aliases (keeps existing components working) ───── */
-  --brand-orange:      var(--orange-500);
-  --brand-amber:       var(--amber-500);
-  --brand-navy:        var(--navy-800);
-  --brand-navy-light:  var(--navy-600);
-  --brand-cream:       var(--cream-100);
-  --brand-cream-dark:  var(--cream-300);
+  /* These point at SEMANTIC aliases, not raw scale values, so they follow the
+     theme. Each resolves to exactly the same light-mode color it always did
+     (brand-navy = navy-800 = text-strong, brand-cream = cream-100 = bg-page, …),
+     so light mode is unchanged — but dark mode no longer leaks a cream page
+     background or navy ink through the legacy names. */
+  --brand-orange:      var(--accent);
+  --brand-amber:       var(--status-thin);
+  --brand-navy:        var(--text-strong);
+  --brand-navy-light:  var(--text-link);
+  --brand-cream:       var(--bg-page);
+  --brand-cream-dark:  var(--surface-sunken);
+}
+
+/* ── Dark theme ────────────────────────────────────────────────
+   A token REMAP, not a redesign: no layout, type, spacing, radius or component
+   changes. Cream paper becomes deep navy slate, warm ink becomes warm off-white,
+   elevation moves from shadows to hairline borders, and the orange spark steps up
+   one stop so it still reads as the place the student's voice goes.
+
+   Source: docs/specs/"Brainscribe dark mode design.zip" → dark-theme.css (the
+   authoritative token list). That file scopes to [data-theme="dark"] and pairs
+   with a persisted toggle; this lane ships the OS-preference half only — there is
+   no theme switch and no localStorage, so the media query IS the whole trigger.
+
+   Every ~30 semantic alias is redefined here, which is why the ~78 files that
+   style through them need no edits. A handful of RAW scale tokens are remapped
+   too (see below) because components reference them directly; the design file
+   calls for this explicitly.
+
+   Scoped to `screen` deliberately: the @media print block below forces a white
+   page, and if the dark tokens were live while printing, near-white body text
+   would land on white paper. Restricting dark to screen means print always
+   resolves the light palette. */
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    /* Form controls, scrollbars and UA widgets follow the theme. */
+    color-scheme: dark;
+
+    /* Surfaces */
+    --bg-page:        #101A24;
+    --bg-page-alt:    #0B1219;
+    --surface-card:   #17232E;
+    --surface-muted:  #1C2A36;
+    --surface-sunken: #0B1219;
+    --surface-ink:    #1D4D78;  /* stays a MID navy — light's navy-800 would vanish into the page */
+    --surface-spark:  #241C13;
+
+    /* Text */
+    --text-strong:    #FCF8F0;
+    --text-body:      #E7E1D5;
+    --text-muted:     #9E988C;
+    --text-subtle:    #7C776E;
+    --text-on-dark:   #FCF8F0;
+    --text-link:      #9CBBD7;
+    /* --text-on-accent stays #FFFFFF (inherited): the white-on-orange CTA is a
+       brand pairing that already ships sub-AA in light mode (2.67:1); dark does
+       not silently diverge from it. Flagged in TESTING.md as an open AA item. */
+
+    /* Brand roles — orange steps up one stop for contrast on dark */
+    --accent:         #F89A2E;   /* orange-400 */
+    --accent-hover:   #FBB85A;   /* orange-300 */
+    --accent-press:   #F0811E;   /* orange-500 */
+    --accent-soft:    #2E2318;
+    /* The light/dark INVERSION: --accent-text exists because the bright orange
+       fails AA as text on cream, so light darkens it to orange-800. On dark that
+       flips — orange must get LIGHTER, not darker. Per the design README, orange
+       text on a card uses orange-300 (#FBB85A → 9.2:1 on --surface-card);
+       orange-800 would have been 1.5:1. */
+    --accent-text:    var(--orange-300);
+    --primary:        #1D4D78;   /* navy-700 */
+    --primary-hover:  #2A6191;
+    --primary-soft:   #1B2A38;
+
+    /* Lines & focus. --ring and --focus-ring are unchanged from light: the orange
+       ring already clears AA on the dark page (8.08:1) and reads as the same
+       affordance in both themes. */
+    --border-default: #283846;
+    --border-strong:  #3B4D5D;
+    --border-accent:  #7A4E19;
+    --ring:           #F89A2E;
+    --ring-navy:      #6E97BD;  /* navy-400, unchanged — 3.4:1 on the page, AA for a non-text ring */
+
+    /* Raw scale tokens that components reference DIRECTLY, so they must invert
+       too. The rule the design file states for navy-800 — "was the heading navy;
+       now the pale-navy heading tint" — applies equally to navy-700, which 9 call
+       sites use as icon/label ink (it would sit at 1.9:1 on a dark card). */
+    --navy-50:    #16232F;
+    --navy-100:   #1F3140;
+    --navy-700:   #9CBBD7;
+    --navy-800:   #9CBBD7;
+    --ink-700:    #C9C2B4;
+    --ink-300:    #3B4D5D;
+    --orange-50:  #241C13;  /* the .legal-doc hero wash — same value as --surface-spark */
+    --orange-200: #3C2C1B;
+    --orange-700: #FBB85A;
+
+    /* Elevation — warm navy shadows read as nothing on dark; borders do the
+       lifting. The orange spark survives and is the only glow in the theme. */
+    --shadow-xs:    0 1px 2px rgba(0,0,0,0.45);
+    --shadow-sm:    0 1px 2px rgba(0,0,0,0.45), 0 2px 10px rgba(0,0,0,0.30);
+    --shadow-md:    0 4px 20px rgba(0,0,0,0.45);
+    --shadow-lg:    0 12px 40px rgba(0,0,0,0.55);
+    --shadow-spark: 0 6px 26px rgba(248,154,46,0.30);
+    --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.40);
+
+    /* ── Coach identity (v2 design package) ──────────────────
+       Each hue steps up one stop to clear 4.5:1 on --surface-card (measured:
+       5.89–7.57:1). The `-tint` is the persona hue composited at 14% over the
+       card — the "soft glow, not a bright cream dot" treatment — and `-shade`
+       collapses onto the ring color, because on dark the light-mode rule
+       inverts: the DARK shade is unreadable here (1.95–3.1:1) while the ring
+       reads at 4.67–5.74:1 against its own tint.
+
+       NOTE: the portraits themselves are NOT tinted — they are artwork and ship
+       identically in both themes. The v2 spec also asks for the disc behind the
+       portrait to become this tint via color-mix; that is a no-op against the
+       CURRENT assets, which are fully opaque PNGs with the cream disc baked in.
+       Dark portrait files are specced in
+       docs/specs/coach-portraits-dark-mode-instructions.md. */
+    --tutor-owen:      #8FBA93;  --tutor-owen-tint:     #28383C;  --tutor-owen-shade:     #8FBA93;
+    --tutor-deon:      #E0A63C;  --tutor-deon-tint:     #333530;  --tutor-deon-shade:     #E0A63C;
+    --tutor-zoe:       #EC8874;  --tutor-zoe-tint:      #353138;  --tutor-zoe-shade:      #EC8874;
+    --tutor-alistair:  #93B0D2;  --tutor-alistair-tint: #283745;  --tutor-alistair-shade: #93B0D2;
+    --tutor-tilly:     #74C0B7;  --tutor-tilly-tint:    #243941;  --tutor-tilly-shade:    #74C0B7;
+    --tutor-jade:      #B092C4;  --tutor-jade-tint:     #2C3343;  --tutor-jade-shade:     #B092C4;
+    --tutor-ring-selected-alpha: 28%;
+
+    /* Legacy persona accents (persona.color + gym strands). Not covered by the
+       design package; each is the SAME hue lifted in OKLab until it clears 4.5:1
+       on --surface-card — the "step up one stop" rule the package states, applied
+       mechanically. Three were already passing and are unchanged. */
+    --tutor-sage:   #578EC1;  /* was #2A6191 — 1.9:1 on a dark card */
+    --tutor-muse:   #A172DB;  /* was #8A5BC2 */
+    --tutor-nova:   #DD5C88;  /* was #DB5A87 */
+
+    /* Status */
+    --green-500: #4FBF8B;  --green-100: #122A21;
+    --amber-500: #E8A845;  --amber-100: #2C2211;
+    --red-500:   #E4705C;  --red-100:   #2E1917;
+    --status-success-bg: #122A21;
+    --status-thin-bg:    #2C2211;
+    --status-error-bg:   #2E1917;
+  }
 }
 
 /* ── Base styles ───────────────────────────────────────────── */
@@ -292,8 +449,10 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.9em;
 }
 .blog-prose pre {
-  background: var(--text-strong);
-  color: #fff;
+  /* --surface-ink, not --text-strong: both are navy-800 in light, but in dark
+     --text-strong is near-white and the block would go white-on-white. */
+  background: var(--surface-ink);
+  color: var(--text-on-dark);
   padding: 1rem 1.1rem;
   border-radius: 12px;
   overflow-x: auto;

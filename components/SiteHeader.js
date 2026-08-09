@@ -25,7 +25,7 @@ export default function SiteHeader({ active, sticky = false }) {
             position: 'sticky',
             top: 0,
             zIndex: 50,
-            backgroundColor: 'color-mix(in srgb, var(--cream-100) 86%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--bg-page) 86%, transparent)',
             backdropFilter: 'blur(10px)',
           }
         : { backgroundColor: 'var(--surface-card)' }),
