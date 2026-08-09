@@ -10,7 +10,7 @@ import Avatar from '@/components/Avatar'
 import { PersonaAvatar } from '@/lib/personas'
 import { DEMO_EMAILS } from '@/lib/demoAccounts'
 import { unwrapPastedText } from '@/lib/unwrapText'
-import { breachKey, breachProgress } from '@/lib/auditBreach'
+import { breachKey, breachProgress, summaryContradictsBreaches } from '@/lib/auditBreach'
 
 // Paste handler for the admin note fields. Text copied from a terminal, chat pane, or
 // email is hard-wrapped at ~80 columns, and those newlines are real — pasted in, a note
@@ -559,6 +559,14 @@ function SeverityBadge({ severity }) {
   )
 }
 
+// Judge-accuracy dispositions. Kept in sync with the CHECK constraint in migration 060
+// and the DISPOSITIONS list in the audit-findings route.
+const DISPOSITION_OPTIONS = [
+  { key: 'confirmed',      label: 'Confirmed',      title: 'Real breach, severity fits',                bg: 'var(--status-success-bg)', fg: 'var(--status-success)' },
+  { key: 'over_severe',    label: 'Over-severe',    title: 'Real breach, but graded harsher than it deserved', bg: 'var(--status-thin-bg)', fg: 'var(--status-thin)' },
+  { key: 'false_positive', label: 'False positive', title: 'Not a breach — the judge was wrong',        bg: 'var(--status-error-bg)',   fg: 'var(--status-error)' },
+]
+
 // One breach inside a finding, with its OWN note and resolution. A session routinely
 // holds several distinct errors (one real assignment has three); answering them as a
 // single unit meant a fixed error and an open one shared a verdict.
@@ -566,6 +574,7 @@ function BreachBlock({ breach: b, findingId, review, onChanged }) {
   const key = breachKey(b)
   const [resolved, setResolved] = useState(review?.resolved === true)
   const [note, setNote] = useState(review?.note ?? '')
+  const [disposition, setDisposition] = useState(review?.disposition ?? null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState('')
@@ -573,7 +582,8 @@ function BreachBlock({ breach: b, findingId, review, onChanged }) {
   // Re-sync if a refetch brings a newer verdict for this breach.
   const srvResolved = review?.resolved === true
   const srvNote = review?.note ?? ''
-  useEffect(() => { setResolved(srvResolved); setNote(srvNote) }, [srvResolved, srvNote])
+  const srvDisp = review?.disposition ?? null
+  useEffect(() => { setResolved(srvResolved); setNote(srvNote); setDisposition(srvDisp) }, [srvResolved, srvNote, srvDisp])
 
   async function save(patch) {
     setSaving(true); setErr(''); setSaved(false)
@@ -619,6 +629,27 @@ function BreachBlock({ breach: b, findingId, review, onChanged }) {
       <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
       {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
 
+      {/* Was the judge right? Optional, and separate from "have I dealt with it" —
+          this is what turns severity calibration into a query ("what share of HIGH
+          findings did a human confirm?") instead of a recollection. */}
+      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+        <span style={{ color: 'var(--text-subtle)' }}>Judge was:</span>
+        {DISPOSITION_OPTIONS.map(d => {
+          const active = disposition === d.key
+          return (
+            <button key={d.key} type="button" disabled={saving} title={d.title}
+              onClick={() => { const next = active ? null : d.key; setDisposition(next); save({ disposition: next }) }}
+              aria-pressed={active}
+              className="text-[10px] font-semibold rounded-full px-2 py-0.5 transition cursor-pointer disabled:opacity-60"
+              style={active
+                ? { backgroundColor: d.bg, color: d.fg }
+                : { backgroundColor: 'var(--surface-card)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
+              {d.label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* This error's own note + verdict */}
       <div className="flex items-start gap-2 pt-1">
         <textarea value={note}
@@ -657,6 +688,8 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
   const label = session?.title || session?.assignment_text?.slice(0, 70) || 'Untitled session'
   const tech = a.technical ?? {}
   const progress = breachProgress(a.breaches, breachReviews)
+  const hasBreaches = progress.total > 0
+  const summaryContradicts = summaryContradictsBreaches(a.summary, a.breaches)
 
   // Remote in as the student (fail closed), then open the finished-work transcript.
   async function openTranscript() {
@@ -743,9 +776,21 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
         </p>
       </div>
 
-      {/* Auditor summary */}
+      {/* Auditor summary. A summary generated BEFORE the breaches (old schema order)
+          could claim the session was clean and then list three HIGH breaches beneath
+          it. New findings can't do that, but ones already stored keep their prose —
+          so label it rather than presenting a contradiction as fact. */}
       {a.summary && (
-        <p className="text-sm" style={{ color: 'var(--text-default)' }}>{a.summary}</p>
+        <div>
+          {summaryContradicts && (
+            <p className="text-[11px] font-bold mb-1" style={{ color: 'var(--status-error)' }}>
+              ⚠ This summary contradicts the {(a.breaches ?? []).length} finding{(a.breaches ?? []).length === 1 ? '' : 's'} below — it was written before the breach analysis. Trust the findings.
+            </p>
+          )}
+          <p className="text-sm" style={{ color: summaryContradicts ? 'var(--text-subtle)' : 'var(--text-default)' }}>
+            {a.summary}
+          </p>
+        </div>
       )}
 
       {/* Breaches with verbatim quotes */}
@@ -780,13 +825,18 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
         </div>
       )}
 
-      {/* Session-level notes — the overall verdict. Per-error notes live on each
-          breach block above. */}
-      <textarea value={notes} onChange={e => setNotes(e.target.value)}
-        onPaste={e => handleUnwrapPaste(e, setNotes)}
-        placeholder="Overall notes for this session…" rows={2}
-        className="w-full text-xs rounded-xl px-3 py-2 resize-y"
-        style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
+      {/* A technical-only finding (no breaches — e.g. a truncated turn) has no error
+          block to answer, so it keeps its own note + resolve. When breaches DO exist,
+          each one carries its own verdict and the finding's resolved state is derived
+          from them server-side: a second central control could only ever disagree with
+          the parts it summarises. */}
+      {!hasBreaches && (
+        <textarea value={notes} onChange={e => setNotes(e.target.value)}
+          onPaste={e => handleUnwrapPaste(e, setNotes)}
+          placeholder="Notes on this technical finding…" rows={2}
+          className="w-full text-xs rounded-xl px-3 py-2 resize-y"
+          style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
@@ -795,18 +845,29 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
           style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
           {opening ? '…' : <span className="flex items-center gap-1.5"><IconEye /> Review transcript</span>}
         </button>
-        <button onClick={saveNotes} disabled={savingNotes}
-          className="text-[11px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
-          style={{ color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
-          {savingNotes ? '…' : notesSaved ? 'Saved ✓' : 'Save notes'}
-        </button>
-        <button onClick={toggleResolved}
-          className="text-[11px] font-semibold px-3 py-1.5 rounded-full ml-auto"
-          style={resolved
-            ? { color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
-            : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
-          {resolved ? 'Reopen' : 'Mark resolved'}
-        </button>
+        {!hasBreaches && (
+          <>
+            <button onClick={saveNotes} disabled={savingNotes}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
+              style={{ color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+              {savingNotes ? '…' : notesSaved ? 'Saved ✓' : 'Save notes'}
+            </button>
+            <button onClick={toggleResolved}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-full ml-auto"
+              style={resolved
+                ? { color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+                : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+              {resolved ? 'Reopen' : 'Mark resolved'}
+            </button>
+          </>
+        )}
+        {hasBreaches && (
+          <span className="text-[11px] ml-auto" style={{ color: 'var(--text-subtle)' }}>
+            {progress.allResolved
+              ? 'All errors resolved — this finding is closed'
+              : `Resolve each error above (${progress.resolved}/${progress.total} done)`}
+          </span>
+        )}
       </div>
     </div>
   )

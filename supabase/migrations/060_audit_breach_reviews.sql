@@ -17,6 +17,14 @@ create table if not exists public.audit_breach_reviews (
   breach_key  text not null,
   resolved    boolean not null default false,
   note        text,
+  -- Was the judge RIGHT about this one? Optional, and deliberately separate from
+  -- `resolved` (which answers "have I dealt with it"). This is what makes severity
+  -- calibration queryable instead of anecdotal: with it you can ask "what share of
+  -- HIGH findings did a human confirm as HIGH?" rather than recalling a few examples.
+  --   confirmed      — the breach is real and the severity fits
+  --   over_severe    — a real breach, but graded harsher than it deserved
+  --   false_positive — not a breach; the judge was wrong
+  disposition text check (disposition in ('confirmed', 'over_severe', 'false_positive')),
   reviewed_by uuid references public.profiles(id) on delete set null,
   reviewed_at timestamptz not null default now(),
   created_at  timestamptz not null default now(),
