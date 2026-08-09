@@ -2801,3 +2801,27 @@ feeling samey, the fix is per-tile mark tinting, not a return to unrelated icons
 **Manual check (after 059 applies + deploy):** sign out and back in → that student's row increments
 by exactly 1 · a second sign-in increments again · the roster still sorts by last sign-in ·
 tiles show the mark and still select their tab.
+
+## 2026-08-08 — Student card layout fix: avatar spans both rows, single right-edge chevron (focus/admin)
+
+**File:** `components/AdminDashboard.js` (`StudentCard`) only. No data/route/schema change.
+
+The first two-row pass put the avatar inside row 1 and the expand control on its own line between
+the rows, which read as a stray third row ("0 assignments ›" floating mid-card). Restructured to
+three flex siblings on one centered row:
+1. **Avatar** — `shrink-0`, 36px → **52px**, so it spans the height of both text rows (COPPA
+   suppression to initials for under-13 is inside `Avatar` and unchanged).
+2. **Content column** — `flex-1 min-w-0`, holding row 1 (name · joined · age · FTUE · role ·
+   Remote in · delete) and row 2 (email · last sign-in · logins · assignments · completed ·
+   warnings) stacked.
+3. **Chevron** — one control at the right edge, vertically centered across both rows, **no label**;
+   rotates 90° when open. Same `IconChevron` as before.
+
+`min-w-0` on the content column keeps the long email truncating instead of forcing the card wider.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green** · DOM nesting checked
+(avatar / content column / chevron are siblings; no intermediate row remains).
+
+**Manual check (admin):** avatar visually spans both rows · no floating middle row · chevron sits at
+the far right, centered, unlabelled, and rotates on expand · long emails truncate rather than widen
+the card.

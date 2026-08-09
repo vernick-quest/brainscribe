@@ -908,12 +908,10 @@ function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, childr
   )
 }
 
-// Student card — two rows, because a single row had to choose between identity and
-// activity and ended up showing neither well.
-//   Row 1 (who they are):  avatar · name · joined · age · FTUE · role · remote-in · delete
-//   Row 2 (what they did): email · last sign-in · sessions · assignments · completed · warnings
-// The expand chevron sits between the rows, right-aligned, so the disclosure control
-// is adjacent to the content it reveals rather than competing with the action buttons.
+// Student card. Three columns: the avatar spans the full card height, the two text
+// rows stack beside it, and one chevron sits at the right edge, also full height.
+//   Row 1 (who they are):  name · joined · age · FTUE · role · remote-in · delete
+//   Row 2 (what they did): email · last sign-in · logins · assignments · completed · warnings
 function StudentCard({ student, sessions, onRoleChanged, children }) {
   const [open, setOpen] = useState(false)
   const hasBody = sessions.length > 0
@@ -933,65 +931,69 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
     <div className="rounded-2xl overflow-hidden"
       style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
 
-      <div className="px-5 py-3">
-        {/* ── Row 1 — identity + actions ── */}
-        <div className="flex items-center gap-3">
-          <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={36} />
-          <button className="flex-1 min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
-            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>
-              {student.full_name ?? '—'}
-            </p>
-          </button>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs" style={{ color: 'var(--text-subtle)' }} title="Joined">
-              {formatDate(student.created_at)}
+      <div className="px-5 py-3 flex items-center gap-4">
+
+        {/* Avatar — spans both rows (COPPA: Avatar hard-suppresses under-13 to initials) */}
+        <div className="shrink-0">
+          <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={52} />
+        </div>
+
+        {/* Both text rows stack to the right of the avatar */}
+        <div className="flex-1 min-w-0 space-y-1">
+
+          {/* ── Row 1 — identity + actions ── */}
+          <div className="flex items-center gap-3">
+            <button className="flex-1 min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>
+                {student.full_name ?? '—'}
+              </p>
+            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs" style={{ color: 'var(--text-subtle)' }} title="Joined">
+                {formatDate(student.created_at)}
+              </span>
+              <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
+              <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true}
+                practiced={student.practiced === true} />
+              <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
+              <RemoteInButton userId={student.id} />
+              <DeleteUserButton userId={student.id} name={student.full_name} />
+            </div>
+          </div>
+
+          {/* ── Row 2 — activity ── */}
+          <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="truncate min-w-0 flex-1">{student.email}</span>
+            <span className="shrink-0" title="Last sign-in">
+              {student.last_sign_in_at ? `Seen ${formatDate(student.last_sign_in_at)}` : 'Never signed in'}
             </span>
-            <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
-            <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true}
-              practiced={student.practiced === true} />
-            <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
-            <RemoteInButton userId={student.id} />
-            <DeleteUserButton userId={student.id} name={student.full_name} />
+            <span className="shrink-0 tabular-nums" title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>
+              {logins ? `${logins} login${logins === 1 ? '' : 's'}` : '— logins'}
+            </span>
+            <span className="shrink-0 tabular-nums">{assignments.length} assignment{assignments.length === 1 ? '' : 's'}</span>
+            <span className="shrink-0 tabular-nums" style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }}>
+              {completed} completed
+            </span>
+            {warn?.total > 0 && (
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5"
+                title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}`}
+                style={warn.high > 0
+                  ? { backgroundColor: 'var(--status-error-bg, #FEF2F2)', color: 'var(--status-error, #DC2626)' }
+                  : { backgroundColor: 'var(--status-warning-bg, #FFFBEB)', color: 'var(--status-warning, #B45309)' }}>
+                {warn.total} warning{warn.total === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* ── Expand control — between the rows, right-aligned ── */}
-        <div className="flex justify-end -my-0.5">
-          <button onClick={toggle} disabled={!hasBody}
-            className="flex items-center gap-1 text-[11px] transition disabled:opacity-25 cursor-pointer disabled:cursor-default rounded px-1"
-            style={{ color: 'var(--text-subtle)' }}
-            aria-expanded={hasBody ? open : undefined}
-            aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse assignments' : 'Expand assignments'}>
-            {hasBody && <span>{open ? 'Hide' : `${assignments.length} assignment${assignments.length === 1 ? '' : 's'}`}</span>}
-            <span className="inline-flex transition-transform" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
-              <IconChevron />
-            </span>
-          </button>
-        </div>
-
-        {/* ── Row 2 — activity ── */}
-        <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span className="truncate min-w-0 flex-1">{student.email}</span>
-          <span className="shrink-0" title="Last sign-in">
-            {student.last_sign_in_at ? `Seen ${formatDate(student.last_sign_in_at)}` : 'Never signed in'}
-          </span>
-          <span className="shrink-0 tabular-nums" title={logins === null || logins === 0 ? 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded' : 'Sign-ins recorded since 2026-08-08'}>
-            {logins ? `${logins} login${logins === 1 ? '' : 's'}` : '— logins'}
-          </span>
-          <span className="shrink-0 tabular-nums">{assignments.length} assignment{assignments.length === 1 ? '' : 's'}</span>
-          <span className="shrink-0 tabular-nums" style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }}>
-            {completed} completed
-          </span>
-          {warn?.total > 0 && (
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5"
-              title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}`}
-              style={warn.high > 0
-                ? { backgroundColor: 'var(--status-error-bg, #FEF2F2)', color: 'var(--status-error, #DC2626)' }
-                : { backgroundColor: 'var(--status-warning-bg, #FFFBEB)', color: 'var(--status-warning, #B45309)' }}>
-              {warn.total} warning{warn.total === 1 ? '' : 's'}
-            </span>
-          )}
-        </div>
+        {/* Expand — one control at the right edge, spanning both rows, no label */}
+        <button onClick={toggle} disabled={!hasBody}
+          className="shrink-0 flex items-center transition-transform disabled:opacity-25 cursor-pointer disabled:cursor-default"
+          style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
+          aria-expanded={hasBody ? open : undefined}
+          aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse assignments' : 'Expand assignments'}>
+          <IconChevron />
+        </button>
       </div>
 
       {hasBody && open && (
