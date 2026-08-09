@@ -2916,3 +2916,48 @@ that to them by design. So every write path REFUSES rather than guessing:
 - **Phase 2 (not built): the retarget.** A coach-driven paragraph target so the student's choice
   sets the cursor, plus append-vs-replace semantics for revising a carried paragraph. Until then
   "Keep working on this" can only fill sections v1 left empty. Needs the `coach-prompt` skill.
+
+## 2026-08-09 — Continue editing from an existing transcript: EDIT path proven, continuation re-enabled — focus/coaching-session
+
+**The finding, now PROVEN (was "promising not proven").** The continuation 409 guard in
+`app/api/paragraphs/route.js` is inside **POST only**. The Edit button (`saveDirectEdit`)
+uses **PATCH**, which updates by explicit `(session_id, position)` and never consults the
+cursor — so the sentinel-collision that forced the kill switch structurally cannot reach
+it. `scripts/continuation-gate.mjs` now proves it against the live table, asserting on the
+VALUES (a 200 proves nothing here — PostgREST reports success for a zero-row UPDATE):
+carry 3 paragraphs → edit position 1 → **only position 1 changed, 0 and 2 byte-intact, no
+row created (still 3)**. A PATCH matching zero rows raises **PGRST116** (fails loud, so the
+route 500s and a client that checks the response can detect it). Edit-affordance
+reachability asserted too: every carried section resolves an assembled paragraph, so Edit
+renders on all of them (✓✓✓).
+*Scope of proof, honestly:* the probe reproduces the route's exact PostgREST call shape with
+the SERVICE-ROLE client, proving row semantics, NOT RLS. RLS is covered by reading migration
+001's `paragraphs: session owner` policy (`for all` includes UPDATE; v2 keeps v1's student_id).
+Teardown hardened: failed deletes reported loudly + a sweep for orphaned fixture rows from an
+earlier crashed run (none found under this script's title — a leak from a different probe
+would carry a different marker).
+
+**Bug found + fixed — `saveDirectEdit` had the same silent-write bug as `saveParagraph`.**
+It was `fetch(...).catch(console.error)` with local state updated FIRST: `.catch` only sees
+network faults, so a 409/500/zero-row PATCH all read as success — the student watched the
+edit appear, the coach was told it happened, the DB never changed. Now: persist first, check
+`res.ok`, and only then commit locally + notify the coach. On failure the editor stays open
+with their words and shows `editSaveError` (new state) — no silent lost edit.
+
+**Coach prompt** (coach-prompt skill run; CONTINUING A FINISHED DRAFT block, uncached tail):
+added the two real mechanics — (1) changing a paragraph that already has words happens via
+**Edit**, and `[DICTATE]` must NOT be offered for it (the app refuses that save, so it's a
+dead end); (2) new material goes only into a section v1 left **EMPTY**, where `[DICTATE]` is
+correct; if none is empty, say so honestly and offer Edit. Verified against the real model —
+`npm run test:prompts` **PASS**, incl. a new probe 4 ("make my conclusion stronger" on an
+occupied paragraph → coaches Socratically, emits no `[DICTATE]`, no `[COMPLETE]`, no `[SCAFFOLD]`).
+
+**`CONTINUATION_ENABLED` flipped to true**, scoped: the DICTATION path is not fixed, it is
+REFUSED in three places (resolver → null, saveParagraph notice, POST 409) and stays refused
+until there's a real target signal. Editing carried work is the supported path; dictation into
+an empty carried section still works (in-range + unoccupied).
+
+Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN · `test:prompts` PASS.
+Manual checks owed (live): finish an assignment → Keep working → v2 opens with the draft; tap
+Edit on a carried paragraph, change it, save → reload and confirm it persisted and the others
+didn't move; ask the coach to strengthen a paragraph → it should point at Edit, not the mic.

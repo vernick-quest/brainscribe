@@ -162,4 +162,31 @@ check('[COMPLETE] is still reachable once they have actually done more', onCompl
 console.log(`  ℹ  control (block off) ${controlCompleted ? 'completed' : 'did not complete'} — diagnostic only, never a pass/fail`)
 check('does not re-emit [SCAFFOLD] on the way out', !saidScaffold(p3))
 
+// ── Probe 4 — revision mechanics: Edit, not dictation ────────────────────────
+// The one path that actually persists a change to CARRIED text is the Edit button
+// (/api/paragraphs PATCH, proven safe end-to-end in scripts/continuation-gate.mjs).
+// A dictated re-say of an occupied paragraph is REFUSED by the continuation guard, so
+// a coach that answers "strengthen my conclusion" with [DICTATE] sends the student
+// into a dead end: they speak, the save is refused, and they have to redo it through
+// Edit anyway. This probe asserts the coach routes revision to the button instead.
+console.log('\nPROBE 4 — v2: "I want to make my conclusion stronger" (occupied paragraph)')
+const { text: p4 } = await coachTurn({
+  assignment: ASSIGNMENT,
+  scaffold: CARRIED_SCAFFOLD,       // every section occupied — no empty dictation target
+  opts: OPTS,
+  messages: [
+    { role: 'user', content: "i'm back. my conclusion is weak, i want to make it stronger" },
+  ],
+})
+console.log('\n' + p4 + '\n' + '─'.repeat(70))
+
+check('does not send them to dictation for an already-written paragraph', !/\[DICTATE\]/.test(p4))
+check('does not emit [COMPLETE]', !saidComplete(p4))
+check('does not re-emit [SCAFFOLD]', !saidScaffold(p4))
+// It should either name the Edit affordance now, or ask a coaching question first and
+// hand off after — both are correct. What it must not do is silently ignore the
+// mechanism and imply the change lands some other way.
+check('coaches the conclusion (question) and/or points at Edit',
+  /\?/.test(p4) || /\bedit\b/i.test(p4))
+
 process.exit(report('Keep working (v2) — continuation coaching') === 0 ? 0 : 1)

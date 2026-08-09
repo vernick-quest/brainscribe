@@ -121,9 +121,91 @@ try {
   const { data: occupied } = await db.from('paragraphs').select('id')
     .eq('session_id', v2.id).eq('position', 2).maybeSingle()
   ok(!!sess?.continued_from && !!occupied, 'route would see continued_from + an occupied position → 409, no write')
+
+  // ══ EDIT PATH (PATCH) — the "continue editing from an existing transcript" route ══
+  //
+  // The 409 continuation guard above lives in POST only. The Edit button on an assembled
+  // paragraph (TutorSession saveDirectEdit) uses PATCH, which targets an EXPLICIT
+  // (session_id, position) and never consults the cursor — so it should be structurally
+  // immune to the sentinel-cursor collision that forced the kill switch. That was
+  // "promising not proven": a live PATCH returned 200, but nothing read the rows back.
+  // A 200 proves nothing here — PostgREST reports success for an UPDATE that matched
+  // zero rows, which is exactly how the earlier losses hid. So: plant, edit, read back.
+  //
+  // SCOPE OF PROOF (honest): this reproduces the route's exact PostgREST call shape
+  // (.update().eq(session_id).eq(position).select().single()) with the SERVICE-ROLE
+  // client, so it proves the ROW SEMANTICS — which rows change and which don't. It does
+  // NOT exercise RLS (service role bypasses it). RLS is covered by reading the policy:
+  // migration 001 "paragraphs: session owner" is `for all using (session owner)`, and
+  // `for all` includes UPDATE, with v2.student_id identical to v1's. Stated, not assumed.
+  console.log('\nEDIT PATH (PATCH) — carried paragraph 1 edited, 0 and 2 must not move:')
+  const EDITED = 'SENTINEL-EDITED-PARAGRAPH-1'
+  const { data: patched, error: patchErr } = await db.from('paragraphs')
+    .update({ scribed_text: EDITED })
+    .eq('session_id', v2.id).eq('position', 1)
+    .select().single()
+  ok(!patchErr, `PATCH of a carried paragraph returned no error${patchErr ? ` (got ${patchErr.code} ${patchErr.message})` : ''}`)
+  ok(patched?.scribed_text === EDITED, 'PATCH response carries the edited text')
+
+  // The assertion the earlier probe never ran: read the VALUES back.
+  const { data: afterEdit } = await db.from('paragraphs')
+    .select('position, scribed_text').eq('session_id', v2.id).order('position')
+  console.log('v2 paragraphs after the edit:')
+  for (const r of afterEdit) console.log(`  position ${r.position}: ${r.scribed_text}`)
+  const at = p => afterEdit.find(r => r.position === p)?.scribed_text
+  ok(at(1) === EDITED, 'the EDITED paragraph changed (position 1)')
+  ok(at(0) === 'SENTINEL-V1-PARAGRAPH-0', 'paragraph 0 was NOT touched by the edit')
+  ok(at(2) === 'SENTINEL-V1-PARAGRAPH-2', 'paragraph 2 was NOT touched by the edit')
+  ok(afterEdit.length === 3, `still exactly 3 rows, got ${afterEdit.length} (edit updated in place, created nothing)`)
+
+  // A PATCH at a position that holds nothing must FAIL LOUD, not report success. This is
+  // the contract saveDirectEdit's (missing) response check depends on: if a zero-row
+  // UPDATE came back 200, a client that ignores the response could never tell.
+  console.log('\nZERO-ROW PATCH (must not read as success):')
+  const { data: ghost, error: ghostErr } = await db.from('paragraphs')
+    .update({ scribed_text: 'SENTINEL-SHOULD-NEVER-LAND' })
+    .eq('session_id', v2.id).eq('position', 99)
+    .select().single()
+  console.log(`  → error: ${ghostErr ? `${ghostErr.code} ${ghostErr.message}` : 'NONE'} · data: ${JSON.stringify(ghost)}`)
+  ok(!!ghostErr || ghost === null, 'a PATCH matching zero rows surfaces an error / null rather than a silent success')
+  const { count: ghostCount } = await db.from('paragraphs')
+    .select('id', { count: 'exact', head: true }).eq('session_id', v2.id)
+  ok(ghostCount === 3, `zero-row PATCH created nothing, still ${ghostCount} rows`)
+
+  // ── Edit affordance reachability (the UI half of "continue editing") ─────────────
+  // TutorSession renders the Edit button only where it finds an assembled paragraph for
+  // a scaffold section: paragraphs.find(p => (p.paragraph_index ?? p.position) === idx).
+  // If the carry dropped paragraph_index, sections would render with no Edit button and
+  // the student would have no way to revise carried work.
+  console.log('\nEDIT AFFORDANCE REACHABILITY:')
+  const { data: v2Rows } = await db.from('paragraphs')
+    .select('position, paragraph_index').eq('session_id', v2.id)
+  const reachable = scaffoldRow.components.map((_, idx) =>
+    v2Rows.some(p => (p.paragraph_index ?? p.position) === idx))
+  ok(reachable.every(Boolean),
+    `every carried section resolves an assembled paragraph → Edit renders on all ${reachable.length} (${reachable.map(b => b ? '✓' : '✗').join('')})`)
 } finally {
-  for (const id of created) await db.from('sessions').delete().eq('id', id)
-  console.log(`\ncleaned up ${created.length} synthetic sessions`)
+  // Teardown must survive a mid-run throw: anything created above is deleted here, and a
+  // failed delete is reported LOUDLY rather than silently leaving synthetic rows in prod.
+  let leaked = 0
+  for (const id of created) {
+    const { error } = await db.from('sessions').delete().eq('id', id)
+    if (error) { leaked++; console.error(`  ⚠️  FAILED to delete synthetic session ${id}: ${error.message}`) }
+  }
+  console.log(`\ncleaned up ${created.length - leaked}/${created.length} synthetic sessions`)
+
+  // Safety net for an EARLIER crashed run (a probe that died before its own cleanup):
+  // sweep any leftovers carrying this script's unmistakable synthetic title.
+  const { data: orphans } = await db.from('sessions')
+    .select('id, created_at').eq('title', 'GATE-KEEPWORKING-DELETEME')
+  if (orphans?.length) {
+    console.log(`sweeping ${orphans.length} orphaned fixture session(s) from an earlier run`)
+    for (const o of orphans) {
+      const { error } = await db.from('sessions').delete().eq('id', o.id)
+      if (error) console.error(`  ⚠️  FAILED to sweep ${o.id}: ${error.message}`)
+    }
+  }
+  if (leaked) console.error(`\n⚠️  ${leaked} synthetic session(s) may remain — check the test account.`)
   console.log(fail.length ? `\n❌ ${fail.length} GATE ASSERTION(S) FAILED` : '\n✅ GATE GREEN')
   process.exit(fail.length ? 1 : 0)
 }

@@ -818,6 +818,9 @@ export default function TutorSession({
   const [isAssemblingEssay, setIsAssemblingEssay] = useState(false)
   const [editingParaIdx, setEditingParaIdx]         = useState(null)
   const [editDraft, setEditDraft]                   = useState('')
+  // Set when a paragraph edit fails to PERSIST — the editor stays open with the
+  // student's words so they can retry (never a silent lost edit).
+  const [editSaveError, setEditSaveError]           = useState(null)
   const [editingComponent, setEditingComponent]     = useState(null) // { paraIdx, componentId }
   const [componentEditDraft, setComponentEditDraft] = useState('')
   const [lockingComponent, setLockingComponent]     = useState(null) // { paraIdx, componentId } — manual lock-in fallback
@@ -1921,18 +1924,41 @@ export default function TutorSession({
     const oldText = oldPara?.scribed_text ?? ''
     if (newText === oldText) { setEditingParaIdx(null); return }
 
-    // Update local state
+    // CHECK THE RESPONSE, and only then commit. This was a fire-and-forget
+    // `fetch(...).catch(console.error)` that updated local state FIRST: .catch only sees
+    // network faults, so a 409, a 500, or a PATCH matching zero rows (PostgREST raises
+    // PGRST116 → this route 500s; verified in scripts/continuation-gate.mjs) all read as
+    // success. The student watched their edit appear, the coach was told it happened, and
+    // the DB never changed — the same silent-write class as the dictation path.
+    //
+    // So: persist first, commit second. On failure keep the editor open with their words
+    // still in it, and do NOT tell the coach about an edit that didn't land.
+    let res
+    try {
+      res = await fetch('/api/paragraphs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, position: paraIdx, scribedText: newText }),
+      })
+    } catch (err) {
+      console.error('[saveDirectEdit] network failure — edit NOT saved:', err)
+    }
+    if (!res?.ok) {
+      const body = await res?.json().catch(() => null)
+      console.error(
+        `[saveDirectEdit] FAILED for session ${session.id} position ${paraIdx}: ` +
+        `${res?.status ?? 'network'} ${body?.code ?? ''} ${body?.error ?? ''} — local state NOT updated`
+      )
+      setEditSaveError(body?.error ?? "That edit didn't save — your words are still here, let's try again.")
+      return   // editor stays open, editDraft intact, coach not notified
+    }
+
+    // Landed. Now commit locally and close the editor.
+    setEditSaveError(null)
     setParagraphs(prev => prev.map(p =>
       (p.paragraph_index ?? p.position) === paraIdx ? { ...p, scribed_text: newText } : p
     ))
     setEditingParaIdx(null)
-
-    // Persist to DB
-    fetch('/api/paragraphs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: session.id, position: paraIdx, scribedText: newText }),
-    }).catch(console.error)
 
     // Notify tutor — truncate old/new to avoid inflating context
     const clip = (t) => t.length > 200 ? t.slice(0, 200) + '…' : t
@@ -3097,13 +3123,20 @@ export default function TutorSession({
                                   Save &amp; share with coach
                                 </button>
                                 <button
-                                  onClick={() => setEditingParaIdx(null)}
+                                  onClick={() => { setEditSaveError(null); setEditingParaIdx(null) }}
                                   className="text-xs font-semibold rounded-lg py-2 px-4 border transition"
                                   style={{ borderColor: 'var(--border-default)', color: 'var(--text-muted)', backgroundColor: 'var(--surface-card)' }}
                                 >
                                   Cancel
                                 </button>
                               </div>
+                              {/* A save that didn't land must never be silent. */}
+                              {editSaveError && (
+                                <p className="text-xs leading-snug rounded-lg px-2.5 py-1.5"
+                                  style={{ color: 'var(--text-body)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--status-error)' }}>
+                                  {editSaveError}
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <div className="group/para relative">
