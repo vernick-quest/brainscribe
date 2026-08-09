@@ -33,6 +33,12 @@ const IconNotOnb    = () => (<svg {...SM}><circle cx="12" cy="12" r="9" strokeDa
 // Shared column geometry — the header, every row, and the legend all read from this,
 // so the numbers stay under their glyph instead of drifting apart.
 const COL = 'w-14 shrink-0 text-center tabular-nums'
+// Header cells centre a GLYPH, not text. `text-center` centres inline content but an
+// svg does not reliably fill the cell, so the icon drifted off the column's centre
+// line while the numbers below it were centred. A flex cell centres the glyph on the
+// same axis as the numbers — and gives the tooltip the FULL column as its hit area
+// instead of just the few pixels of the glyph itself.
+const COL_HEAD = 'w-14 shrink-0 flex items-center justify-center cursor-help'
 const IconEye = () => (<svg {...ICON_PROPS} width="13" height="13"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
 const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>)
 
@@ -971,11 +977,11 @@ function StudentRosterHeader() {
     <div className="flex items-center gap-4 px-5 pb-2 text-[10px] font-bold uppercase tracking-widest"
       style={{ color: 'var(--text-subtle)', borderBottom: '1px solid var(--border-default)' }}>
       <span className="flex-1 min-w-0">Student info</span>
-      <span className={COL} title="Last seen"><IconEyeSm /></span>
-      <span className={COL} title="Logins"><IconLogins /></span>
-      <span className={COL} title="Assignments"><IconDoc /></span>
-      <span className={COL} title="Completed"><IconCheck /></span>
-      <span className={COL} title="Warnings"><IconWarnTri /></span>
+      <span className={COL_HEAD} title="Last seen — most recent sign-in" aria-label="Last seen"><IconEyeSm /></span>
+      <span className={COL_HEAD} title="Logins — sign-ins recorded since 2026-08-08 (earlier ones were never counted)" aria-label="Logins"><IconLogins /></span>
+      <span className={COL_HEAD} title="Assignments — real work, excluding the practice warm-up" aria-label="Assignments"><IconDoc /></span>
+      <span className={COL_HEAD} title="Completed — assignments the student finished" aria-label="Completed"><IconCheck /></span>
+      <span className={COL_HEAD} title="Warnings — open guardrail-audit findings" aria-label="Warnings"><IconWarnTri /></span>
       <span className="w-4 shrink-0" aria-hidden />
     </div>
   )
@@ -1042,8 +1048,8 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
         {/* Identity — name row over email */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <OnboardingIcon userId={student.id} complete={student.onboarding_complete === true}
-              practiced={student.practiced === true} />
+            {/* Name first, flush left — the FTUE glyph trails the pills so the email on the
+                row below lines up with the name instead of needing an indent to match it. */}
             <button className="min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
               <span className="text-sm font-semibold truncate block" style={{ color: 'var(--text-strong)' }}>
                 {student.full_name ?? '—'}
@@ -1051,6 +1057,8 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
             </button>
             <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
             <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
+            <OnboardingIcon userId={student.id} complete={student.onboarding_complete === true}
+              practiced={student.practiced === true} />
           </div>
           <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}
             title={`Joined ${formatDate(student.created_at)}`}>
