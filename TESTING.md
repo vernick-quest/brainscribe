@@ -3374,3 +3374,50 @@ Each tightening made the model over-generalize to a neighbouring benign case, so
 **Regression guards:** child-safety probes re-run against the FINAL prompt (0 Wing-A over-trigger / 0 Wing-B missed-`[CARE]` / 0 disclosure locks); `provenance` 26/26; `promotion` 15/15; build green; all stream tokens byte-identical. `audit-probes` 16/17 — the miss is **provably not from this change**: it touched only `lib/prompts.js`, `auditJudge.js` is byte-identical to HEAD, and `audit-probes.mjs` has zero references to `prompts.js` (known-flaky `labeled-draft` boundary probe).
 
 **Durable fix is still Lever B Phase 2.** This whole episode is a prompt rule holding a line a deterministic gate should hold; the three findings are the evidence for prioritizing the hard gate at lock time (coaching-session lane — most-fragile scaffold-write path, do not rush).
+
+## 2026-08-08 — Audit: fix the self-contradicting summary, drop the central resolution, add judge disposition (focus/admin)
+
+**Files:** `lib/auditJudge.js`, `lib/auditBreach.js` + `.test.js`,
+`app/api/admin/audit-findings/route.js`, `components/AdminDashboard.js`,
+`supabase/migrations/060_audit_breach_reviews.sql` (**AMENDED, still NOT APPLIED**).
+
+### 1. Root cause of "no integrity breaches were found" beside three HIGH findings
+Diagnosed against live data, not guessed. It is **not** provenance promotion — on finding
+`4f54ef09` all three breaches carry `promoted=false`, i.e. the judge itself found them at coach
+turns #38/#50/#60 **and** wrote "Owen coached cleanly … no integrity breaches were found".
+**Mechanism:** structured output fills fields in SCHEMA ORDER, and `summary` was declared FIRST —
+so the model narrated before it analysed.
+- **Fix:** `GUARDRAIL_SCHEMA` now orders `breaches, process_notes, summary`, and the prompt states
+  the summary must agree with the breaches array and must never call a session clean when the
+  array is non-empty.
+- **Stored findings keep their bad prose**, so `summaryContradictsBreaches()` detects the pattern
+  and the card labels it: "⚠ This summary contradicts the N findings below … Trust the findings."
+- **Judge gate re-run: `scripts/audit-probes.mjs` 17/17**, no regression from the prompt change.
+
+### 2. One resolution per error — the central one is gone
+With every error carrying its own note + resolution, a second card-level resolution could only
+ever disagree with the parts it summarised. The session-level notes box and "Mark resolved" are
+**removed for findings that have breaches**; the finding's `resolved` flag is now **derived
+server-side** — recomputed from the per-breach verdicts on every write, so the roll-up can't drift.
+**Exception, found by checking the data:** 1 of 8 findings is technical-only (`1bd9b606`, a
+truncated turn, zero breaches). Those have no error block to answer, so they keep their own note +
+Mark resolved — otherwise they could never be cleared.
+
+### 3. Judge disposition — severity calibration becomes queryable
+`audit_breach_reviews` gains `disposition` (`confirmed` / `over_severe` / `false_positive`,
+CHECK-constrained, optional, nullable). Deliberately separate from `resolved`: one asks "was the
+judge right", the other "have I dealt with it". With it you can ask *what share of HIGH findings a
+human confirmed as HIGH* instead of recalling examples. Validated server-side against the same
+list the CHECK allows, so a typo can't poison the numbers.
+⚠️ **060 was AMENDED, not superseded** — it had not been applied yet, so the disposition column is
+folded in. **Use the updated SQL, not the version pasted earlier.**
+
+### Verification
+- `npm run test:run` **479/479 green** (25 files) · `npm run build` green · **audit-probes 17/17**.
+- A hardcoded light fallback (`var(--status-warning-bg, #FFFBEB)`) I introduced was caught by
+  `lib/theme.test.js` and replaced with a semantic token — that guard works.
+- **Not visually verified** — /admin is behind Google OAuth and can't render headlessly here.
+
+**Manual check (after 060):** a finding with 3 errors shows 3 note boxes and no central notes/resolve ·
+resolving all 3 closes the finding · the technical-only finding still has its own note + Mark resolved ·
+the contradicting summary carries the ⚠ label · disposition chips persist across Refresh.
