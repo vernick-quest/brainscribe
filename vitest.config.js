@@ -22,5 +22,13 @@ const jsxInJs = {
 export default defineConfig({
   plugins: [jsxInJs],
   resolve: { alias: { '@': fileURLToPath(new URL('.', import.meta.url)) } },
-  test: { environment: 'node', include: ['**/*.test.js'], exclude: ['node_modules/**', '.next/**'] },
+  test: { environment: 'node', include: ['**/*.test.js'], exclude: [
+      'node_modules/**', '.next/**',
+      // Nested agent worktrees live under .claude/worktrees/ INSIDE this checkout.
+      // Without this, `**/*.test.js` collects another branch's suite into this
+      // one's gate: the run doubles in size and can fail for reasons that have
+      // nothing to do with the code being shipped. A green gate has to mean THIS
+      // checkout is green.
+      '.claude/**', '**/.claude/worktrees/**',
+    ] },
 })
