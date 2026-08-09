@@ -38,7 +38,30 @@ export async function GET() {
     .order('created_at', { ascending: false })
     .limit(20)
 
-  return NextResponse.json({ findings: findings ?? [], runs: runs ?? [] })
+  // Per-breach verdicts (migration 060), shaped as { findingId: { breachKey: {...} } }.
+  // A session routinely holds several distinct breaches and each carries its own note
+  // and resolution. Fail-soft: if 060 isn't applied yet the panel still renders, just
+  // without per-breach state — a missing table must not blank the whole Audit tab.
+  const breachReviews = {}
+  if (findings?.length) {
+    const { data: rows, error: brErr } = await service
+      .from('audit_breach_reviews')
+      .select('finding_id, breach_key, resolved, note, reviewed_by, reviewed_at')
+      .in('finding_id', findings.map(f => f.id))
+    if (brErr) {
+      console.warn('[audit-findings] per-breach reviews unavailable (migration 060 not applied?):', brErr.message)
+    } else {
+      for (const r of rows ?? []) {
+        (breachReviews[r.finding_id] ??= {})[r.breach_key] = {
+          resolved: r.resolved === true,
+          note: r.note ?? '',
+          reviewedAt: r.reviewed_at ?? null,
+        }
+      }
+    }
+  }
+
+  return NextResponse.json({ findings: findings ?? [], runs: runs ?? [], breachReviews })
 }
 
 export async function PATCH(request) {
@@ -46,8 +69,35 @@ export async function PATCH(request) {
   if (gate.error) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   const body = await request.json().catch(() => ({}))
-  const { id, resolved, admin_notes } = body
+  const { id, resolved, admin_notes, breachKey } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  const service0 = createServiceClient()
+
+  // ── Per-breach verdict (migration 060) ──────────────────────────────────────
+  // When a breachKey is supplied the write targets ONE error inside the finding,
+  // not the whole session. Asserts on the RETURNED ROW's values rather than the
+  // status code: PostgREST answers a write that matched nothing with success.
+  if (typeof breachKey === 'string' && breachKey) {
+    const row = { finding_id: id, breach_key: breachKey, reviewed_by: gate.user.id, reviewed_at: new Date().toISOString() }
+    if (typeof resolved === 'boolean') row.resolved = resolved
+    if (typeof admin_notes === 'string') row.note = admin_notes.slice(0, 2000)
+
+    const { data, error } = await service0
+      .from('audit_breach_reviews')
+      .upsert(row, { onConflict: 'finding_id,breach_key' })
+      .select('finding_id, breach_key, resolved, note, reviewed_at')
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data || data.finding_id !== id || data.breach_key !== breachKey) {
+      return NextResponse.json({ error: 'Breach verdict did not persist' }, { status: 500 })
+    }
+    return NextResponse.json({
+      ok: true,
+      breachReview: { resolved: data.resolved === true, note: data.note ?? '', reviewedAt: data.reviewed_at ?? null },
+    })
+  }
 
   const patch = {}
   if (typeof resolved === 'boolean') {

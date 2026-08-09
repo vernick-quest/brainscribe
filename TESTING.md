@@ -3306,3 +3306,49 @@ accounts to initials — the audit panel must not become the surface that leaks 
 **Manual check (admin → Audit):** header reads HIGH · student photo + name · breach chip · date;
 assignment title below; "coached by <persona>" is present but visually quiet; an under-13 student
 shows initials, never a photo.
+
+## 2026-08-08 — Per-error audit triage + hard-wrapped paste fix (focus/admin)
+
+**Files:** `supabase/migrations/060_audit_breach_reviews.sql` (**NOT APPLIED**),
+`app/api/admin/audit-findings/route.js`, `components/AdminDashboard.js`,
+`lib/auditBreach.js` + `.test.js`, `lib/unwrapText.js` + `.test.js`.
+
+### 1. Each error gets its own note + resolution
+`transcript_audit_findings` is one row per SESSION, but sessions routinely hold several
+distinct breaches — resolution and notes lived only at the session level, so answering one
+error answered them all. Migration **060** adds `audit_breach_reviews`
+(PK `finding_id, breach_key`, cascade; RLS enabled with **no client policies**, service-role
+only — mirrors access_codes/045 and draft_integrity_reviews/058).
+- **Breach key = `<type>#<coach turn>`**, not the array position: if a finding is ever
+  re-analyzed, positions shift and a verdict would silently reattach to a different error.
+  **Validated against live data** — finding `842d0330` holds **3 breaches, ALL
+  `compose_as_transcription`, at turns #22/#38/#44**. Keying on type alone would have collapsed
+  all three into one verdict, which is the exact bug being fixed. Four findings have >1 breach.
+- Each breach block now carries its own note field, Save note, and Resolve/Re-open, and dims
+  when resolved. The card header shows an **"N/M errors resolved"** roll-up.
+- The session-level note remains as the overall verdict (relabelled "Overall notes for this
+  session"); it is still what hides the card from the list.
+- PATCH asserts on the **returned row's values** (`finding_id`/`breach_key`), never the status
+  code — PostgREST answers a write that matched nothing with success.
+- **Fail-soft verified:** with 060 unapplied the per-breach read fails and is caught; findings
+  still load (8/8) and the panel renders without per-breach state rather than blanking.
+
+### 2. Pasted notes wrapping early
+Diagnosed rather than assumed: the textarea was already `w-full`, so it wasn't a width bug, and
+the three saved notes in the DB are single-line (they soft-wrap correctly). The reported note was
+pasted-but-unsaved, and its ragged right edge is the signature of **real `\n` characters** carried
+in from a hard-wrapped source (terminal/chat output wraps at ~80 cols). `lib/unwrapText.js` joins
+cosmetic line breaks on paste while preserving blank-line paragraph breaks, list items, indented
+and quoted blocks, and rejoining hyphen-split words. Wired to both the audit notes and the
+per-breach notes.
+
+### Verification
+- `npm run build` green · `npm run test:run` **474/474 green** (25 files; 18 new assertions
+  across `auditBreach.test.js` + `unwrapText.test.js`).
+- Live checks: 060 confirmed absent → fail-soft path exercised; multi-breach findings and their
+  generated keys read back from prod data.
+- **Not visually verified** — /admin is behind Google OAuth and can't be rendered headlessly here.
+
+**Manual check (after 060 applies):** a finding with 3 errors shows 3 separate note boxes ·
+resolving one dims only that block and moves the roll-up to 1/3 · notes persist across Refresh ·
+pasting a hard-wrapped note fills the full width, and a pasted bullet list keeps its line breaks.

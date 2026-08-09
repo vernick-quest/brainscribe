@@ -9,6 +9,29 @@ import Icon from '@/components/Icon'
 import Avatar from '@/components/Avatar'
 import { PersonaAvatar } from '@/lib/personas'
 import { DEMO_EMAILS } from '@/lib/demoAccounts'
+import { unwrapPastedText } from '@/lib/unwrapText'
+import { breachKey, breachProgress } from '@/lib/auditBreach'
+
+// Paste handler for the admin note fields. Text copied from a terminal, chat pane, or
+// email is hard-wrapped at ~80 columns, and those newlines are real — pasted in, a note
+// stops a third of the way across a wide box with a ragged right edge and reads as a
+// broken input. Unwrap the cosmetic breaks on the way in (paragraph breaks and list
+// items are preserved) and keep the caret where the user expects it.
+function handleUnwrapPaste(e, setValue) {
+  const raw = e.clipboardData?.getData('text/plain')
+  if (!raw || !raw.includes('\n')) return // nothing to unwrap — let the browser do it
+  e.preventDefault()
+  const el = e.target
+  const clean = unwrapPastedText(raw)
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? el.value.length
+  const next = el.value.slice(0, start) + clean + el.value.slice(end)
+  setValue(next)
+  requestAnimationFrame(() => {
+    const caret = start + clean.length
+    try { el.setSelectionRange(caret, caret) } catch {}
+  })
+}
 
 // Line-art icons matching the login landing page (Feather/Lucide style). The
 // Students/Parents/Teachers glyphs are the same paths used there, so the admin
@@ -536,7 +559,95 @@ function SeverityBadge({ severity }) {
   )
 }
 
-function AuditFindingCard({ finding, session, student, onChanged }) {
+// One breach inside a finding, with its OWN note and resolution. A session routinely
+// holds several distinct errors (one real assignment has three); answering them as a
+// single unit meant a fixed error and an open one shared a verdict.
+function BreachBlock({ breach: b, findingId, review, onChanged }) {
+  const key = breachKey(b)
+  const [resolved, setResolved] = useState(review?.resolved === true)
+  const [note, setNote] = useState(review?.note ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+
+  // Re-sync if a refetch brings a newer verdict for this breach.
+  const srvResolved = review?.resolved === true
+  const srvNote = review?.note ?? ''
+  useEffect(() => { setResolved(srvResolved); setNote(srvNote) }, [srvResolved, srvNote])
+
+  async function save(patch) {
+    setSaving(true); setErr(''); setSaved(false)
+    try {
+      const res = await fetch('/api/admin/audit-findings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: findingId, breachKey: key, ...patch }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) { setErr(json.error ?? 'Save failed.'); return false }
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      onChanged?.()
+      return true
+    } catch { setErr('Network error.'); return false }
+    finally { setSaving(false) }
+  }
+
+  async function toggleResolved() {
+    const next = !resolved
+    setResolved(next)
+    const ok = await save({ resolved: next, admin_notes: note })
+    if (!ok) setResolved(!next)
+  }
+
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs space-y-1.5"
+      style={{
+        backgroundColor: 'var(--surface-muted)',
+        border: '1px solid var(--border-default)',
+        opacity: resolved ? 0.65 : 1,
+      }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{AUDIT_BREACH_LABEL[b.type] ?? b.type}</span>
+        <SeverityBadge severity={b.severity} />
+        <span style={{ color: 'var(--text-subtle)' }}>coach turn #{b.message_index}</span>
+        {resolved && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+            style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+            Resolved
+          </span>
+        )}
+      </div>
+      <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
+      {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
+
+      {/* This error's own note + verdict */}
+      <div className="flex items-start gap-2 pt-1">
+        <textarea value={note}
+          onChange={e => setNote(e.target.value)}
+          onPaste={e => handleUnwrapPaste(e, setNote)}
+          placeholder="Note for this error…" rows={2}
+          className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 resize-y"
+          style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', color: 'var(--text-default)' }} />
+        <div className="flex flex-col gap-1 shrink-0">
+          <button onClick={() => save({ admin_notes: note })} disabled={saving}
+            className="text-[10px] font-semibold px-2 py-1 rounded-full transition disabled:opacity-60 cursor-pointer"
+            style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
+            {saving ? '…' : saved ? 'Saved' : 'Save note'}
+          </button>
+          <button onClick={toggleResolved} disabled={saving}
+            className="text-[10px] font-bold px-2 py-1 rounded-full transition disabled:opacity-60 cursor-pointer"
+            style={resolved
+              ? { backgroundColor: 'var(--surface-card)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+              : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+            {resolved ? 'Re-open' : 'Resolve'}
+          </button>
+        </div>
+      </div>
+      {err && <p style={{ color: 'var(--status-error)' }}>{err}</p>}
+    </div>
+  )
+}
+
+function AuditFindingCard({ finding, session, student, breachReviews, onChanged }) {
   const [opening, setOpening] = useState(false)
   const [resolved, setResolved] = useState(finding.resolved === true)
   const [notes, setNotes] = useState(finding.admin_notes ?? '')
@@ -545,6 +656,7 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
   const a = finding.auditor_analysis ?? {}
   const label = session?.title || session?.assignment_text?.slice(0, 70) || 'Untitled session'
   const tech = a.technical ?? {}
+  const progress = breachProgress(a.breaches, breachReviews)
 
   // Remote in as the student (fail closed), then open the finished-work transcript.
   async function openTranscript() {
@@ -608,6 +720,15 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
             {AUDIT_BREACH_LABEL[t] ?? t}
           </span>
         ))}
+        {progress.total > 0 && (
+          <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+            title="Errors in this session that have their own verdict"
+            style={progress.allResolved
+              ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
+              : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+            {progress.resolved}/{progress.total} errors resolved
+          </span>
+        )}
         <span className="text-xs ml-auto" style={{ color: 'var(--text-subtle)' }}>
           {formatDate(finding.created_at)}
         </span>
@@ -631,16 +752,8 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
       {(a.breaches ?? []).length > 0 && (
         <div className="space-y-2">
           {a.breaches.map((b, i) => (
-            <div key={i} className="rounded-xl px-3 py-2 text-xs space-y-1"
-              style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-              <div className="flex items-center gap-2">
-                <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{AUDIT_BREACH_LABEL[b.type] ?? b.type}</span>
-                <SeverityBadge severity={b.severity} />
-                <span style={{ color: 'var(--text-subtle)' }}>coach turn #{b.message_index}</span>
-              </div>
-              <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
-              {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
-            </div>
+            <BreachBlock key={breachKey(b, i)} breach={b} findingId={finding.id}
+              review={breachReviews?.[breachKey(b, i)]} onChanged={onChanged} />
           ))}
         </div>
       )}
@@ -667,9 +780,11 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
         </div>
       )}
 
-      {/* Notes */}
+      {/* Session-level notes — the overall verdict. Per-error notes live on each
+          breach block above. */}
       <textarea value={notes} onChange={e => setNotes(e.target.value)}
-        placeholder="Admin notes…" rows={2}
+        onPaste={e => handleUnwrapPaste(e, setNotes)}
+        placeholder="Overall notes for this session…" rows={2}
         className="w-full text-xs rounded-xl px-3 py-2 resize-y"
         style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
 
@@ -698,7 +813,7 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
 }
 
 function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) {
-  const [state, setState] = useState({ loading: true, findings: [], runs: [], error: '' })
+  const [state, setState] = useState({ loading: true, findings: [], runs: [], breachReviews: {}, error: '' })
   const [running, setRunning] = useState(false)
   const [count, setCount] = useState(10)
   const [showResolved, setShowResolved] = useState(false)
@@ -716,8 +831,8 @@ function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) 
     try {
       const res = await fetch('/api/admin/audit-findings')
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) { setState({ loading: false, findings: [], runs: [], error: json.error ?? 'Failed to load findings.' }); return }
-      setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], error: '' })
+      if (!res.ok) { setState({ loading: false, findings: [], runs: [], breachReviews: {}, error: json.error ?? 'Failed to load findings.' }); return }
+      setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], breachReviews: json.breachReviews ?? {}, error: '' })
     } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
   }, [])
 
@@ -823,6 +938,7 @@ function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) 
               <AuditFindingCard finding={f}
                 session={sessionById[f.session_id]}
                 student={profileById[f.student_id]}
+                breachReviews={state.breachReviews?.[f.id]}
                 onChanged={load} />
             </div>
           ))}
