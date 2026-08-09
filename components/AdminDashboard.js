@@ -38,7 +38,7 @@ const COL = 'w-14 shrink-0 text-center tabular-nums'
 // line while the numbers below it were centred. A flex cell centres the glyph on the
 // same axis as the numbers — and gives the tooltip the FULL column as its hit area
 // instead of just the few pixels of the glyph itself.
-const COL_HEAD = 'w-14 shrink-0 flex items-center justify-center cursor-help'
+const COL_HEAD = 'w-14 shrink-0 flex items-center justify-center'
 const IconEye = () => (<svg {...ICON_PROPS} width="13" height="13"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
 const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>)
 
