@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useCallback } from 'react'
+import { useState, useTransition, useEffect, useCallback, useContext, createContext, useRef } from 'react'
 import DraftIntegrityAlert from '@/components/DraftIntegrityAlert'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -690,11 +690,20 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
   )
 }
 
-function AuditTab({ sessionById, profileById }) {
+function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) {
   const [state, setState] = useState({ loading: true, findings: [], runs: [], error: '' })
   const [running, setRunning] = useState(false)
   const [count, setCount] = useState(10)
   const [showResolved, setShowResolved] = useState(false)
+  // The jump arrives from another tab, but findings load by fetch — so the target
+  // row does not exist at click time. Scroll AFTER the list renders, and only once.
+  const focusRef = useRef(null)
+  useEffect(() => {
+    if (!focusSessionId || state.loading || !focusRef.current) return
+    focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => onFocusHandled?.(), 2500)
+    return () => clearTimeout(t)
+  }, [focusSessionId, state.loading, onFocusHandled])
 
   const load = useCallback(async () => {
     try {
@@ -799,16 +808,26 @@ function AuditTab({ sessionById, profileById }) {
       ) : (
         <div className="space-y-3">
           {visible.map(f => (
-            <AuditFindingCard key={f.id} finding={f}
-              session={sessionById[f.session_id]}
-              student={profileById[f.student_id]}
-              onChanged={load} />
+            <div key={f.id} ref={f.session_id === focusSessionId ? focusRef : null}
+              className="rounded-2xl transition-shadow"
+              style={f.session_id === focusSessionId
+                ? { boxShadow: '0 0 0 2px var(--accent)' }
+                : undefined}>
+              <AuditFindingCard finding={f}
+                session={sessionById[f.session_id]}
+                student={profileById[f.student_id]}
+                onChanged={load} />
+            </div>
           ))}
         </div>
       )}
     </div>
   )
 }
+
+// Per-assignment warnings + the jump-to-audit action, via context so SessionRow
+// doesn't need them threaded through five different call sites.
+const AuditJumpContext = createContext({ warnings: {}, jumpToAudit: null })
 
 // ── Tab bar ────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }) {
@@ -833,6 +852,10 @@ function TabBar({ tabs, active, onChange }) {
 // ── Session row ────────────────────────────────────────────────
 function SessionRow({ session, studentName, compact = false, ownerRole }) {
   const [loading, setLoading] = useState(false)
+  // Warnings for THIS assignment. The roster's student-level count says someone has
+  // a finding; this says which piece of work it is on, and clicking it goes there.
+  const { warnings, jumpToAudit } = useContext(AuditJumpContext)
+  const warn = warnings?.[session.id] ?? null
   const label = session.title || session.assignment_text?.slice(0, 60) + (session.assignment_text?.length > 60 ? '…' : '')
   // Mark assignments authored by a parent/teacher (owner is not a student) — the
   // writer experience is ownership-based, so a non-student owner authored it.
@@ -859,14 +882,28 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
   }
 
   return (
-    <button onClick={open} disabled={loading}
-      className="w-full text-left flex items-center gap-3 rounded-xl px-4 py-3 transition group disabled:opacity-60"
-      style={{
-        border: '1px solid var(--border-default)',
-        backgroundColor: 'var(--surface-card)',
-      }}
+    // The row is a flex WRAPPER, not one big button: the warnings chip is its own
+    // control, and an interactive element cannot legally nest inside a <button>.
+    <div className="w-full flex items-center gap-2 rounded-xl transition group"
+      style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--surface-spark)' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.backgroundColor = 'var(--surface-card)' }}>
+
+    {warn?.total > 0 && (
+      <button
+        onClick={() => jumpToAudit?.(session.id)}
+        title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'} on this assignment${warn.high ? ` · ${warn.high} high` : ''} — open it in the Audit tab`}
+        aria-label={`${warn.total} audit finding${warn.total === 1 ? '' : 's'} — show in Audit tab`}
+        className="ml-3 shrink-0 text-[11px] font-bold tabular-nums rounded-full px-2 py-0.5 hover:opacity-80 transition"
+        style={warn.high > 0
+          ? { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }
+          : { backgroundColor: 'var(--status-thin-bg)', color: 'var(--status-thin)' }}>
+        {warn.total}
+      </button>
+    )}
+
+    <button onClick={open} disabled={loading}
+      className="flex-1 min-w-0 text-left flex items-center gap-3 px-4 py-3 disabled:opacity-60 bg-transparent">
 
       <PersonaAvatar personaId={session.persona ?? 'owen'} size={22} className="shrink-0" />
 
@@ -902,6 +939,7 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       <span className="text-xs opacity-0 group-hover:opacity-100 transition shrink-0"
         style={{ color: 'var(--accent)' }}>→</span>
     </button>
+    </div>
   )
 }
 
@@ -1788,12 +1826,17 @@ function ToolsTab({ demoSeeded, betaCircleCount }) {
 // the tiles' tabId and the search-box visibility.
 const LIST_TABS = ['students', 'parents', 'teachers', 'sessions']
 
-export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers }) {
+export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers, sessionWarnings = {} }) {
   // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
   // several signed-in tabs are tellable apart. During a remote-in this profile is
   // already the impersonated user's, so the tab names whoever you're viewing.
   useTabTitle(currentProfile?.full_name, currentProfile?.role)
   const [tab, setTab] = useState('students')
+  // Set when a per-assignment warning chip is clicked: switch to Audit and scroll to
+  // that assignment's finding. Cleared once the Audit tab has acted on it, so
+  // returning to the tab later doesn't re-scroll.
+  const [auditFocus, setAuditFocus] = useState(null)
+  const jumpToAudit = useCallback(sessionId => { setAuditFocus(sessionId); setTab('audit'); setSearch('') }, [])
   const [search, setSearch] = useState('')
 
   // Did this person actually FINISH a practice assignment? Derived from sessions because
@@ -1887,6 +1930,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const sessionById = Object.fromEntries(sessions.map(s => [s.id, s]))
 
   return (
+    <AuditJumpContext.Provider value={{ warnings: sessionWarnings, jumpToAudit }}>
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
 
       <Navbar user={currentUser} profile={currentProfile} />
@@ -2040,7 +2084,10 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
           )}
 
           {/* ── Transcript guardrail audit ── */}
-          {tab === 'audit' && <AuditTab sessionById={sessionById} profileById={profileById} />}
+          {tab === 'audit' && (
+            <AuditTab sessionById={sessionById} profileById={profileById}
+              focusSessionId={auditFocus} onFocusHandled={() => setAuditFocus(null)} />
+          )}
 
           {/* ── Usage & Cost ── */}
           {tab === 'usage' && <UsageTab />}
@@ -2068,5 +2115,6 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
         </div>
       </main>
     </div>
+    </AuditJumpContext.Provider>
   )
 }

@@ -46,7 +46,7 @@ export default async function AdminPage() {
     service.from('assignment_teachers').select('session_id, teacher_id'),
     // Open guardrail-audit findings, for the per-student warning count. severity
     // 'none' rows are the clean-audit ledger, not warnings.
-    service.from('transcript_audit_findings').select('student_id, severity, resolved'),
+    service.from('transcript_audit_findings').select('session_id, student_id, severity, resolved'),
     // last_sign_in_at lives on auth.users, not profiles — reachable only through the
     // admin API. perPage covers the whole user base in one call today; if it ever
     // exceeds this the list simply truncates (sign-in shows as "—"), never errors.
@@ -90,6 +90,18 @@ export default async function AdminPage() {
     warningsById.set(f.student_id, w)
   }
 
+  // Per-ASSIGNMENT warning counts, so an expanded student card can say which of
+  // their assignments the finding is actually on rather than only that the student
+  // has one somewhere.
+  const warningsBySession = {}
+  for (const f of auditFindings ?? []) {
+    if (!f.session_id || f.resolved || f.severity === 'none') continue
+    const w = warningsBySession[f.session_id] ?? { total: 0, high: 0 }
+    w.total += 1
+    if (f.severity === 'high') w.high += 1
+    warningsBySession[f.session_id] = w
+  }
+
   const profilesWithActivity = (allProfiles ?? []).map(p => ({
     ...p,
     // Kept for anything that genuinely wants "when did they authenticate".
@@ -105,6 +117,7 @@ export default async function AdminPage() {
       currentProfile={profile}
       profiles={profilesWithActivity}
       sessions={allSessions ?? []}
+      sessionWarnings={warningsBySession}
       relationships={allRelationships ?? []}
       assignmentTeachers={allAssignmentTeachers ?? []}
     />
