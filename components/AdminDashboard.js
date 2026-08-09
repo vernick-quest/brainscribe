@@ -1010,8 +1010,13 @@ function StudentRosterLegend() {
 // expanded body rather than crowding every row with buttons that are rarely used.
 function StudentCard({ student, sessions, onRoleChanged, children }) {
   const [open, setOpen] = useState(false)
-  const hasBody = sessions.length > 0
-  const toggle = () => { if (hasBody) setOpen(o => !o) }
+  // ALWAYS expandable. This was `sessions.length > 0`, which hid the chevron on a
+  // student with no work — and since Remote in / Delete account moved into the body,
+  // that made those accounts unreachable from the UI. The accounts most likely to need
+  // deleting (a stranded signup, a demo left behind, a test account) are exactly the
+  // ones with nothing in them, so gating admin actions on having work is backwards.
+  const hasBody = true
+  const toggle = () => setOpen(o => !o)
 
   // An "assignment" is real work (the FTUE warm-up is excluded), so a student who has
   // only done the warm-up correctly reads as 0 assignments.
@@ -1079,8 +1084,8 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
         <button onClick={toggle} disabled={!hasBody}
           className="w-4 shrink-0 flex items-center justify-center transition-transform disabled:opacity-25 cursor-pointer disabled:cursor-default"
           style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
-          aria-expanded={hasBody ? open : undefined}
-          aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse assignments' : 'Expand assignments'}>
+          aria-expanded={open}
+          aria-label={open ? 'Collapse account details' : 'Expand account details'}>
           <IconChevron />
         </button>
       </div>
@@ -1090,7 +1095,9 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
             Assignments
           </p>
-          {children}
+          {assignments.length === 0
+            ? <p className="text-xs italic" style={{ color: 'var(--text-subtle)' }}>No assignments yet.</p>
+            : children}
           {/* Account actions live here, not on the collapsed row — they're occasional,
               and putting them on every row is what made the roster feel crowded. */}
           <div className="flex items-center justify-between gap-3 pt-3"
