@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/Avatar'
 import { useTabTitle } from '@/components/TabTitle'
+import LogoLockup from '@/components/LogoLockup'
 
 // The breadcrumb word shown next to the logo — reflects the section of the site
 // the current URL is in. Empty string → show just the logo.
@@ -122,7 +123,7 @@ export default function Navbar({ user, profile }) {
         </div>
 
         <a href={homeHref}>
-          <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
+          <LogoLockup alt="BrainScribe" style={{ height: 32, width: 'auto' }} />
         </a>
         {/* Section breadcrumb — the word next to the logo names the section the
             current URL is in (Folder, Assignment, Profile, …). */}

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { displayNameNeedsConfirm } from '@/lib/displayName'
 import Icon from '@/components/Icon'
 import { UNDER13_SETUP_COPY } from '@/lib/parentFirst'
+import LogoLockup from '@/components/LogoLockup'
 
 const ROLES = [
   {
@@ -48,8 +49,7 @@ function Card({ children }) {
         boxShadow: 'var(--shadow-lg)',
         border: '1px solid var(--border-default)',
       }}>
-        <img
-          src="/brainscribe-logo.png"
+        <LogoLockup
           alt="BrainScribe"
           style={{ width: 160, height: 'auto', display: 'block', margin: '0 auto 1.75rem' }}
         />
