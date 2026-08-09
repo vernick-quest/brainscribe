@@ -583,12 +583,18 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
     <div className="rounded-2xl p-5 space-y-3"
       style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)', opacity: resolved ? 0.6 : 1 }}>
 
-      {/* Header: severity, coach, breach chips, student */}
+      {/* Header: severity, STUDENT, breach chips, date.
+          The STUDENT leads, not the coach — a finding is about a real kid's session,
+          and the persona turns out not to predict the failure: compose-as-transcription
+          has been produced by four different coaches, so it's a systemic mode, not a
+          persona trait. The coach is kept as a de-emphasized attribution below. */}
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={finding.severity} />
-        <PersonaAvatar personaId={finding.persona ?? 'owen'} size={18} className="shrink-0" />
+        {/* COPPA: Avatar hard-suppresses under-13 to initials */}
+        <Avatar name={student?.full_name} avatarUrl={student?.avatar_url}
+          ageBracket={student?.age_bracket} size={20} />
         <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
-          {finding.persona ?? 'coach'}
+          {student?.full_name ?? 'Unknown student'}
         </span>
         {(finding.breach_types ?? []).map(t => (
           <span key={t} className="text-[10px] font-semibold rounded-full px-2 py-0.5"
@@ -601,11 +607,12 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
         </span>
       </div>
 
-      {/* Session + student line */}
+      {/* Assignment, then the coach as quiet attribution */}
       <div>
         <p className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {student?.full_name ?? 'Unknown student'}
+        <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-subtle)' }}>
+          <PersonaAvatar personaId={finding.persona ?? 'owen'} size={14} className="shrink-0" />
+          coached by {finding.persona ?? 'coach'}
         </p>
       </div>
 

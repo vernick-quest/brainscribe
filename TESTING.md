@@ -2857,3 +2857,30 @@ present and referenced · no `brainscribe-mark` references remain in the dashboa
 **Manual check (admin):** stat tiles show their original distinct glyphs · roster ordered by last
 seen, newest first · numbers line up under their header glyphs · FTUE glyph matches the legend and
 still toggles on click · expanding a student shows assignments then Remote in / Delete account.
+
+## 2026-08-08 — Audit finding card: lead with the student, demote the coach (focus/admin)
+
+**File:** `components/AdminDashboard.js` (`AuditFindingCard`) only. No data/route/schema change.
+
+The card led with the coach avatar + persona name, which put the least useful identity first — a
+finding is about a real student's session.
+
+**New header order:** severity (HIGH) → **student avatar + student name** → breach-type chip(s) →
+date. Then the **assignment title**, with the coach kept underneath as quiet attribution
+("coached by owen", 14px persona avatar, subtle colour).
+
+**Checked Robert's question against the data rather than guessing:** across all 8 non-clean
+findings, `compose_as_transcription` was produced by **four different coaches** (matilda, owen, jade,
+alistair) — every coach that breached produced that same type; only `claim_stitch` was single-coach
+(alistair, n=1). So persona does **not** predict the failure mode; it's systemic. That justifies
+demoting it rather than removing it (still useful for spotting a future persona-specific pattern,
+and cheap to keep at low prominence).
+
+**COPPA:** the student avatar goes through the shared `Avatar`, which hard-suppresses under-13
+accounts to initials — the audit panel must not become the surface that leaks a child's photo.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin → Audit):** header reads HIGH · student photo + name · breach chip · date;
+assignment title below; "coached by <persona>" is present but visually quiet; an under-13 student
+shows initials, never a photo.
