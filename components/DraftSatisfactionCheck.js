@@ -57,7 +57,7 @@ export default function DraftSatisfactionCheck({ sessionId, finalWords, existing
   if (saved && answer === false) {
     return (
       <div className="mt-4 rounded-xl p-3 text-sm"
-        style={{ border: '1px solid var(--status-warning, #D97706)', backgroundColor: 'var(--status-warning-bg, #FFFBEB)' }}>
+        style={{ border: '1px solid var(--status-thin)', backgroundColor: 'var(--status-thin-bg)' }}>
         <p style={{ color: 'var(--text-strong)' }}>
           <strong>Thanks for telling us.</strong> You said some of your writing is missing here.
         </p>
@@ -132,7 +132,7 @@ export default function DraftSatisfactionCheck({ sessionId, finalWords, existing
         </div>
       )}
 
-      {error && <p className="text-xs mt-2" style={{ color: 'var(--status-danger, #DC2626)' }}>{error}</p>}
+      {error && <p className="text-xs mt-2" style={{ color: 'var(--status-error)' }}>{error}</p>}
     </div>
   )
 }

@@ -94,7 +94,7 @@ export default function WritingFormChooser({ open, onClose, onSelect }) {
       onClick={e => { if (e.target === e.currentTarget) close() }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
-        background: 'color-mix(in srgb, var(--navy-900, #0f2942) 55%, transparent)',
+        background: 'color-mix(in srgb, var(--navy-900) 55%, transparent)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}
     >

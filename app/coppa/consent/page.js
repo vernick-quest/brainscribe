@@ -178,8 +178,8 @@ function ConsentError({ message, linkLabel, linkHref, isSuccess }) {
         {linkLabel && (
           <a href={linkHref} style={{
             display: 'inline-block',
-            backgroundColor: isSuccess ? 'var(--brand-orange)' : 'var(--brand-navy)',
-            color: '#fff',
+            backgroundColor: isSuccess ? 'var(--accent)' : 'var(--primary)',
+            color: 'var(--text-on-accent)',
             padding: '10px 22px',
             borderRadius: 10,
             fontSize: '0.875rem',

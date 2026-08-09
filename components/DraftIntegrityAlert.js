@@ -103,7 +103,7 @@ function ReviewControls({ flag, accent, onSaved }) {
           style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
           {saving ? 'Saving…' : 'Save verdict'}
         </button>
-        {err && <span className="text-[11px]" style={{ color: 'var(--status-error, #DC2626)' }}>{err}</span>}
+        {err && <span className="text-[11px]" style={{ color: 'var(--status-error)' }}>{err}</span>}
       </div>
     </div>
   )
@@ -171,8 +171,8 @@ export default function DraftIntegrityAlert() {
   }
 
   const isAlert = alerts > 0
-  const accent = isAlert ? 'var(--status-danger, #DC2626)' : 'var(--status-warning, #D97706)'
-  const bg = isAlert ? 'var(--status-danger-bg, #FEF2F2)' : 'var(--status-warning-bg, #FFFBEB)'
+  const accent = isAlert ? 'var(--status-error)' : 'var(--status-thin)'
+  const bg = isAlert ? 'var(--status-error-bg)' : 'var(--status-thin-bg)'
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${accent}`, backgroundColor: bg }}>

@@ -2961,3 +2961,102 @@ Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN · `
 Manual checks owed (live): finish an assignment → Keep working → v2 opens with the draft; tap
 Edit on a carried paragraph, change it, save → reload and confirm it persisted and the others
 didn't move; ask the coach to strengthen a paragraph → it should point at Edit, not the mic.
+
+---
+
+# Testing checklist — 2026-08-08 · Dark mode (`focus/coach-visuals`)
+
+Dark mode as a **token remap**: no layout, type, spacing, radius or component-structure
+changes. Source of truth is `docs/specs/Brainscribe dark mode design.zip` (v1 = the token
+layer) and `… v2.zip` (adds the coach ring/disc decision). Not merged, not deployed.
+
+**Trigger:** OS preference only — `@media screen and (prefers-color-scheme: dark)`.
+No theme toggle, no `localStorage`, no `data-theme` attribute, no blocking `<head>`
+script. The design README also specifies a persisted manual override; that half is
+**deliberately not in this lane** (it is new behaviour and new state). Deferred.
+
+## Automated gate — `npm run test:run`
+New `lib/theme.test.js` (89 assertions) parses `app/globals.css` the way a browser
+resolves it (light `:root`, then the dark `@media` block layered on, `var()` chains
+followed) and asserts:
+- [x] ✅ Dark is **never worse than light** on 26 real pairings (text 4.5:1, non-text 3:1).
+      Where the brand already ships below AA in light — white-on-orange 2.67:1, the amber
+      status chip 2.41:1 — dark must at least match it. Those are pre-existing brand
+      decisions and were not changed.
+- [x] ✅ All 24 semantic aliases actually get redefined in dark (a missed one silently
+      keeps resolving to its cream light value — invisible to `next build`).
+- [x] ✅ Per-coach ink is readable on the selected picker card in **both** themes, and the
+      six coaches stay ≥ΔE 15 apart (CIELAB, not luminance).
+- [x] ✅ No `var(--token, <color literal>)` anywhere in `app/` or `components/`.
+- [x] ✅ `lib/coachColors.js` hex matches `globals.css` in both themes (no drift).
+- [x] ✅ Light mode is **pinned**: 39 semantic aliases assert their exact pre-change hex.
+- [x] ✅ `globals.css` has balanced comments/braces.
+
+### ⚠️ `npm run build` is NOT a gate for this file
+Verified by deliberately breaking `globals.css`: the production build **prints**
+`Parsing CSS source code failed` and still **exits 0**, while `next dev` 500s every
+route. A completely broken stylesheet would have passed the definition-of-done gate.
+The brace/comment assertion above now catches it (confirmed: it fails on the break,
+passes when fixed).
+
+## Verified live in a browser (dev server, Chromium, both `prefers-color-scheme` values)
+- [x] ✅ Computed tokens read back correctly under emulated dark: `--bg-page #101a24`,
+      `--surface-card #17232e`, `--accent-text #fbb85a`, `--surface-ink #1d4d78`,
+      `--brand-cream #101a24`, `--brand-navy #fcf8f0`, `--tutor-tilly-tint #243941`.
+- [x] ✅ Home `/` — hero, orange CTA, coach demo card, the inverted "prove it" band.
+- [x] ✅ Login `/login` — card, Google button, the three role cards.
+- [x] ✅ Legal `/privacy` — hero gradient wash, sticky TOC active state, TL;DR card.
+- [x] ✅ 404 page.
+- [x] ✅ Writing panel + coach picker, via a **temporary harness route** (deleted before
+      commit; OAuth screens can't be rendered headlessly in this lane). Used the real
+      `ConversationLog` and `PersonaAvatar`; the draft-panel blocks, mic dock and status
+      chips are reconstructed markup using the same tokens. Draft text, the orange mic
+      with `--shadow-spark`, locked-in checkmarks, and all four status chips coexist
+      legibly; the selected coach card shows the dark tint + stepped-up ring.
+
+## Light mode — unchanged
+- [x] ✅ Every light token value is byte-identical to `HEAD` (diffed by resolving both
+      stylesheets; zero changed).
+- [x] ✅ Legacy `--brand-*` aliases were repointed from raw scale tokens to semantic ones
+      (`--brand-navy: var(--text-strong)`, `--brand-cream: var(--bg-page)`, …) so they
+      follow the theme. Each resolves to the same light value it always did.
+- [ ] ⬜ **Light-mode visual change, admin only:** `AdminDashboard` chips move off the
+      leftover create-next-app indigo/amber (`#EEF2FF`/`#4338CA`/`#FEF3C7`/`#92400E`) onto
+      brand tokens, so they read navy/amber instead of indigo. The design README asks for
+      exactly this conversion. Needs a look.
+- [ ] ⬜ Four inverted "dark band" blocks now use `--surface-ink`/`--text-on-dark` instead
+      of `--brand-navy`/`--brand-cream` (home, about, CoachDemo, COPPA consent button).
+      Light value identical except `--text-on-dark` is `#FFFEF9` vs the old `#FDFBF3` —
+      imperceptible, but noted.
+
+## Known-broken in dark — assets, not code
+- [ ] ⬜ **Coach portraits.** `public/coaches/*.png` are opaque (`hasAlpha: no`) with a
+      cream square + halo disc **baked into the artwork**, so they render as a pale ring
+      on the dark card. The v2 spec's `color-mix` disc is a **silent no-op** against these
+      files — no CSS can fix an opaque PNG. Regeneration spec written:
+      `docs/specs/coach-portraits-dark-mode-instructions.md`. Once the six `-dark.png`
+      files land, `PersonaAvatar` needs a `<picture>` + `media="(prefers-color-scheme: dark)"`
+      source (~6 lines). **Not wired yet** — a `<picture>` source pointing at a missing
+      file would break avatars in dark.
+- [ ] ⬜ **Logo lockup** `/brainscribe-logo.png` — navy wordmark, near-illegible on dark.
+      Already listed as an open item in the design README; needs a dark export.
+- [ ] ⬜ **ISTE EdTech Index badge** in the footer — baked light.
+
+## Deliberately NOT changed
+- `app/api/coppa/*` hex — transactional email templates; email clients don't do dark mode.
+- `components/ImpersonationBanner.js` `#C0271E` + white — an alarm-red band that is
+  correct and identical in both themes.
+- `components/CoachDemo.js` `#F6C48B` — an on-dark tint sitting on a theme-invariant band.
+- Google "G" brand colors in `login/page.js` and `SessionsList.js` — brand-mandated.
+- `components/Logo.js` — **dead code, zero consumers**; left alone rather than churned.
+- `lib/coachColors.js` **light** values — the v2 spec quotes light hues that differ from
+  what ships for 5 of 6 coaches (see the table in the portraits spec). Light is out of
+  scope for this lane; someone should decide which set is stale.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ A live writing session end to end in dark: mic listening state, barge-in, the
+      scribe preview, `[SCAFFOLD]`/`[DONE]` chips, the draft-integrity alert.
+- [ ] ⬜ `/folder`, `/transcript/[id]`, parent + teacher dashboards, Skill Studio, admin.
+- [ ] ⬜ **Print a transcript from a dark-mode browser.** Dark is scoped to `screen`
+      precisely so print keeps the light palette; worth confirming on paper once.
+- [ ] ⬜ iOS/Android dark mode (`color-scheme: dark` should carry form controls).

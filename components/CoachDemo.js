@@ -131,7 +131,7 @@ export default function CoachDemo({ serif = 'Georgia, "Times New Roman", serif' 
           return (
             <div key={i} style={{ display: 'flex', justifyContent: 'flex-end', ...common }}>
               <div style={{
-                backgroundColor: 'var(--brand-navy)', color: 'var(--brand-cream)',
+                backgroundColor: 'var(--surface-ink)', color: 'var(--text-on-dark)',
                 borderRadius: '13px 13px 4px 13px', padding: '9px 13px', fontSize: '0.88rem',
                 lineHeight: 1.5, maxWidth: '84%',
               }}>

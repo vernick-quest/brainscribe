@@ -483,7 +483,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
                     borderRadius: 'var(--radius-md)', minHeight: 44,
                     background: on ? c.tint : 'var(--surface-muted)',
                     border: `1.5px solid ${on ? c.base : 'var(--border-default)'}`,
-                    boxShadow: on ? `0 0 0 3px color-mix(in srgb, ${c.base} 20%, transparent)` : 'none',
+                    boxShadow: on ? `0 0 0 3px color-mix(in srgb, ${c.base} var(--tutor-ring-selected-alpha), transparent)` : 'none',
                   }}>
                   <PersonaAvatar personaId={p.id} size={56} />
                   <span style={{ minWidth: 0 }}>
