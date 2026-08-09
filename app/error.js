@@ -1,4 +1,6 @@
 'use client'
+import LogoLockup from '@/components/LogoLockup'
+
 
 // Branded error boundary for the app. Catches render/runtime errors in route
 // segments and shows a recoverable screen instead of Next's raw error page.
@@ -6,7 +8,7 @@ export default function Error({ error, reset }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center"
       style={{ backgroundColor: 'var(--bg-page)', minHeight: '100vh' }}>
-      <img src="/brainscribe-logo.png" alt="BrainScribe"
+      <LogoLockup alt="BrainScribe"
         style={{ width: 220, maxWidth: '70%', height: 'auto', marginBottom: '2rem' }} />
 
       <div className="w-full p-8 space-y-4" style={{

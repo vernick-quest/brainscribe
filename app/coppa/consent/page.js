@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import ConsentForm from './ConsentForm'
 import Icon from '@/components/Icon'
+import LogoLockup from '@/components/LogoLockup'
 
 export const metadata = { title: "Approve your child's account — BrainScribe" }
 
@@ -81,8 +82,7 @@ export default async function ConsentPage({ searchParams }) {
       }}>
 
         {/* Logo */}
-        <img
-          src="/brainscribe-logo.png"
+        <LogoLockup
           alt="BrainScribe"
           style={{ width: 160, height: 'auto', marginBottom: '1.75rem', display: 'block', margin: '0 auto 1.75rem' }}
         />
