@@ -2652,7 +2652,6 @@ Replaces the watcher branch of the FTUE. Students are unaffected — verify that
 - [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
       they took the practice offer — `practiced` is derived from sessions, not the flag.
 
-<<<<<<< HEAD
 ## 2026-08-08 — Recommended word-count targets (Rule 14a)
 
 Automated (green at commit): 275 Vitest tests incl. 26 in `lib/wordCountTargets.test.js` and
@@ -3242,7 +3241,7 @@ present and referenced · no `brainscribe-mark` references remain in the dashboa
 **Manual check (admin):** stat tiles show their original distinct glyphs · roster ordered by last
 seen, newest first · numbers line up under their header glyphs · FTUE glyph matches the legend and
 still toggles on click · expanding a student shows assignments then Remote in / Delete account.
-=======
+
 ## 2026-08-08 — Age is asked BEFORE the Beta Circle code (focus/auth-coppa)
 
 The code step used to be first: `init()` in `app/(auth)/welcome/page.js` jumped to
@@ -3279,4 +3278,31 @@ only persisted when the user picks a role (`confirm-role` sets `role` +
 `age_bracket = null`. Closing that needs an age-only persist endpoint — out of scope
 for a client-side reorder, and not COPPA-critical (the under-13 answer IS persisted
 immediately, which is the case that matters).
->>>>>>> focus/auth-coppa
+
+
+## 2026-08-08 — Audit finding card: lead with the student, demote the coach (focus/admin)
+
+**File:** `components/AdminDashboard.js` (`AuditFindingCard`) only. No data/route/schema change.
+
+The card led with the coach avatar + persona name, which put the least useful identity first — a
+finding is about a real student's session.
+
+**New header order:** severity (HIGH) → **student avatar + student name** → breach-type chip(s) →
+date. Then the **assignment title**, with the coach kept underneath as quiet attribution
+("coached by owen", 14px persona avatar, subtle colour).
+
+**Checked Robert's question against the data rather than guessing:** across all 8 non-clean
+findings, `compose_as_transcription` was produced by **four different coaches** (matilda, owen, jade,
+alistair) — every coach that breached produced that same type; only `claim_stitch` was single-coach
+(alistair, n=1). So persona does **not** predict the failure mode; it's systemic. That justifies
+demoting it rather than removing it (still useful for spotting a future persona-specific pattern,
+and cheap to keep at low prominence).
+
+**COPPA:** the student avatar goes through the shared `Avatar`, which hard-suppresses under-13
+accounts to initials — the audit panel must not become the surface that leaks a child's photo.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin → Audit):** header reads HIGH · student photo + name · breach chip · date;
+assignment title below; "coached by <persona>" is present but visually quiet; an under-13 student
+shows initials, never a photo.
