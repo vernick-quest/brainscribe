@@ -3060,3 +3060,41 @@ passes when fixed).
 - [ ] ⬜ **Print a transcript from a dark-mode browser.** Dark is scoped to `screen`
       precisely so print keeps the light palette; worth confirming on paper once.
 - [ ] ⬜ iOS/Android dark mode (`color-scheme: dark` should carry form controls).
+
+## 2026-08-08 — `components/Logo.js` untrapped (`focus/coach-visuals`)
+
+Supersedes the "Deliberately NOT changed" entry for `components/Logo.js` earlier in the
+dark-mode section (line ~3006). That entry said the component was left alone because it is
+dead code — still true that it is dead, no longer true that it is untouched.
+
+**Why it changed anyway.** The three base rects sit on the page background, so a hardcoded
+`#1E2D5A` there is a landmine that only detonates the day someone wires the component up —
+and it looks *correct* in light mode forever. Measured in the running app against the real
+painted `html` backdrop (`#101a24`, = `--bg-page`): the old navy base scored **1.32:1** in
+dark; on `--text-strong` it is **16.59:1**. Deleting was the alternative and was rejected:
+this is the only theme-adaptive logo asset in the repo, and `/brainscribe-logo.png` is a
+still-open dark-export item two entries above.
+
+The brain squiggles were deliberately left at `#1E2D5A`. They sit on the orange bulb, which
+is the same color in both themes — theming them would make them *vanish* at night. That is
+now an assertion, not a comment.
+
+- [x] ✅ `components/Logo.test.js` — renders the real component via `react-dom/server` and
+      asserts the base reaches `--text-strong` with no frozen literal, and that the squiggles
+      stay navy. Contrast is **not** re-derived here: `lib/theme.test.js` already gates
+      `--text-strong` against `--bg-page` at 4.5:1 in both themes.
+- [x] ✅ Gate proven by mutation, not just observed green: reverting one rect to `#1E2D5A`
+      fails 2 assertions; "fixing" the squiggles to `--text-strong` fails a 3rd. Restored → green.
+- [x] ✅ `var()` inside an SVG `fill` **presentation attribute** confirmed to actually paint —
+      computed fill read from the live DOM in both schemes (`#14385a` light / `#fcf8f0` dark),
+      not inferred from the markup string. Precedent already shipped at `app/folder/page.js:163`.
+- [x] ✅ `npm run test:run` 438/438 · `npm run build` green.
+- [ ] ⬜ Nothing to eyeball in the app: the component still has **zero consumers**. If it ever
+      gets wired up, screenshot it on `--bg-page` in both themes then.
+
+**Toolchain note (affects every future test).** `vitest.config.js` gained a small `jsx-in-js`
+plugin. This repo puts JSX in `.js` files, and Vite 8 infers the parser from the extension, so
+importing *any* component from a test was previously a hard parse error — no component in this
+codebase could be render-tested at all. `oxc.include` alone does not fix it (it processes `.js`
+but still as plain JS); the language has to be named. Scoped to `app/` and `components/` so
+`lib/` keeps its existing transform path. All 21 pre-existing test files still pass.
