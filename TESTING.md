@@ -2642,3 +2642,40 @@ Replaces the watcher branch of the FTUE. Students are unaffected — verify that
 - [ ] Mobile width: no horizontal scroll on any of the 4 screens; 44px tap targets.
 - [ ] Admin panel: after a parent finishes, badge reads **Skipped** (not Practiced) unless
       they took the practice offer — `practiced` is derived from sessions, not the flag.
+
+## 2026-08-08 — Age is asked BEFORE the Beta Circle code (focus/auth-coppa)
+
+The code step used to be first: `init()` in `app/(auth)/welcome/page.js` jumped to
+`access-code` and returned before the age question ever rendered, so anyone signing
+in without a code sat in the DB with `age_bracket = null` — and the parent-first
+under-13 flow (055) never ran, because it lives behind that age question.
+
+New order: **age → name nudge (only when flagged) → access code (13+ only) → role**.
+Order logic is pure in `lib/welcomeFlow.js` (12 unit tests, incl. an exhaustive
+property test that an under-13 can NEVER resolve to `access-code` or `role`).
+
+Needs a real authenticated pass — the unit tests cover the resolver, not the wiring:
+
+- [ ] ⬜ **Fresh signup, 13+, WITH a code:** age question is the FIRST screen · answer "13 or older" · (name nudge if the Google name looks off) · code screen · redeem · **lands on the role picker, NOT back on the age question** · pick a role → app
+- [ ] ⬜ **Fresh signup, 13+, WITHOUT a code:** age asked first, then the code wall. (Known residual, see below: a 13+ answer is not persisted until a role is picked, so abandoning here still leaves `age_bracket` null.)
+- [ ] ⬜ **Fresh signup, UNDER-13:** answer "I'm under 13" → `confirm-role` fires immediately (check the DB: `age_bracket='under13'`, `coppa_consent_required=true`) → parent-email → "Sent — over to them" dead end. **The access-code screen must NEVER appear**, even though a fresh signup is access-gated
+- [ ] ⬜ **Invited user** (`access_granted=true` or any relationship): age → role, **code step never shown**
+- [ ] ⬜ **COPPA-consented student** (parent completed consent → access + relationship): signs in, no code step
+- [ ] ⬜ **Deleted-then-returned user** (the case that surfaced this): fresh profile row, `access_granted=false`, no relationships → still gets the age question first
+- [ ] ⬜ **Returning under-13 re-answers "13 or older":** `confirm-role` refuses (403 `coppa_locked`) and they are routed to the parent-email step — **not** left on the role picker with a generic error
+- [ ] ⬜ **Fail-open:** with a pre-migration/erroring profile select (flags unset), the age question still renders and no code step appears — never lock anyone out on a schema lag
+- [ ] ⬜ **Race:** answer the age question the instant the page paints (throttled network). The flow waits for the in-flight profile read (3s cap) so a gated user still gets the code screen — `/welcome` is the only place a code can be entered, so a skip strands them
+- [ ] ⬜ Regression: "← Back" from the role picker returns to age; re-answering does not re-show a code screen already redeemed
+
+**Verified at build time (2026-08-08):** `npm run build` green · `npm run test:run`
+207/207 green · `lib/coppa.js` and `lib/access.js` byte-for-byte unchanged (0-line
+diff) · all **19** live profiles walked through the new order: 0 unresolvable, 0
+non-admin rows with a null age, 0 under-13 rows, and all 18 non-admin profiles are
+`access_granted=true` (so no existing user can be stranded by the reorder).
+
+**Known residual (not fixed here, needs a routing decision):** a **13+** answer is
+only persisted when the user picks a role (`confirm-role` sets `role` +
+`role_confirmed` together), so a 13+ user who abandons at the code wall still has
+`age_bracket = null`. Closing that needs an age-only persist endpoint — out of scope
+for a client-side reorder, and not COPPA-critical (the under-13 answer IS persisted
+immediately, which is the case that matters).
