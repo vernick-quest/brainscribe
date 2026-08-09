@@ -972,16 +972,38 @@ function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, childr
 // Column header for the student roster — glyphs only, sitting directly above the
 // numbers they label. The legend under the roster spells them out, so the rows
 // themselves stay free of repeated words ("3 assignments · 2 completed · …").
+// One glyph column header, with a hover label that actually appears.
+// The native `title` attribute was doing this job and doing it badly: the browser
+// waits about a second, renders it in OS chrome, and gives no hint it exists — so a
+// glyph-only header read as unlabelled. This is a CSS-only tooltip (no JS, no state)
+// that shows immediately on hover AND on keyboard focus, with `title` kept as the
+// fallback for anything that can't hover.
+function ColHeader({ Icon, label, hint }) {
+  return (
+    <span className={`${COL_HEAD} relative group`} tabIndex={0} title={hint} aria-label={label}>
+      <Icon />
+      <span role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus:opacity-100 motion-reduce:transition-none"
+        // The header is uppercase + widely tracked; the tooltip must NOT inherit that
+        // or it reads as another heading rather than an explanation.
+        style={{ backgroundColor: 'var(--surface-ink)', color: 'var(--text-on-dark)',
+                 font: 'var(--type-meta)', textTransform: 'none', letterSpacing: 'normal', fontWeight: 400 }}>
+        {hint}
+      </span>
+    </span>
+  )
+}
+
 function StudentRosterHeader() {
   return (
     <div className="flex items-center gap-4 px-5 pb-2 text-[10px] font-bold uppercase tracking-widest"
       style={{ color: 'var(--text-subtle)', borderBottom: '1px solid var(--border-default)' }}>
       <span className="flex-1 min-w-0">Student info</span>
-      <span className={COL_HEAD} title="Last seen — most recent sign-in" aria-label="Last seen"><IconEyeSm /></span>
-      <span className={COL_HEAD} title="Logins — sign-ins recorded since 2026-08-08 (earlier ones were never counted)" aria-label="Logins"><IconLogins /></span>
-      <span className={COL_HEAD} title="Assignments — real work, excluding the practice warm-up" aria-label="Assignments"><IconDoc /></span>
-      <span className={COL_HEAD} title="Completed — assignments the student finished" aria-label="Completed"><IconCheck /></span>
-      <span className={COL_HEAD} title="Warnings — open guardrail-audit findings" aria-label="Warnings"><IconWarnTri /></span>
+      <ColHeader Icon={IconEyeSm}   label="Last seen"   hint="Last seen — most recent sign-in" />
+      <ColHeader Icon={IconLogins}  label="Logins"      hint="Logins — counted from 2026-08-08 onward" />
+      <ColHeader Icon={IconDoc}     label="Assignments" hint="Assignments — real work, excluding the practice warm-up" />
+      <ColHeader Icon={IconCheck}   label="Completed"   hint="Completed — assignments the student finished" />
+      <ColHeader Icon={IconWarnTri} label="Warnings"    hint="Warnings — open guardrail-audit findings" />
       <span className="w-4 shrink-0" aria-hidden />
     </div>
   )
