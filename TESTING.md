@@ -3098,3 +3098,90 @@ importing *any* component from a test was previously a hard parse error — no c
 codebase could be render-tested at all. `oxc.include` alone does not fix it (it processes `.js`
 but still as plain JS); the language has to be named. Scoped to `app/` and `components/` so
 `lib/` keeps its existing transform path. All 21 pre-existing test files still pass.
+
+## 2026-08-08 — Admin student roster: two-row card + last-active ordering (focus/admin)
+
+**Files:** `components/AdminDashboard.js` (new `StudentCard`, replaces `PersonCard` for students;
+dead `CompletedStat` removed), `app/admin/page.js` (two new data sources). No migration.
+
+A single row had to choose between identity and activity and showed neither well. Students now render
+as two rows inside one card:
+- **Row 1 (who):** avatar · name · joined · age badge · FTUE status · role · Remote in · delete
+- **Expand control** sits BETWEEN the rows, right-aligned ("N assignments" + chevron), so the
+  disclosure sits next to what it reveals instead of competing with the action buttons
+- **Row 2 (what they did):** email · last sign-in · # sessions · # assignments · # completed · warnings
+
+**Ordering:** most recent sign-in first; accounts that have NEVER signed in sort last (not treated as
+oldest). Parents/teachers keep the existing `PersonCard`.
+
+**Two new data sources** (`app/admin/page.js`):
+- `last_sign_in_at` — lives on `auth.users`, not `profiles`, so it comes from
+  `service.auth.admin.listUsers()`. Wrapped in `.catch(() => null)`: if it ever fails or the user base
+  outgrows one page, sign-in renders "Never signed in" and nothing else breaks.
+- **Warnings** = UNRESOLVED, non-`none` `transcript_audit_findings` per student. Colour-coded: red when
+  any finding is `high`, amber otherwise; hidden entirely at zero. (`severity='none'` rows are the
+  clean-audit ledger, not warnings — counting them would have shown a warning badge on every audited
+  student.)
+
+**Counts are deliberately three different things:** *sessions* = every coaching session including the
+FTUE warm-up; *assignments* = real work (warm-ups excluded); *completed* = assignments with
+`status='complete'`. Confirm this reading is what you want — a warm-up is why "1 session / 0
+assignments" is correct and not a bug.
+
+**Verified against live data** (read-only script, service role):
+- Ordering monotonic newest→oldest with never-signed-in last: **true**; 10/11 students have a sign-in.
+- Spot-check: Baron Vernick 10 sessions / 9 assignments / 7 completed / 3 warnings (1 high);
+  Elio Casias 5 / 4 / 3 / 1 (1 high); Bruce Wong 1 session / 0 assignments (warm-up only).
+- `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin):** roster is ordered by last sign-in · both rows render without wrapping at
+desktop width · expand shows the student's assignments · warning pill colour matches severity ·
+under-13 avatars still initials-only (COPPA suppression unchanged).
+
+## 2026-08-08 — Admin roster: login counts + shared mark on the stat tiles (focus/admin)
+
+**Files:** `supabase/migrations/059_profile_login_count.sql` (**NOT APPLIED**),
+`app/api/auth/callback/route.js` (⚠️ one hook OUTSIDE the admin lane — see below),
+`app/admin/page.js`, `components/AdminDashboard.js`.
+
+### Login count — had to be started, not read
+"# of logins" did not exist anywhere. Verified directly: the `auth` schema is not exposed through
+PostgREST (`Invalid schema: auth`, so `auth.sessions` / `auth.audit_log_entries` are unreachable),
+the admin API's user object carries only `last_sign_in_at` with no count, and there was no app-side
+login table. So counting starts now:
+- **Migration 059** adds `profiles.login_count` + `last_login_at` and a `record_login(uuid)` RPC that
+  increments in ONE `UPDATE` (a read-then-write would lose concurrent logins — two tabs finishing
+  OAuth both read N and both write N+1). SECURITY DEFINER, so **EXECUTE is revoked from
+  public/anon/authenticated** and granted only to `service_role` — otherwise any authenticated user
+  could inflate their own or another user's count.
+- **The auth callback** calls it after a successful session exchange, best-effort in a try/catch:
+  a failure logs and the sign-in still completes. **This is the one edit outside the admin lane**
+  (~8 lines, beside the existing `avatar_url` profile write) — sign-in is the only place the number
+  can be recorded. Flagging for the conductor/auth lane.
+- **Counts start at apply time and are NOT backfilled** — pre-059 sign-ins were never recorded, so
+  the UI shows **"— logins"** rather than "0 logins", which would assert history we don't have.
+
+### Deploy-order hazard caught before shipping
+Selecting `login_count` before 059 is applied fails the WHOLE profiles query → an EMPTY admin panel
+between deploy and apply. `readProfiles()` now tries the new columns and falls back to the pre-059
+column list on error. **Proved against the live DB (which genuinely lacks the columns):** fallback
+path taken, **20/20 profiles still returned**, UI degrades to "— logins". Deploy order is therefore
+safe either way, though applying 059 first is still preferred.
+
+### Stat tiles use the header mark
+The four tiles carried four unrelated Feather-style glyphs; they now all carry
+`/brainscribe-mark.png` — the same mark as the header logo — so the page uses one piece of
+iconography. The tinted chip behind each mark is retained so the tiles stay distinguishable at a
+glance (label + count still name them). The four now-dead glyph components were removed.
+**Note:** four identical marks are less scannable than four distinct glyphs; if the tiles start
+feeling samey, the fix is per-tile mark tinting, not a return to unrelated icons.
+
+### Verification
+- `npm run build` green · `npm run test:run` **260/260 green**.
+- Pre-migration fallback proved against live data (above).
+- `record_login` confirmed absent pre-apply, so the callback's fail-soft path is the live behaviour
+  until 059 runs.
+
+**Manual check (after 059 applies + deploy):** sign out and back in → that student's row increments
+by exactly 1 · a second sign-in increments again · the roster still sorts by last sign-in ·
+tiles show the mark and still select their tab.
