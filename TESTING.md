@@ -2714,3 +2714,42 @@ banner on a fully-triaged board with `showResolved=1`; "Saving…" stuck after a
 - [ ] Mark one `resolved` with a note → it leaves the list; "Show resolved (1)" brings it back.
 - [ ] `watching` stays visible; note + verdict persist across reload.
 - [ ] A resolved session whose draft is later repaired/re-reported reappears badged STALE.
+
+## 2026-08-08 — Admin student roster: two-row card + last-active ordering (focus/admin)
+
+**Files:** `components/AdminDashboard.js` (new `StudentCard`, replaces `PersonCard` for students;
+dead `CompletedStat` removed), `app/admin/page.js` (two new data sources). No migration.
+
+A single row had to choose between identity and activity and showed neither well. Students now render
+as two rows inside one card:
+- **Row 1 (who):** avatar · name · joined · age badge · FTUE status · role · Remote in · delete
+- **Expand control** sits BETWEEN the rows, right-aligned ("N assignments" + chevron), so the
+  disclosure sits next to what it reveals instead of competing with the action buttons
+- **Row 2 (what they did):** email · last sign-in · # sessions · # assignments · # completed · warnings
+
+**Ordering:** most recent sign-in first; accounts that have NEVER signed in sort last (not treated as
+oldest). Parents/teachers keep the existing `PersonCard`.
+
+**Two new data sources** (`app/admin/page.js`):
+- `last_sign_in_at` — lives on `auth.users`, not `profiles`, so it comes from
+  `service.auth.admin.listUsers()`. Wrapped in `.catch(() => null)`: if it ever fails or the user base
+  outgrows one page, sign-in renders "Never signed in" and nothing else breaks.
+- **Warnings** = UNRESOLVED, non-`none` `transcript_audit_findings` per student. Colour-coded: red when
+  any finding is `high`, amber otherwise; hidden entirely at zero. (`severity='none'` rows are the
+  clean-audit ledger, not warnings — counting them would have shown a warning badge on every audited
+  student.)
+
+**Counts are deliberately three different things:** *sessions* = every coaching session including the
+FTUE warm-up; *assignments* = real work (warm-ups excluded); *completed* = assignments with
+`status='complete'`. Confirm this reading is what you want — a warm-up is why "1 session / 0
+assignments" is correct and not a bug.
+
+**Verified against live data** (read-only script, service role):
+- Ordering monotonic newest→oldest with never-signed-in last: **true**; 10/11 students have a sign-in.
+- Spot-check: Baron Vernick 10 sessions / 9 assignments / 7 completed / 3 warnings (1 high);
+  Elio Casias 5 / 4 / 3 / 1 (1 high); Bruce Wong 1 session / 0 assignments (warm-up only).
+- `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin):** roster is ordered by last sign-in · both rows render without wrapping at
+desktop width · expand shows the student's assignments · warning pill colour matches severity ·
+under-13 avatars still initials-only (COPPA suppression unchanged).
