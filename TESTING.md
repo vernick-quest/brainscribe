@@ -2825,3 +2825,35 @@ three flex siblings on one centered row:
 **Manual check (admin):** avatar visually spans both rows · no floating middle row · chevron sits at
 the far right, centered, unlabelled, and rotates on expand · long emails truncate rather than widen
 the card.
+
+## 2026-08-08 — Student roster: restore tile icons, icon columns + legend (focus/admin)
+
+**File:** `components/AdminDashboard.js` only. No data/route/schema change.
+
+**Reverted:** the four stat-tile glyphs (Students/Parents/Teachers/Assignments) are BACK. Swapping
+them for the BrainScribe mark made four identical tiles and read as clutter — the distinct Feather
+glyphs were the right call and shouldn't have been replaced. `/brainscribe-mark.png` is no longer
+referenced in the dashboard.
+
+**Roster redesign** (per Robert's mockup) — the collapsed row is identity + five aligned numbers:
+- **Column header** above the roster: glyph-only (Last seen · Logins · Assignments · Completed ·
+  Warnings), with a **legend** underneath naming every glyph, so no row repeats the words.
+- Shared `COL` geometry constant drives header, rows, and legend, so numbers stay under their glyph.
+- **FTUE is now a glyph before the name**, three states as specified: **Practiced** (green check),
+  **Not onboarded** (dotted circle), **Skipped** (amber skip). Same click-to-toggle as the old badge
+  (`OnboardingIcon` mirrors `OnboardingBadge`, which parents/teachers still use).
+- Role pill + age pill sit next to the name; email drops below it; avatar spans both rows.
+- **Remote in / Delete account moved INTO the expanded body** under an "Assignments" heading —
+  they're occasional actions, and putting them on every row is what made the roster feel crowded.
+- Warnings column: red when any finding is `high`, amber otherwise, muted dash at zero.
+- A dash in the **Logins** column means "not recorded" (pre-059), deliberately NOT "0".
+
+**Sorting** (unchanged, re-confirmed): most recent **last seen** at the top; never-signed-in
+accounts sort last rather than passing as oldest.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green** · all four tile icons
+present and referenced · no `brainscribe-mark` references remain in the dashboard.
+
+**Manual check (admin):** stat tiles show their original distinct glyphs · roster ordered by last
+seen, newest first · numbers line up under their header glyphs · FTUE glyph matches the legend and
+still toggles on click · expanding a student shows assignments then Remote in / Delete account.
