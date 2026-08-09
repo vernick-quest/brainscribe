@@ -2961,3 +2961,38 @@ Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN · `
 Manual checks owed (live): finish an assignment → Keep working → v2 opens with the draft; tap
 Edit on a carried paragraph, change it, save → reload and confirm it persisted and the others
 didn't move; ask the coach to strengthen a paragraph → it should point at Edit, not the mic.
+
+## 2026-08-09 (b) — Fire-and-forget sweep + watcher Draft-N chip — focus/coaching-session
+
+**Sweep for the fire-and-forget write pattern** (third instance in two days, now a standing
+rule: find one → grep for the rest, because the shape gets COPIED precisely because it looks
+harmless). Swept `components/` + `app/` for `.catch(console.error)` and for `fetch(` with no
+`res.ok` check. Results:
+- **0 live `.catch(console.error)`** remaining (the only hit is the explanatory comment in
+  saveDirectEdit).
+- **2 real instances on student work — FIXED:** both `/api/messages` writes (the student's OWN
+  turns) swallowed their result — `handleConversation` via `.catch(() => {})`, `handleDictation`
+  via a discarded `Promise.all` slot. A failed insert was invisible: the session keeps working
+  (the coach receives the text in the request body), but the turn is missing from the transcript
+  a watcher reads and from the record the integrity layer reads. New `persistUserTurn()` helper —
+  still NON-BLOCKING (blocking would add a round-trip to every turn on the hot voice path) but no
+  longer silent: checks `res.ok` and logs a loud, greppable `[messages] student turn NOT
+  persisted…`. Deliberately no student-facing banner — alarming and useless for a transient blip.
+- **Not student work, left alone:** `/api/profile/voice` (a preference), `/api/admin/usage` and
+  `/api/admin/draft-integrity` (admin reads).
+
+**Watcher Draft-N chip — the last visible gap in "Keep working", now closed.** Root cause was
+NOT missing UI: `ParentDashboard` and `TeacherDashboard` both already render the student's own
+`SessionsList`, which has the Draft-N badge + "Continued from / in a new draft" chips. The four
+watcher session selects simply never asked for `continued_from, version`, so `SessionsList`
+computed no links. Added those two columns to all four (parent ×2, teacher ×2). Safe by
+construction: the link map is built only from sessions IN the list, so a v2 the watcher can't
+see yields NO chip rather than a dead link.
+
+⚠️ **Flagged, not silently changed:** `assignment_teachers` rows are NOT copied to a v2, so a
+teacher watching v1 never sees the continuation at all (no chip, no v2 in their list). That is a
+SHARING decision — auto-granting a teacher access to a newly minted session without the student
+doing anything is not a call this lane should make unilaterally. Parent watchers are unaffected
+(they see all their child's sessions, so both drafts and the chips appear).
+
+Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN.

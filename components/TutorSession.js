@@ -1919,6 +1919,34 @@ export default function TutorSession({
 
   // ── Direct paragraph edit ────────────────────────────────────────────────────
 
+  // Persist the student's own turn into `messages`. Deliberately NOT awaited by callers:
+  // this is on the hot voice path and blocking it would add a round-trip to every turn.
+  // But non-blocking must not mean UNOBSERVABLE — both call sites used to swallow the
+  // result (`.catch(() => {})` / a discarded Promise.all slot), so a failed insert was
+  // invisible. The session still works when this fails (the coach receives the text in
+  // the request body), but the turn is missing from the transcript a watcher reads and
+  // from the record the integrity layer reads — so it gets a loud, greppable log rather
+  // than a student-facing banner, which would be alarming and useless for a transient blip.
+  async function persistUserTurn(content) {
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, role: 'user', content }),
+      })
+      if (!res.ok) {
+        console.error(
+          `[messages] student turn NOT persisted for session ${session.id}: ${res.status}. ` +
+          `The session continues (the coach has the text), but this turn is missing from the transcript.`
+        )
+      }
+      return res
+    } catch (err) {
+      console.error(`[messages] student turn NOT persisted for session ${session.id} (network):`, err)
+      return null
+    }
+  }
+
   async function saveDirectEdit(paraIdx, newText) {
     const oldPara = paragraphs.find(p => (p.paragraph_index ?? p.position) === paraIdx)
     const oldText = oldPara?.scribed_text ?? ''
@@ -2037,11 +2065,7 @@ export default function TutorSession({
     const userMessage = { role: 'user', content: spokenText }
     const newHistory = [...messages, userMessage]
     setMessages(newHistory)
-    fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: session.id, role: 'user', content: spokenText }),
-    }).catch(() => {})
+    persistUserTurn(spokenText)
 
     // Full-essay read-back is UI-assembled, never model-regenerated (deep-read F7).
     // If the student asks to hear/see the WHOLE piece and there IS content, hand back
@@ -2097,11 +2121,9 @@ export default function TutorSession({
     let scribed
     try {
       const [, scribeRes] = await Promise.all([
-        fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: session.id, role: 'user', content: spokenText }),
-        }).catch(() => null),   // persistence is best-effort; a blip must not lose the paragraph
+        // Non-blocking on purpose (a blip must not cost the student their paragraph),
+        // but NOT silent — see persistUserTurn.
+        persistUserTurn(spokenText),
         fetch('/api/scribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
