@@ -111,6 +111,19 @@ export async function GET(request) {
       await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id)
     }
 
+    // Record the login. Supabase keeps last_sign_in_at but no lifetime COUNT, and the
+    // auth schema isn't readable through PostgREST — so this is the only place the
+    // number can come from. Service-role RPC (migration 059): the increment is atomic
+    // in one UPDATE, and EXECUTE is revoked from authenticated so a user can't inflate
+    // their own count. Best-effort by design — a failure here must never block a
+    // sign-in, so it's caught and logged rather than thrown.
+    try {
+      const { error: loginErr } = await createServiceClient().rpc('record_login', { p_user_id: user.id })
+      if (loginErr) console.error('[auth callback] record_login failed:', loginErr.message)
+    } catch (e) {
+      console.error('[auth callback] record_login threw:', e?.message ?? e)
+    }
+
     console.log('[auth callback]', user.email, '| profile:', profile ? `role=${profile.role} confirmed=${profile.role_confirmed}` : 'MISSING (trigger lag)')
 
     // Admins always go straight to /admin — never through /welcome

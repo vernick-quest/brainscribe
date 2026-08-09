@@ -19,6 +19,19 @@ export default async function AdminPage() {
   // Use service client to bypass RLS — admin sees everything
   const service = createServiceClient()
 
+  // login_count/last_login_at arrive with migration 059. Selecting a column that
+  // doesn't exist yet fails the WHOLE profiles query, which would render an empty
+  // admin panel between deploy and apply — so ask for them, and fall back to the
+  // pre-059 column list if the DB doesn't have them yet.
+  const PROFILE_COLS_BASE = 'id, full_name, email, role, created_at, sessions_used, onboarding_complete, age_bracket, coppa_consent_given, avatar_url, is_beta_circle'
+  async function readProfiles() {
+    const withLogins = await service.from('profiles')
+      .select(`${PROFILE_COLS_BASE}, login_count, last_login_at`).order('role').order('created_at')
+    if (!withLogins.error) return withLogins
+    console.warn('[admin] login columns unavailable (migration 059 not applied yet):', withLogins.error.message)
+    return service.from('profiles').select(PROFILE_COLS_BASE).order('role').order('created_at')
+  }
+
   const [
     { data: allProfiles },
     { data: allSessions },
@@ -27,7 +40,7 @@ export default async function AdminPage() {
     { data: auditFindings },
     authUsers,
   ] = await Promise.all([
-    service.from('profiles').select('id, full_name, email, role, created_at, sessions_used, onboarding_complete, age_bracket, coppa_consent_given, avatar_url, is_beta_circle').order('role').order('created_at'),
+    readProfiles(),
     service.from('sessions').select('id, title, assignment_text, status, student_id, persona, is_onboarding, created_at, updated_at, completed_at').order('updated_at', { ascending: false }),
     service.from('relationships').select('watcher_id, student_id'),
     service.from('assignment_teachers').select('session_id, teacher_id'),
