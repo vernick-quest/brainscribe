@@ -10,10 +10,29 @@ import Avatar from '@/components/Avatar'
 import { PersonaAvatar } from '@/lib/personas'
 import { DEMO_EMAILS } from '@/lib/demoAccounts'
 
-// Line-art icons (Feather/Lucide style) for inline controls. The four stat tiles
-// deliberately DON'T use bespoke glyphs — they carry the BrainScribe mark from the
-// header instead, so the admin page uses one piece of iconography throughout.
+// Line-art icons matching the login landing page (Feather/Lucide style). The
+// Students/Parents/Teachers glyphs are the same paths used there, so the admin
+// page reads as the same product.
 const ICON_PROPS = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+const IconStudents = () => (<svg {...ICON_PROPS}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>)
+const IconParents  = () => (<svg {...ICON_PROPS}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>)
+const IconTeachers = () => (<svg {...ICON_PROPS}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M7 13h4"/><path d="M7 10h10"/><path d="M9 20h6"/><path d="M12 17v3"/></svg>)
+const IconAssignments = () => (<svg {...ICON_PROPS}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>)
+
+// Column/status glyphs for the student roster — same Feather family, sized small.
+const SM = { ...ICON_PROPS, width: 15, height: 15 }
+const IconLogins    = () => (<svg {...SM}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>)
+const IconDoc       = () => (<svg {...SM}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>)
+const IconCheck     = () => (<svg {...SM}><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>)
+const IconWarnTri   = () => (<svg {...SM}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>)
+const IconEyeSm     = () => (<svg {...SM}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
+// FTUE states — three, and visually distinct at a glance.
+const IconSkipped   = () => (<svg {...SM}><circle cx="12" cy="12" r="9"/><path d="M9 8.5l4 3.5-4 3.5"/><path d="M15.5 8.5v7"/></svg>)
+const IconNotOnb    = () => (<svg {...SM}><circle cx="12" cy="12" r="9" strokeDasharray="3 3"/></svg>)
+
+// Shared column geometry — the header, every row, and the legend all read from this,
+// so the numbers stay under their glyph instead of drifting apart.
+const COL = 'w-14 shrink-0 text-center tabular-nums'
 const IconEye = () => (<svg {...ICON_PROPS} width="13" height="13"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
 const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>)
 
@@ -240,6 +259,42 @@ function OnboardingBadge({ userId, complete, practiced }) {
       style={tone}
     >
       {saving ? '…' : label}
+    </button>
+  )
+}
+
+// Icon-only FTUE state for the student roster — same three states and the same
+// click-to-toggle as OnboardingBadge, but a glyph instead of a word so the row can
+// lead with the name. The legend under the roster names the three glyphs.
+function OnboardingIcon({ userId, complete, practiced }) {
+  const [done, setDone] = useState(complete)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    const next = !done
+    setSaving(true)
+    const res = await fetch('/api/admin/set-onboarding', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, complete: next }),
+    })
+    if (res.ok) setDone(next)
+    setSaving(false)
+  }
+
+  const state = !done ? 'none' : practiced ? 'practiced' : 'skipped'
+  const { Glyph, color, title } = {
+    practiced: { Glyph: IconCheck, color: 'var(--status-success)', title: 'Practiced — finished a practice assignment. Click to reset (they’ll onboard again next sign-in)' },
+    // Amber, not green: nothing is wrong, but it is not the same thing.
+    skipped: { Glyph: IconSkipped, color: 'var(--status-thin)', title: 'Skipped — marked onboarded WITHOUT finishing a practice assignment. Click to reset' },
+    none: { Glyph: IconNotOnb, color: 'var(--text-subtle)', title: 'Not onboarded — click to mark complete' },
+  }[state]
+
+  return (
+    <button onClick={toggle} disabled={saving} title={title} aria-label={title}
+      className="shrink-0 flex items-center transition cursor-pointer disabled:opacity-50"
+      style={{ color }}>
+      {saving ? <span className="text-[11px]">…</span> : <Glyph />}
     </button>
   )
 }
@@ -908,12 +963,51 @@ function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, childr
   )
 }
 
-// Student card — two rows, because a single row had to choose between identity and
-// activity and ended up showing neither well.
-//   Row 1 (who they are):  avatar · name · joined · age · FTUE · role · remote-in · delete
-//   Row 2 (what they did): email · last sign-in · sessions · assignments · completed · warnings
-// The expand chevron sits between the rows, right-aligned, so the disclosure control
-// is adjacent to the content it reveals rather than competing with the action buttons.
+// Column header for the student roster — glyphs only, sitting directly above the
+// numbers they label. The legend under the roster spells them out, so the rows
+// themselves stay free of repeated words ("3 assignments · 2 completed · …").
+function StudentRosterHeader() {
+  return (
+    <div className="flex items-center gap-4 px-5 pb-2 text-[10px] font-bold uppercase tracking-widest"
+      style={{ color: 'var(--text-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+      <span className="flex-1 min-w-0">Student info</span>
+      <span className={COL} title="Last seen"><IconEyeSm /></span>
+      <span className={COL} title="Logins"><IconLogins /></span>
+      <span className={COL} title="Assignments"><IconDoc /></span>
+      <span className={COL} title="Completed"><IconCheck /></span>
+      <span className={COL} title="Warnings"><IconWarnTri /></span>
+      <span className="w-4 shrink-0" aria-hidden />
+    </div>
+  )
+}
+
+// Legend — names every glyph used above, so nothing in the roster relies on the
+// reader already knowing what a dotted circle means.
+function StudentRosterLegend() {
+  const item = (Glyph, label, color) => (
+    <span className="flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+      <span style={{ color }}><Glyph /></span>{label}
+    </span>
+  )
+  return (
+    <div className="flex items-center gap-5 flex-wrap px-5 pt-3 text-xs"
+      style={{ borderTop: '1px solid var(--border-default)' }}>
+      {item(IconCheck, 'Practiced', 'var(--status-success)')}
+      {item(IconNotOnb, 'Not onboarded', 'var(--text-subtle)')}
+      {item(IconSkipped, 'Skipped', 'var(--status-thin)')}
+      <span className="flex-1" />
+      {item(IconEyeSm, 'Last seen', 'var(--text-subtle)')}
+      {item(IconLogins, 'Logins', 'var(--text-subtle)')}
+      {item(IconDoc, 'Assignments', 'var(--text-subtle)')}
+      {item(IconCheck, 'Completed', 'var(--text-subtle)')}
+      {item(IconWarnTri, 'Warnings', 'var(--text-subtle)')}
+    </div>
+  )
+}
+
+// Student card. The collapsed row is identity + five aligned numbers, nothing else:
+// the FTUE state is a glyph before the name, and Remote in / Delete live INSIDE the
+// expanded body rather than crowding every row with buttons that are rarely used.
 function StudentCard({ student, sessions, onRoleChanged, children }) {
   const [open, setOpen] = useState(false)
   const hasBody = sessions.length > 0
@@ -933,73 +1027,77 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
     <div className="rounded-2xl overflow-hidden"
       style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
 
-      <div className="px-5 py-3">
-        {/* ── Row 1 — identity + actions ── */}
-        <div className="flex items-center gap-3">
-          <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={36} />
-          <button className="flex-1 min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
-            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-strong)' }}>
-              {student.full_name ?? '—'}
-            </p>
-          </button>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs" style={{ color: 'var(--text-subtle)' }} title="Joined">
-              {formatDate(student.created_at)}
-            </span>
-            <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
-            <OnboardingBadge userId={student.id} complete={student.onboarding_complete === true}
+      <div className="px-5 py-3 flex items-center gap-4">
+
+        {/* Avatar — spans both rows (COPPA: Avatar hard-suppresses under-13 to initials) */}
+        <div className="shrink-0">
+          <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={52} />
+        </div>
+
+        {/* Identity — name row over email */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <OnboardingIcon userId={student.id} complete={student.onboarding_complete === true}
               practiced={student.practiced === true} />
+            <button className="min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
+              <span className="text-sm font-semibold truncate block" style={{ color: 'var(--text-strong)' }}>
+                {student.full_name ?? '—'}
+              </span>
+            </button>
             <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
-            <RemoteInButton userId={student.id} />
-            <DeleteUserButton userId={student.id} name={student.full_name} />
+            <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
           </div>
+          <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}
+            title={`Joined ${formatDate(student.created_at)}`}>
+            {student.email}
+          </p>
         </div>
 
-        {/* ── Expand control — between the rows, right-aligned ── */}
-        <div className="flex justify-end -my-0.5">
-          <button onClick={toggle} disabled={!hasBody}
-            className="flex items-center gap-1 text-[11px] transition disabled:opacity-25 cursor-pointer disabled:cursor-default rounded px-1"
-            style={{ color: 'var(--text-subtle)' }}
-            aria-expanded={hasBody ? open : undefined}
-            aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse assignments' : 'Expand assignments'}>
-            {hasBody && <span>{open ? 'Hide' : `${assignments.length} assignment${assignments.length === 1 ? '' : 's'}`}</span>}
-            <span className="inline-flex transition-transform" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>
-              <IconChevron />
-            </span>
-          </button>
-        </div>
+        {/* Aligned numbers — one per header glyph. A dash means "none", and for logins
+            specifically it means "not recorded", which is not the same as zero. */}
+        <span className={`${COL} text-xs`} style={{ color: 'var(--text-muted)' }}
+          title={student.last_sign_in_at ? 'Last seen' : 'Never signed in'}>
+          {student.last_sign_in_at ? formatDate(student.last_sign_in_at) : '—'}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: logins ? 'var(--text-muted)' : 'var(--text-subtle)' }}
+          title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>
+          {logins ?? '—'}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: assignments.length ? 'var(--text-muted)' : 'var(--text-subtle)' }} title="Assignments">
+          {assignments.length}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }} title="Completed">
+          {completed}
+        </span>
+        <span className={`${COL} text-xs font-semibold`}
+          title={warn?.total ? `${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}` : 'No open warnings'}
+          style={{ color: !warn?.total ? 'var(--text-subtle)' : warn.high > 0 ? 'var(--status-error)' : 'var(--status-thin)' }}>
+          {warn?.total || '—'}
+        </span>
 
-        {/* ── Row 2 — activity ── */}
-        <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span className="truncate min-w-0 flex-1">{student.email}</span>
-          <span className="shrink-0" title="Last sign-in">
-            {student.last_sign_in_at ? `Seen ${formatDate(student.last_sign_in_at)}` : 'Never signed in'}
-          </span>
-          <span className="shrink-0 tabular-nums" title={logins === null || logins === 0 ? 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded' : 'Sign-ins recorded since 2026-08-08'}>
-            {logins ? `${logins} login${logins === 1 ? '' : 's'}` : '— logins'}
-          </span>
-          <span className="shrink-0 tabular-nums">{assignments.length} assignment{assignments.length === 1 ? '' : 's'}</span>
-          <span className="shrink-0 tabular-nums" style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }}>
-            {completed} completed
-          </span>
-          {warn?.total > 0 && (
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5"
-              title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}`}
-              style={warn.high > 0
-                // --status-warning does NOT exist; the literal fallback was what actually
-                // painted, so this chip stayed light-mode amber on a dark card. The real
-                // token for a soft caution is --status-thin (see globals.css).
-                ? { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }
-                : { backgroundColor: 'var(--status-thin-bg)', color: 'var(--status-thin)' }}>
-              {warn.total} warning{warn.total === 1 ? '' : 's'}
-            </span>
-          )}
-        </div>
+        {/* Expand — one control at the right edge, no label */}
+        <button onClick={toggle} disabled={!hasBody}
+          className="w-4 shrink-0 flex items-center justify-center transition-transform disabled:opacity-25 cursor-pointer disabled:cursor-default"
+          style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
+          aria-expanded={hasBody ? open : undefined}
+          aria-label={!hasBody ? 'Nothing to expand' : open ? 'Collapse assignments' : 'Expand assignments'}>
+          <IconChevron />
+        </button>
       </div>
 
       {hasBody && open && (
-        <div className="px-5 pb-4 pt-2 space-y-2" style={{ borderTop: '1px solid var(--border-default)' }}>
+        <div className="px-5 pb-4 pt-3 space-y-2" style={{ borderTop: '1px solid var(--border-default)' }}>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
+            Assignments
+          </p>
           {children}
+          {/* Account actions live here, not on the collapsed row — they're occasional,
+              and putting them on every row is what made the roster feel crowded. */}
+          <div className="flex items-center justify-between gap-3 pt-3"
+            style={{ borderTop: '1px solid var(--border-default)' }}>
+            <RemoteInButton userId={student.id} />
+            <DeleteUserButton userId={student.id} name={student.full_name} />
+          </div>
         </div>
       )}
     </div>
@@ -1736,14 +1834,11 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   ]
 
   // Stat tiles double as the primary tab selectors — tabId maps a tile to its view.
-  // All four carry the BrainScribe mark (same iconography as the header) rather than
-  // four unrelated glyphs; the tinted chip behind it keeps them distinguishable at a
-  // glance, and the label/count below say which is which.
   const STAT_TILES = [
-    { label: 'Students',    tabId: 'students', value: students.length, iconBg: 'var(--navy-100)',          },
-    { label: 'Parents',     tabId: 'parents',  value: parents.length,  iconBg: 'var(--status-success-bg)', },
-    { label: 'Teachers',    tabId: 'teachers', value: teachers.length, iconBg: 'var(--surface-spark)',     },
-    { label: 'Assignments', tabId: 'sessions', value: sessions.length, iconBg: 'var(--primary-soft)',      },
+    { label: 'Students',    tabId: 'students', value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',          iconColor: 'var(--navy-700)' },
+    { label: 'Parents',     tabId: 'parents',  value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)', iconColor: 'var(--status-success)' },
+    { label: 'Teachers',    tabId: 'teachers', value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',     iconColor: 'var(--accent)' },
+    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: 'var(--primary-soft)',      iconColor: 'var(--text-link)' },
   ]
 
   const selectTab = t => { setTab(t); setSearch('') }
@@ -1781,10 +1876,8 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
                   boxShadow: isActive ? 'var(--shadow-sm)' : 'var(--shadow-xs)',
                 }}>
                 <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2"
-                  style={{ backgroundColor: s.iconBg }}>
-                  {/* Same mark as the header logo — one piece of iconography across the app. */}
-                  <img src="/brainscribe-mark.png" alt="" aria-hidden
-                    style={{ height: 22, width: 22, objectFit: 'contain' }} />
+                  style={{ backgroundColor: s.iconBg, color: s.iconColor }}>
+                  <s.Icon />
                 </div>
                 <p className="text-3xl font-black" style={{ color: 'var(--text-strong)' }}>{s.value}</p>
                 <p className="text-xs mt-1" style={{ color: isActive ? 'var(--text-strong)' : 'var(--text-muted)' }}>{s.label}</p>
@@ -1815,6 +1908,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               {filteredStudents.length === 0 && (
                 <p className="text-sm italic text-center py-10" style={{ color: 'var(--text-subtle)' }}>No students found</p>
               )}
+              {filteredStudents.length > 0 && <StudentRosterHeader />}
               {filteredStudents.map(student => {
                 const sessions = sessionsByStudent[student.id] ?? []
                 return (
@@ -1823,6 +1917,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
                   </StudentCard>
                 )
               })}
+              {filteredStudents.length > 0 && <StudentRosterLegend />}
             </div>
           )}
 
