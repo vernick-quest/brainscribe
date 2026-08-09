@@ -1091,8 +1091,10 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
         {/* Aligned numbers — one per header glyph. A dash means "none", and for logins
             specifically it means "not recorded", which is not the same as zero. */}
         <span className={`${COL} text-xs`} style={{ color: 'var(--text-muted)' }}
-          title={student.last_sign_in_at ? 'Last seen' : 'Never signed in'}>
-          {student.last_sign_in_at ? formatDate(student.last_sign_in_at) : '—'}
+          title={student.last_seen_at
+            ? `Last seen ${formatDate(student.last_seen_at)}${student.last_sign_in_at && student.last_sign_in_at !== student.last_seen_at ? ` · last signed in ${formatDate(student.last_sign_in_at)}` : ''}`
+            : 'Never seen'}>
+          {student.last_seen_at ? formatDate(student.last_seen_at) : '—'}
         </span>
         <span className={`${COL} text-xs`} style={{ color: logins ? 'var(--text-muted)' : 'var(--text-subtle)' }}
           title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>
@@ -1840,8 +1842,10 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const filteredStudents = students
     .filter(s => !q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q))
     .sort((a, b) => {
-      const at = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : -Infinity
-      const bt = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : -Infinity
+      // last_seen_at, not last_sign_in_at: a user who never signs out keeps a stale
+      // sign-in timestamp and would sort as inactive while actively writing.
+      const at = a.last_seen_at ? new Date(a.last_seen_at).getTime() : -Infinity
+      const bt = b.last_seen_at ? new Date(b.last_seen_at).getTime() : -Infinity
       return bt - at
     })
   const filteredParents = parents.filter(p =>
