@@ -24,9 +24,19 @@ comment on column sessions.truncated_turns_no_lock is
   'Subset of truncated_turns that emitted NO control token — a [DONE]/[CARE] may have been dropped.';
 
 -- Atomic increment so concurrent turns cannot lose a count via read-modify-write.
--- SECURITY DEFINER: the caller is the student's own session (RLS-scoped), but the
--- counter must still increment for a session row the user may only select/update
--- narrowly. Locked to the session's own row; no data is returned.
+--
+-- SECURITY DEFINER + service_role ONLY. This function has no ownership check, so if
+-- it were callable by `authenticated` any signed-in user could inflate the counters
+-- on someone else's session. The counters are harmless in themselves — what is not
+-- harmless is that this is a SAFETY SIGNAL: it is the number used to decide whether
+-- truncation is eating locks. A user-forgeable counter is a poisoned instrument, and
+-- it is the one instrument built specifically to be trusted. So the only caller is
+-- the server (tutor route, via createServiceClient).
+--
+-- Rejected alternative: keep the user client and add `and student_id = auth.uid()`.
+-- While an admin is remoted in, auth.uid() is the ADMIN's id, the update matches zero
+-- rows, and the truncation is silently not recorded — a silent no-op inside a
+-- silent-no-op detector.
 create or replace function record_coach_turn_truncation(
   p_session_id uuid,
   p_had_lock_token boolean
@@ -42,8 +52,8 @@ as $$
    where id = p_session_id;
 $$;
 
-revoke all on function record_coach_turn_truncation(uuid, boolean) from public;
-grant execute on function record_coach_turn_truncation(uuid, boolean) to authenticated;
+revoke all on function record_coach_turn_truncation(uuid, boolean) from public, anon, authenticated;
+grant execute on function record_coach_turn_truncation(uuid, boolean) to service_role;
 
 -- Audit/ops: find sessions where a lock may have been lost.
 create index if not exists sessions_truncated_no_lock_idx

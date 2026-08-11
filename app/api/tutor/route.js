@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
@@ -161,7 +162,11 @@ export async function POST(request) {
         `[tutor] TRUNCATED coach turn (stop_reason=${stopReason}) session=${sessionId} ` +
         `lock_token_present=${hadLockToken} — ${hadLockToken ? 'tokens emitted before the cut' : 'NO control token: a [DONE]/[CARE] may have been dropped'}`
       )
-      const { error: truncErr } = await supabase.rpc('record_coach_turn_truncation', {
+      // SERVICE client, not the user-scoped one: the counter is a SAFETY SIGNAL — the
+      // number we use to decide whether truncation is eating locks — so it must not be
+      // callable (and therefore forgeable) by a signed-in user against an arbitrary
+      // session. Server-side writer only; the fn is granted to service_role alone.
+      const { error: truncErr } = await createServiceClient().rpc('record_coach_turn_truncation', {
         p_session_id: sessionId,
         p_had_lock_token: hadLockToken,
       })
