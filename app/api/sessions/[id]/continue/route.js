@@ -21,6 +21,7 @@ import {
   buildContinuationSources,
   CONTINUATION_ENABLED,
 } from '@/lib/sessionContinuation'
+import { sessionStamp } from '@/lib/sessionStamp'
 
 export async function POST(request, { params }) {
   const { id } = await params
@@ -95,7 +96,13 @@ export async function POST(request, { params }) {
   // sorts to the TOP of the folder — otherwise it lands last / off the limit(50) window.
   const { data: v2, error: sErr } = await supabase
     .from('sessions')
-    .insert({ ...buildContinuationSession(v1, srcParagraphs, v1Scaffold?.components ?? []), last_active_at: new Date().toISOString() })
+    .insert({
+      ...buildContinuationSession(v1, srcParagraphs, v1Scaffold?.components ?? []),
+      last_active_at: new Date().toISOString(),
+      // CURRENT rules, not v1's — a v2 carries yesterday's paragraphs but runs on
+      // today's coach. These are the sessions most likely to need triage.
+      ...sessionStamp(),
+    })
     .select()
     .single()
   if (sErr || !v2) {

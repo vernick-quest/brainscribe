@@ -18,18 +18,24 @@
 --     (local dev). Gives `git log` traceability. -> "which commit?"
 --
 -- Both nullable: every session that already exists predates this, and a null is
--- honest ("unknown") rather than a fabricated version.
+-- honest ("unknown") rather than a fabricated version. Seeded DEMO sessions are also
+-- left null on purpose (app/api/admin/seed-demo) — they are fabricated transcripts no
+-- coach ever produced, so claiming they "ran on" any rule set would be a made-up value.
 --
--- NOTE: migration number confirmed as 063 by the conductor at authoring time —
--- RE-CONFIRM AT MERGE. 057-062 all landed within two days and two lanes collided
--- on 057; a number is a guess until the conductor merges it.
+-- For null to keep meaning that, every LIVE creation path has to stamp. The stamp
+-- originally covered only the two inserts in /api/sessions and missed three more —
+-- both /api/gym/sessions inserts (Skill Studio runs on these same shared rules) and
+-- the v2 continuation. All five now go through lib/sessionStamp.js, and
+-- lib/sessionStamp.test.js sweeps app/api for any sessions insert that skips it.
+--
+-- Number CONFIRMED 063 at merge by the conductor (main held 062 as the highest).
 
 alter table sessions
   add column if not exists coach_rules_version text,
   add column if not exists deploy_sha          text;
 
 comment on column sessions.coach_rules_version is
-  'sha256(core guardrails + structural coaching rules), first 12 hex — which coach RULES were live when this session ran. Excludes the persona block. Null = predates this column.';
+  'sha256(core guardrails + structural coaching rules), first 12 hex — which coach RULES were live when this session ran. Excludes the persona block. Null = predates this column, or a seeded demo fixture.';
 comment on column sessions.deploy_sha is
   'VERCEL_GIT_COMMIT_SHA at session creation — which COMMIT was deployed. Null outside Vercel / predates this column.';
 

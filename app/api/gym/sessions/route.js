@@ -8,6 +8,7 @@ import { ensureGymProgress, getPracticedKeys } from '@/lib/gymAwards'
 import { buildWarmupAssignmentText } from '@/lib/gymPlacement'
 import { recordSuggestionAction } from '@/lib/gymSuggest'
 import { getImpersonation } from '@/lib/impersonation'
+import { sessionStamp } from '@/lib/sessionStamp'
 import { after } from 'next/server'
 
 // Compose the student-facing practice card the coach works from. The band card's
@@ -79,7 +80,7 @@ export async function POST(request) {
     }
     const { data: session, error: sessErr } = await supabase
       .from('sessions')
-      .insert({ student_id: user.id, assignment_text: buildWarmupAssignmentText(), persona, subject: 'unspecified', title: 'Gym — warm-up', gym_session_id: gymSession.id })
+      .insert({ student_id: user.id, assignment_text: buildWarmupAssignmentText(), persona, subject: 'unspecified', title: 'Gym — warm-up', gym_session_id: gymSession.id, ...sessionStamp() })
       .select().single()
     if (sessErr) {
       console.error('[gym/sessions] warmup sessions insert failed:', sessErr.message)
@@ -143,6 +144,9 @@ export async function POST(request) {
       subject: 'unspecified',
       title: `Gym — ${skill.label}`,
       gym_session_id: gymSession.id,
+      // Skill Studio runs on the SAME shared coach rules — /api/gym/tutor builds its
+      // prompt with buildCoachSystemBlocks — so these sessions stamp like any other.
+      ...sessionStamp(),
     })
     .select().single()
   if (sessErr) {
