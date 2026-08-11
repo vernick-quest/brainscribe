@@ -1,7 +1,6 @@
 ---
-# HELD DRAFT — awaiting Robert's review and a real publish date. Do not publish as-is.
 title: "When writing homework turns into a fight (and how to step out of it)"
-date: 2099-01-01
+date: 2026-08-13
 summary: Writing homework has a way of turning into a nightly standoff — you asking, them stalling, both of you frustrated. Here's why writing in particular becomes the flashpoint, and a few small moves that lower the temperature.
 tag: For parents
 ---

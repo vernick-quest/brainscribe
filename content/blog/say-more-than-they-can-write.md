@@ -1,7 +1,6 @@
 ---
-# HELD DRAFT — awaiting Robert's review and a real publish date. Do not publish as-is.
 title: "Your kid can say more than they can write"
-date: 2099-01-01
+date: 2026-08-11
 summary: Ask your kid about the book and you get three sharp minutes. Ask them to write a paragraph about it and you get one flat sentence. That gap is real, it's measurable, and it isn't a thinking problem.
 tag: For parents
 ---
