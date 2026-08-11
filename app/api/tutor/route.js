@@ -1,12 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
-import { createServiceClient } from '@/lib/supabase/service'
 import { parseCommitments } from '@/lib/coachCommitments'
 
 const anthropic = new Anthropic()
@@ -150,10 +150,16 @@ export async function POST(request) {
       let fullText = ''
       let inputTokens = 0
       let outputTokens = 0
+      let stopReason = null
       try {
         for await (const chunk of stream) {
           if (chunk.type === 'message_start') inputTokens = chunk.message.usage?.input_tokens ?? 0
-          if (chunk.type === 'message_delta')  outputTokens = chunk.usage?.output_tokens ?? 0
+          if (chunk.type === 'message_delta') {
+            outputTokens = chunk.usage?.output_tokens ?? 0
+            // stop_reason arrives on message_delta. 'max_tokens' means the model was
+            // CUT OFF mid-turn — see the truncation note below.
+            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason
+          }
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             fullText += chunk.delta.text
             controller.enqueue(encoder.encode(chunk.delta.text))
@@ -164,14 +170,45 @@ export async function POST(request) {
         controller.error(err)
       } finally {
         const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
-        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText })
+        // ── Truncation detection (audit finding 2026-08-09) ────────────────────
+        // EVERY control token is emitted at the END of a coach turn ([DONE:id:words],
+        // [PARA_DONE], [THESIS], [COMPLETE], [CARE]). A turn cut off at max_tokens can
+        // therefore silently drop a LOCK — the student's confirmed text never reaches
+        // the Draft, the scaffold-data-loss signature — or a [CARE], so the crisis card
+        // never renders. 6 of 18 audited sessions reported truncated turns and nothing
+        // could distinguish "dropped a lock" from "merely cut prose": that blindness IS
+        // the defect, so detect and record the DISCRIMINATOR before touching the ceiling.
+        // We still deliver + persist the text (the student already saw it); what we
+        // refuse to do is treat a truncated turn as a clean, complete turn.
+        const truncated = stopReason === 'max_tokens'
+        const hadLockToken = /\[(DONE|THESIS|PARA_DONE|COMPLETE|CARE)[:\]]/.test(fullText)
+        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText, truncated, hadLockToken, stopReason })
       }
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText, rawText } = await resultReady
+    const { inputTokens, outputTokens, savedText, rawText, truncated, hadLockToken, stopReason } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+
+    // A truncated coach turn is never "just a long answer" — log loudly and record it
+    // so the audit can tell a dropped lock from cut prose. no_lock is the discriminator:
+    // truncated WITHOUT any control token is the case that may have destroyed a lock.
+    if (truncated) {
+      console.error(
+        `[tutor] TRUNCATED coach turn (stop_reason=${stopReason}) session=${sessionId} ` +
+        `lock_token_present=${hadLockToken} — ${hadLockToken ? 'tokens emitted before the cut' : 'NO control token: a [DONE]/[CARE] may have been dropped'}`
+      )
+      // SERVICE client, not the user-scoped one: the counter is a SAFETY SIGNAL — the
+      // number we use to decide whether truncation is eating locks — so it must not be
+      // callable (and therefore forgeable) by a signed-in user against an arbitrary
+      // session. Server-side writer only; the fn is granted to service_role alone.
+      const { error: truncErr } = await createServiceClient().rpc('record_coach_turn_truncation', {
+        p_session_id: sessionId,
+        p_had_lock_token: hadLockToken,
+      })
+      if (truncErr) console.error('[tutor] truncation record failed:', truncErr.message)
+    }
 
     // Record what the coach PROMISED it saved, from the raw stream before the tokens are
     // stripped. Deliberately a different path from the client-side scaffold write it will
@@ -224,8 +261,7 @@ export async function POST(request) {
         }
       }
     } catch (err) {
-      console.error('[tutor] commitment record threw:', err?.message)
-    }
+      console.error('[tutor] commitment record threw:', err?.message)    }
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,
