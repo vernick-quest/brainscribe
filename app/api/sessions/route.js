@@ -6,8 +6,23 @@ import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
+import { COACH_RULES_VERSION } from '@/lib/prompts'
 
 const anthropic = new Anthropic()
+
+// Stamped onto every session at creation so an audit finding can be triaged against
+// the coach rules that were live WHEN THE SESSION RAN. Without it, a finding against
+// a since-fixed prompt is indistinguishable from one against a live bug — triage on
+// three separate findings had to reconstruct this with `git log -S` on the rule text.
+//
+// It must be captured HERE, at session creation, not at audit time: audit rows are
+// written by the nightly run, which is later, so stamping there would record the
+// version live at AUDIT time and be actively misleading.
+//
+// COACH_RULES_VERSION (content hash of the shared rule blocks) answers "same rules?";
+// deploy_sha answers "which commit?" — they're complementary, so both are stored.
+// VERCEL_GIT_COMMIT_SHA is absent in local dev, so this is null outside Vercel.
+const DEPLOY_SHA = process.env.VERCEL_GIT_COMMIT_SHA ?? null
 
 function extractJSON(text) {
   try { return JSON.parse(text) } catch {}
@@ -172,6 +187,9 @@ export async function POST(request) {
           is_onboarding: true,
           onboarding_prompt_key: onboardingPromptKey,
           last_active_at: new Date().toISOString(),
+          // Stamp WHICH coach rules were live when this session ran (see below).
+          coach_rules_version: COACH_RULES_VERSION,
+          deploy_sha: DEPLOY_SHA,
         })
         .select()
         .single()
@@ -212,6 +230,9 @@ export async function POST(request) {
           // sorts to the TOP of the assignment list (ordered by last_active_at) and
           // shows "just now" — otherwise it's null and sorts last.
           last_active_at: new Date().toISOString(),
+          // Stamp WHICH coach rules were live when this session ran (see below).
+          coach_rules_version: COACH_RULES_VERSION,
+          deploy_sha: DEPLOY_SHA,
         })
         .select()
         .single()
