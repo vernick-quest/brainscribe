@@ -73,53 +73,101 @@ Memory is recalled selectively; CLAUDE.md loads every session. See "Verification
 
 ## PARKED — Lever B Phase 2: enforce provenance at lock time  ⏸ 2026-08-11
 
-**Deliberately deferred, not forgotten.** Phase 1 (shadow, annotate-never-block) is live and
-now instrumented. Phase 2 flips `checkProvenance` from annotating a lock to REFUSING it.
+**Deliberately deferred, not forgotten.** Phase 1 (shadow: annotate, never block) is live and
+now instrumented. Phase 2 would flip `checkProvenance` from annotating a lock to REFUSING it.
 
-**Why parked:** the flip was always gated on watching the threshold against real sessions,
-and that watching had never actually happened. Measured 2026-08-11 on live data:
+An adversarial review (two independent passes, 2026-08-11) established that **the threshold
+is not the blocker.** Three things must be fixed before the collected data means anything,
+and two of them make Phase 2 bypassable at *any* threshold.
 
-| | |
-|---|---|
-| Provenance records in scaffold JSON | 19, across 8 of 30 scaffolds |
-| Rows in `provenance_checks` | **1** |
-| Completed paragraphs scored | **0 of 14** — the paragraph arm had never fired |
-| Records that would have BLOCKED | 3, at content counts of **2, 2 and 3 words** |
-| Paragraphs written in the prior week | 3 |
+### 🔴 BLOCKER 1 — the baseline is missing whole categories of the student's own writing
+`studentSources` is only `paragraphs.raw_spoken_text` + `messages` where `role='user'`
+(`app/api/scaffold/[sessionId]/route.js`). Verified false-positive rates on real shapes:
 
-Collection is fixed (state-based scoring + `unscorable` reporting + every check written to
-`provenance_checks`, migration 064). What remains is genuinely evidence-gated.
+| The student did this | novelFraction | Verdict |
+|---|---|---|
+| Dictated; scribe fixed irregulars (`childs`→`children`, `feeled`→`felt`) | **0.43** | FAIL |
+| Typed with ordinary misspellings (`goverment`, `enviroment`) | **0.75** | FAIL |
+| Wrote the answer on an uploaded worksheet (lives in `assignment_text`) | **1.00** | FAIL |
+| Dictated cleanly | 0.00 | pass |
 
-**THE INDICATOR — do not flip until all four hold:**
+The header of `lib/provenance.js` claims ESL-safety because it ignores function words and
+regular inflections. **That claim does not hold**: irregular plurals, irregular past tense and
+spelling corrections all read as coach vocabulary — and they are produced most by the
+youngest and ESL writers, the students the check says it protects. Also missing from the
+baseline: typed direct edits (never persisted as messages), quoted sources from Research &
+Citations, and — on a v2 continuation — every message turn from v1, since `sessionContinuation`
+copies paragraphs and scaffold but no messages.
 
-1. **≥200 `provenance_checks` rows with `kind='paragraph'`**, from ≥10 distinct students.
-   Paragraph locks are the ones worth enforcing; a confirmed 3-word hook is not. Query:
+These are not edge cases. **Every one lands in `provenance_checks` as a `passed=false` row**,
+so the dataset Phase 2 will be calibrated from is being seeded with fabricated failures.
+
+### 🔴 BLOCKER 2 — edit-after-lock is never re-scored
+`saveComponentEdit` writes replacement text with `status:'confirmed'`; the stored record is
+carried forward without comparing text. Lock an honest version, then paste anything — never
+re-checked. Under Phase 2 that is a complete bypass, and it needs a design decision, not a
+patch: re-score on text change, and decide what happens when a re-score fails on text a
+student has already been told is theirs.
+
+### 🔴 BLOCKER 3 — what does Phase 2 DO with a lock it cannot score?
+Nothing decides this today. Allow → strip the text client-side and bypass enforcement.
+Block → one transient paragraph-save failure locks an honest student out of their own work.
+The whole provenance pass is also fail-open on any throw; inverting that to fail-closed
+blocks honest locks on a transient DB error. Pick deliberately, and write down the reasoning.
+
+### The indicator — do not flip until ALL of these hold
+1. **Blockers 1-3 fixed**, and the data re-collected *after* the fix. Rows written before are
+   contaminated and must be excluded, not merged.
+2. **≥200 rows at `kind='paragraph'` from ≥10 distinct students**, post-fix. Paragraph locks
+   are what is worth enforcing; a confirmed 3-word hook is not.
    `select kind, count(*), count(distinct student_id) from provenance_checks group by kind;`
-2. **A separated distribution**, read per `kind` and never pooled: the p95 novel-fraction of
-   PASSING locks well clear of the threshold, with failures clustered above it. If passes
-   and failures overlap, the threshold is wrong and enforcing it punishes honest students.
-   Today: p50 = 0, p75 = 0.056, failures at 1.0 — encouraging, but n=19.
-3. **Zero unexplained `NOT SCORED` lines** in the logs. A hole in the monitor is worse than
-   a miss; enforcement on top of a monitor with holes blocks arbitrarily.
-4. **The short-lock floor fixed.** Every observed failure is 2-3 content words, where
-   `novelFraction` quantises brutally (1 novel word of 3 = 0.33) and the existing
-   `novelWords.length <= 1` escape does not save a 3-word line with 2 novel words.
-   Short-form (haiku) and ESL students would absorb the false positives first.
+3. **Separated distribution, banded by `content_count`, never pooled across `kind`.** Plain
+   "failures above the threshold" is tautological — failures are *defined* by the threshold.
+   The real test: within a content-count band, does the passing population sit clearly below
+   the failing one, or do they overlap? Overlap means the threshold punishes honest students
+   at some rate, and that rate is the number to argue about.
+4. **Zero unexplained `NOT SCORED` lines.** Enforcing on a monitor with holes blocks arbitrarily.
+5. **The short-lock floor fixed.** Every would-be block observed so far is 2-3 content words,
+   where novelFraction quantises brutally (1 novel word of 3 = 0.33) and the
+   `novelWords.length <= 1` escape does not save a 3-word line with 2 novel words. Note that
+   same escape passes 1-word locks at novelFraction 1.0, so the passing distribution has a
+   spike at 1.0 that will wreck condition 3 unless banded.
+6. **A student-facing refusal that does not accuse a child of cheating**, and a decision on
+   what a blocked lock DOES (retry? re-voice? coach hand-off?). A silent refusal is the worst
+   outcome available.
 
-**🔴 The unlock is a BACKFILL, not patience.** At ~3 paragraphs/week, indicator 1 is a year
-away on production traffic alone. All the inputs are already persisted (`raw_spoken_text`,
-`scribed_text`, `messages`), so an idempotent admin sweep can score all 30 existing
-paragraphs and 74 confirmed items retroactively and produce a real distribution from real
-students in one pass. **Build the backfill first; it converts Phase 2 from a wait into a
-decision.**
+### On the backfill — it is NOT the unlock I claimed
+Scoring the existing 30 paragraphs + 74 items retroactively cannot satisfy condition 2: 30
+paragraph rows is 6.7× short of 200. Worse, locks carry no timestamp, so a backfill must
+score against the END-OF-SESSION baseline while live enforcement scores at-lock — systematically
+lower novel fractions, i.e. **a threshold tuned on backfill is too tight for real students.**
+Add survivorship bias (COPPA 7-day deletion has already removed under-13 rows, the highest
+false-positive population) and contamination from admin/test and `seed-demo` sessions.
 
-**What Phase 2 also needs before shipping, beyond the numbers:** a student-facing refusal
-that does not accuse a child of cheating, and a decision on what a blocked lock DOES (retry?
-re-voice prompt? coach hand-off?). A silent refusal is the worst outcome available.
+A backfill is still worth running as a **qualitative** exercise — read the 3 current failures
+and ask whether they are real — but it is not evidence for a threshold. Say so out loud if
+anyone proposes relaxing condition 2 after a backfill; quietly loosening the indicator once
+the data disappoints is the self-confirming failure the indicator exists to prevent.
 
-**Do not read "shadow mode" as "safely watching."** For weeks it recorded nothing on
-dictated paragraphs and looked identical to having nothing to report. That is the failure
-mode to keep watching for.
+### Known lower-severity issues, all recorded not fixed
+- `after()` runs even when the response failed, so a failed scaffold upsert still writes
+  `provenance_checks` rows for annotations that were never persisted; the state predicate then
+  re-scores on the next PATCH and inserts duplicates, possibly with a *different* verdict
+  (the baseline grew in between). No unique constraint prevents it. Same duplication from two
+  racing PATCHes.
+- `/api/paragraphs` still attributes `student_id` to the acting user, so admin remote-in rows
+  carry the admin's id. The scaffold path was fixed to use the session owner; the two paths
+  now disagree inside one table, and condition 2 counts distinct students.
+- Thesis checks remain log-only and unpersisted — a third silent-monitor shape.
+- `/api/messages` writes are fire-and-forget with no `res.ok` check, so a dropped turn
+  silently removes words from the student's future baseline. Same class as the three
+  fire-and-forget writes already found in this repo.
+- `p.index ?? i` keying collides if a stored entry lacks `index`. Not constructible from
+  current client code (every creation site sets `index` = array position), but it is a
+  landmine for any future add/remove-component feature.
+
+**Do not read "shadow mode" as "safely watching."** For weeks it recorded nothing at all on
+dictated paragraphs and looked identical to having nothing to report.
 
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
