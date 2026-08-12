@@ -71,6 +71,56 @@ all read `components`) is blind to them. Backstop shipped; the fuller fix is P2 
 ## P1 — Verification traps into CLAUDE.md  ✅ DONE 2026-08-05
 Memory is recalled selectively; CLAUDE.md loads every session. See "Verification discipline".
 
+## PARKED — Lever B Phase 2: enforce provenance at lock time  ⏸ 2026-08-11
+
+**Deliberately deferred, not forgotten.** Phase 1 (shadow, annotate-never-block) is live and
+now instrumented. Phase 2 flips `checkProvenance` from annotating a lock to REFUSING it.
+
+**Why parked:** the flip was always gated on watching the threshold against real sessions,
+and that watching had never actually happened. Measured 2026-08-11 on live data:
+
+| | |
+|---|---|
+| Provenance records in scaffold JSON | 19, across 8 of 30 scaffolds |
+| Rows in `provenance_checks` | **1** |
+| Completed paragraphs scored | **0 of 14** — the paragraph arm had never fired |
+| Records that would have BLOCKED | 3, at content counts of **2, 2 and 3 words** |
+| Paragraphs written in the prior week | 3 |
+
+Collection is fixed (state-based scoring + `unscorable` reporting + every check written to
+`provenance_checks`, migration 064). What remains is genuinely evidence-gated.
+
+**THE INDICATOR — do not flip until all four hold:**
+
+1. **≥200 `provenance_checks` rows with `kind='paragraph'`**, from ≥10 distinct students.
+   Paragraph locks are the ones worth enforcing; a confirmed 3-word hook is not. Query:
+   `select kind, count(*), count(distinct student_id) from provenance_checks group by kind;`
+2. **A separated distribution**, read per `kind` and never pooled: the p95 novel-fraction of
+   PASSING locks well clear of the threshold, with failures clustered above it. If passes
+   and failures overlap, the threshold is wrong and enforcing it punishes honest students.
+   Today: p50 = 0, p75 = 0.056, failures at 1.0 — encouraging, but n=19.
+3. **Zero unexplained `NOT SCORED` lines** in the logs. A hole in the monitor is worse than
+   a miss; enforcement on top of a monitor with holes blocks arbitrarily.
+4. **The short-lock floor fixed.** Every observed failure is 2-3 content words, where
+   `novelFraction` quantises brutally (1 novel word of 3 = 0.33) and the existing
+   `novelWords.length <= 1` escape does not save a 3-word line with 2 novel words.
+   Short-form (haiku) and ESL students would absorb the false positives first.
+
+**🔴 The unlock is a BACKFILL, not patience.** At ~3 paragraphs/week, indicator 1 is a year
+away on production traffic alone. All the inputs are already persisted (`raw_spoken_text`,
+`scribed_text`, `messages`), so an idempotent admin sweep can score all 30 existing
+paragraphs and 74 confirmed items retroactively and produce a real distribution from real
+students in one pass. **Build the backfill first; it converts Phase 2 from a wait into a
+decision.**
+
+**What Phase 2 also needs before shipping, beyond the numbers:** a student-facing refusal
+that does not accuse a child of cheating, and a decision on what a blocked lock DOES (retry?
+re-voice prompt? coach hand-off?). A silent refusal is the worst outcome available.
+
+**Do not read "shadow mode" as "safely watching."** For weeks it recorded nothing on
+dictated paragraphs and looked identical to having nothing to report. That is the failure
+mode to keep watching for.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
