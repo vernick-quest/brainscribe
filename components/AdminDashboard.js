@@ -11,6 +11,7 @@ import { PersonaAvatar } from '@/lib/personas'
 import { DEMO_EMAILS } from '@/lib/demoAccounts'
 import { unwrapPastedText } from '@/lib/unwrapText'
 import { breachKey, breachProgress, summaryContradictsBreaches } from '@/lib/auditBreach'
+import { presenceLabel, isActiveNow } from '@/lib/presence'
 
 // Paste handler for the admin note fields. Text copied from a terminal, chat pane, or
 // email is hard-wrapped at ~80 columns, and those newlines are real — pasted in, a note
@@ -1277,6 +1278,7 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
   // and the auth schema can't be read back, so pre-059 history is genuinely unknown.
   // Show "—" rather than "0 logins", which would assert something we don't know.
   const logins = Number.isFinite(student.login_count) ? student.login_count : null
+  const active = isActiveNow(student.last_seen_at)
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -1312,11 +1314,13 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
 
         {/* Aligned numbers — one per header glyph. A dash means "none", and for logins
             specifically it means "not recorded", which is not the same as zero. */}
-        <span className={`${COL} text-xs`} style={{ color: 'var(--text-muted)' }}
+        <span className={`${COL} text-xs`}
+          style={{ color: active ? 'var(--status-success)' : 'var(--text-muted)', fontWeight: active ? 600 : 400 }}
           title={student.last_seen_at
             ? `Last seen ${formatDate(student.last_seen_at)}${student.last_sign_in_at && student.last_sign_in_at !== student.last_seen_at ? ` · last signed in ${formatDate(student.last_sign_in_at)}` : ''}`
             : 'Never seen'}>
-          {student.last_seen_at ? formatDate(student.last_seen_at) : '—'}
+          {active && <span aria-hidden style={{ marginRight: 4 }}>●</span>}
+          {presenceLabel(student.last_seen_at)}
         </span>
         <span className={`${COL} text-xs`} style={{ color: logins ? 'var(--text-muted)' : 'var(--text-subtle)' }}
           title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>

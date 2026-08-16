@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/Avatar'
 import { useTabTitle } from '@/components/TabTitle'
 import LogoLockup from '@/components/LogoLockup'
+import PresenceHeartbeat from '@/components/PresenceHeartbeat'
 
 // The breadcrumb word shown next to the logo — reflects the section of the site
 // the current URL is in. Empty string → show just the logo.
@@ -24,6 +25,10 @@ function sectionLabel(pathname) {
 }
 
 export default function Navbar({ user, profile }) {
+  // Presence heartbeat. Navbar is on every authenticated surface (including the
+  // coaching session), so mounting here covers them all without editing
+  // TutorSession.js. Renders nothing; no-ops when logged out.
+
   const renderedUserId = user?.id ?? null
   const section = sectionLabel(usePathname())
   // Name the browser tab for THIS account ("BrainScribe — Elio" / "— ADMIN") so
@@ -89,6 +94,9 @@ export default function Navbar({ user, profile }) {
         backgroundColor: 'var(--surface-card)',
         borderBottom: '1px solid var(--border-default)',
       }}>
+      {/* Renders nothing — reports "still here" while the tab is visible and the
+          user isn't idle. Gated on `user` so logged-out pages never ping. */}
+      {user && <PresenceHeartbeat />}
 
       <div className="flex items-center gap-3">
         {/* Hamburger menu — primary nav: Folder / Skill Studio / Profile.

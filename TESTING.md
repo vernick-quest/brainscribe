@@ -3583,3 +3583,54 @@ suppression record of someone who asked to be forgotten would defeat the request
 
 **Verified at build time:** build exit 0 · 540/540 tests · the 5 `AdminDashboard.js`
 lint errors are pre-existing (identical set at HEAD, line numbers shifted only).
+
+## 2026-08-16 — Presence heartbeat + bucketed "Last seen" (focus/admin)
+
+**Files:** `lib/presence.js` + `.test.js` (new), `components/PresenceHeartbeat.js` (new),
+`app/api/presence/route.js` (new), `components/Navbar.js` (mount, 2 lines),
+`components/AdminDashboard.js` (display). **No migration** — reuses `profiles.last_seen_at` +
+`record_seen()` from 065.
+
+### The gap
+Baron was actively on the site; the roster read 52 min. Measured: his `last_seen_at` was 55 min old
+while his last message was 108 min old — so the middleware stamp fired correctly 55 min ago and
+nothing had happened since. **Request-driven presence can only observe REQUESTS**, and a student
+reading a coaching page makes none. The middleware stamp was working; it just cannot see someone
+sitting still.
+
+### Design — three dials, deliberately different
+Separating them is what keeps "chatty" from being a real cost:
+| dial | value | what it costs |
+|---|---|---|
+| `PING_MS` — browser speaks | 60s | ~200 bytes, no DB |
+| `COALESCE_MS` — turns into a WRITE | 2 min | the only expensive part |
+| `ACTIVE_MS` — "Active now" window | 5 min | display only |
+`ACTIVE_MS > COALESCE_MS` is a **unit-tested invariant**: if writes were rarer than the active
+window, a genuinely present user would flicker out of it between writes.
+
+- **Heartbeat gated on BOTH visibility and idle.** A background tab isn't presence; an
+  open-but-abandoned tab stops reporting after 10 min of no input — otherwise everyone reads as
+  permanently online, the usual way naive heartbeats end up lying. Input listeners are `passive`
+  so they can't delay scrolling or typing.
+- **Mounted in `Navbar`**, which every authenticated surface renders **including the coaching
+  session** — so this covers the motivating case *without touching `TutorSession.js`*, the most
+  fragile file in the repo. Gated on `user`, so logged-out pages never ping.
+- **Endpoint shares the `bs_seen` cookie with the middleware stamp**, so the two mechanisms
+  throttle each other instead of double-writing. ~30 writes/hour for an actively-present user,
+  zero for an idle or hidden tab.
+- **Display bucketed coarser than the write cadence**: "Active now" (green dot) → "12 min ago" →
+  "2h ago" → "3d ago" → date. Showing an exact "52 min" is what made ordinary lag look like a bug.
+  Clock skew renders as "Active now", never a future time.
+
+### Verification
+- `npm run test:run` **556/556 green** (30 files; 16 new presence assertions) · `npm run build` green.
+- **Write path proved end-to-end against the live DB** on the admin's own row (never a student's):
+  planted the before value, called the same `record_seen` RPC the endpoint calls, read it back —
+  advanced 22:37:15 → 22:42:09, `isActiveNow` true, label "Active now". Asserted on the VALUE, not
+  a status code.
+- Not visually verified — /admin is behind Google OAuth and can't render headlessly here.
+
+**Manual check:** open the app as a student and sit still → roster shows "● Active now" and stays
+there · switch tabs for 10 min → it ages out of "Active now" rather than lying · leave the tab open
+and idle overnight → it stops updating (no zombie presence) · DevTools network shows one
+`/api/presence` per minute, not per interaction.
