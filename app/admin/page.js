@@ -19,16 +19,16 @@ export default async function AdminPage() {
   // Use service client to bypass RLS — admin sees everything
   const service = createServiceClient()
 
-  // login_count/last_login_at arrive with migration 059. Selecting a column that
-  // doesn't exist yet fails the WHOLE profiles query, which would render an empty
-  // admin panel between deploy and apply — so ask for them, and fall back to the
-  // pre-059 column list if the DB doesn't have them yet.
+  // login_count/last_login_at arrive with 059, last_seen_at with 063. Selecting a
+  // column that doesn't exist yet fails the WHOLE profiles query, which would render
+  // an empty admin panel between deploy and apply — so ask for them, and fall back to
+  // the base column list if the DB doesn't have them yet.
   const PROFILE_COLS_BASE = 'id, full_name, email, role, created_at, sessions_used, onboarding_complete, age_bracket, coppa_consent_given, avatar_url, is_beta_circle'
   async function readProfiles() {
     const withLogins = await service.from('profiles')
-      .select(`${PROFILE_COLS_BASE}, login_count, last_login_at`).order('role').order('created_at')
+      .select(`${PROFILE_COLS_BASE}, login_count, last_login_at, last_seen_at`).order('role').order('created_at')
     if (!withLogins.error) return withLogins
-    console.warn('[admin] login columns unavailable (migration 059 not applied yet):', withLogins.error.message)
+    console.warn('[admin] login/presence columns unavailable (migration 059/063 not applied yet):', withLogins.error.message)
     return service.from('profiles').select(PROFILE_COLS_BASE).order('role').order('created_at')
   }
 
@@ -73,10 +73,21 @@ export default async function AdminPage() {
     const cur = lastActiveById.get(sess.student_id)
     if (!cur || new Date(t) > new Date(cur)) lastActiveById.set(sess.student_id, t)
   }
+  // profiles.last_seen_at (migration 063) is the only true PRESENCE signal — stamped
+  // by the session middleware on ordinary authenticated requests. The other two are
+  // kept in the max() as a floor: last_seen_at starts accruing at deploy, and a
+  // long-lived login that never re-authenticates would otherwise read as never-seen.
   const lastSeenById = new Map()
-  for (const id of new Set([...lastSignInById.keys(), ...lastActiveById.keys()])) {
-    const a = lastSignInById.get(id), b = lastActiveById.get(id)
-    lastSeenById.set(id, !a ? (b ?? null) : !b ? a : (new Date(b) > new Date(a) ? b : a))
+  const ids = new Set([
+    ...lastSignInById.keys(), ...lastActiveById.keys(),
+    ...(allProfiles ?? []).map(p => p.id),
+  ])
+  for (const id of ids) {
+    const presence = (allProfiles ?? []).find(p => p.id === id)?.last_seen_at ?? null
+    const candidates = [presence, lastSignInById.get(id), lastActiveById.get(id)].filter(Boolean)
+    lastSeenById.set(id, candidates.length
+      ? candidates.reduce((a, b) => (new Date(b) > new Date(a) ? b : a))
+      : null)
   }
 
   // Unresolved, non-'none' findings per student, split by weight so the UI can
