@@ -1,6 +1,8 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
+import { sendWaitlistAck } from '@/lib/notifications'
 import { NextResponse } from 'next/server'
+import { after } from 'next/server'
 
 // Basic shape check — deliberately permissive (we're not verifying deliverability
 // here, just rejecting obvious junk). Caps length to avoid abuse.
@@ -31,13 +33,37 @@ export async function POST(request) {
   const svc = createServiceClient()
   // Upsert on the unique email → a repeat signup silently succeeds (no duplicate,
   // no leaked "you're already subscribed" enumeration).
-  const { error } = await svc
+  //
+  // .select() is what makes the acknowledgment safe to send. ignoreDuplicates uses
+  // ON CONFLICT DO NOTHING, so the returned rows are the INSERTED ones only: an empty
+  // array means this address was already on the list. Without reading that value there
+  // is no way to tell a first request from a fifth, and re-submitting the form would
+  // mail the person again every time.
+  const { data: inserted, error } = await svc
     .from('subscribers')
     .upsert({ email, source }, { onConflict: 'email', ignoreDuplicates: true })
+    .select('email')
 
   if (error) {
     console.error('[subscribe]', error.message)
     return NextResponse.json({ error: 'Something went wrong — please try again.' }, { status: 500 })
+  }
+
+  // Acknowledge a genuine new ACCESS request. Someone asked on 2026-07-29 and was still
+  // waiting in silence on 08-16 because this endpoint told nobody, in either direction.
+  //
+  // Scoped to the waitlist source on purpose: the same form also collects blog
+  // subscribers, and "we'll send you a code when there's room" is nonsense to someone
+  // who just wanted new posts.
+  //
+  // after() rather than a floating promise — a serverless function can be reclaimed the
+  // moment the response returns, and a send that never runs is exactly the silence this
+  // is fixing. The requester's response never waits on the mail.
+  if (inserted?.length && source === 'waitlist') {
+    after(async () => {
+      const sent = await sendWaitlistAck({ to: email })
+      if (!sent) console.error('[subscribe] waitlist ack NOT sent to', email)
+    })
   }
 
   return NextResponse.json({ ok: true })

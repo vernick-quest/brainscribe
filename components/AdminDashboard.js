@@ -1994,9 +1994,190 @@ function BetaCircleManager({ initialCount = 0 }) {
 // ── Tools tab — admin utilities kept out of the main flow ──────
 // Demo persona seeder + idempotent maintenance backfills. Lives behind the Tools
 // tab so it doesn't consume prime real estate above the roster.
+// ── Waitlist ────────────────────────────────────────────────────────────────────
+// Who asked for access, and what actually happened to them.
+//
+// The badge counts people who have heard NOTHING — not rows. `subscribers` is a list
+// of addresses typed into a form, and on 2026-08-16 two of its three rows belonged to
+// people who had already signed up and redeemed a code. A card that counted rows would
+// have shown 3 and sent invites to people who were already inside, so every row here is
+// resolved against its real account server-side (lib/waitlist.js).
+//
+// "Stalled" is the other half: someone who got in and then wrote nothing is invisible
+// everywhere else in the admin panel, because they no longer look like a queue.
+function WaitlistManager() {
+  const [state, setState] = useState({ items: [], counts: null, needsAction: 0, codes: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busyKey, setBusyKey] = useState('')
+  const [code, setCode] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState('')
+  const [showAll, setShowAll] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/admin/waitlist')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Could not load the waitlist.'); setLoading(false); return }
+      setState(json)
+      setCode(c => c || json.codes?.[0]?.code || '')
+    } catch { setError('Network error loading the waitlist.') }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function mutate(key, payload, successMsg) {
+    setBusyKey(key); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/admin/waitlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); return }
+      setState(json)
+      if (successMsg) setNotice(successMsg)
+    } catch { setError('Network error.') }
+    finally { setBusyKey('') }
+  }
+
+  const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
+  const rowStyle = { display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-sunken)', flexWrap: 'wrap' }
+  const pill = (bg, fg) => ({ font: 'var(--type-meta)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: bg, color: fg, whiteSpace: 'nowrap' })
+
+  const STATE_PILL = {
+    waiting:   pill('var(--accent-tint)', 'var(--accent-text)'),
+    invited:   pill('var(--surface-sunken)', 'var(--text-muted)'),
+    signed_up: pill('var(--surface-sunken)', 'var(--text-default)'),
+    writing:   pill('var(--status-ok-tint, var(--surface-sunken))', 'var(--text-default)'),
+    dismissed: pill('var(--surface-sunken)', 'var(--text-muted)'),
+  }
+  const STATE_LABEL = { waiting: 'Waiting', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed' }
+
+  const { items, counts, needsAction, codes } = state
+  const visible = showAll ? items : items.filter(i => i.needsAction)
+  const noCodes = !loading && (codes?.length ?? 0) === 0
+
+  return (
+    <div style={cardStyle}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)', gap: 'var(--space-3)' }}>
+        <div>
+          <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>
+            Waitlist
+            {needsAction > 0 && (
+              <span style={{ ...pill('var(--accent)', 'var(--text-on-accent)'), marginLeft: 8 }}>{needsAction}</span>
+            )}
+          </h3>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+            {counts
+              ? `${counts.waiting} waiting · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up`
+              : 'Access requests from the site'}
+          </p>
+        </div>
+        <button type="button" onClick={load} disabled={loading}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && <p role="alert" style={{ font: 'var(--type-meta)', color: 'var(--status-error)', margin: '0 0 var(--space-2)' }}>{error}</p>}
+      {notice && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-2)' }}>{notice}</p>}
+
+      {/* Which code the Send button will mail. Only ACTIVE, non-exhausted codes are
+          offered — an exhausted code would be worse than sending nothing. */}
+      <div className="flex items-center" style={{ gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <label htmlFor="wl-code" style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>Send code:</label>
+        <select id="wl-code" value={code} onChange={e => setCode(e.target.value)} disabled={noCodes}
+          style={{ font: 'var(--type-body)', padding: '6px 10px', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-card)', color: 'var(--text-default)' }}>
+          {codes?.map(c => (
+            <option key={c.code} value={c.code}>
+              {c.code}{c.max_uses != null ? ` (${c.uses ?? 0}/${c.max_uses})` : ''}
+            </option>
+          ))}
+        </select>
+        {noCodes && (
+          <span style={{ font: 'var(--type-meta)', color: 'var(--status-error)' }}>
+            No active code with room — create or raise one in Beta Circle first.
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>Loading…</p>
+      ) : visible.length === 0 ? (
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
+          {items.length === 0 ? 'Nobody has requested access yet.' : 'Nobody is waiting — everyone has been answered.'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {visible.map(i => (
+            <div key={i.email} style={rowStyle}>
+              <span style={STATE_PILL[i.state]}>{STATE_LABEL[i.state]}</span>
+              <span style={{ font: 'var(--type-body)', color: 'var(--text-default)', flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                {i.email}
+                {i.account?.fullName && (
+                  <span style={{ color: 'var(--text-muted)' }}> · {i.account.fullName} ({i.account.role})</span>
+                )}
+              </span>
+              <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {i.state === 'waiting'
+                  ? `${i.daysWaiting}d waiting`
+                  : i.account?.stalled
+                    ? 'signed up · nothing written'
+                    : i.account
+                      ? `${i.account.sessionCount} assignment${i.account.sessionCount === 1 ? '' : 's'}`
+                      : i.invited_code ? `sent “${i.invited_code}”` : ''}
+              </span>
+
+              {i.needsAction && (
+                <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                  <button type="button" disabled={!code || busyKey === `send:${i.email}`}
+                    onClick={() => mutate(`send:${i.email}`, { action: 'send_code', email: i.email, code }, `Code sent to ${i.email}.`)}
+                    style={{ font: 'var(--type-meta)', fontWeight: 700, background: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)', padding: '0 14px', minHeight: 44 }}>
+                    {busyKey === `send:${i.email}` ? 'Sending…' : 'Approve & send'}
+                  </button>
+                  {confirmEmail === i.email ? (
+                    <button type="button"
+                      onClick={() => { setConfirmEmail(''); mutate(`dismiss:${i.email}`, { action: 'dismiss', email: i.email }, 'Removed from the queue.') }}
+                      style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--status-error)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                      Confirm
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmEmail(i.email)}
+                      style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                      Dismiss
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <button type="button" onClick={() => setShowAll(v => !v)}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', marginTop: 'var(--space-3)', minHeight: 44 }}>
+          {showAll ? 'Show only people waiting' : `Show everyone (${items.length})`}
+        </button>
+      )}
+
+      {counts?.stalled > 0 && (
+        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 'var(--space-3) 0 0', lineHeight: 1.6 }}>
+          {counts.stalled} {counts.stalled === 1 ? 'person' : 'people'} got in and {counts.stalled === 1 ? 'has' : 'have'} written nothing.
+          They need a nudge, not an invite — sending a code would tell someone already inside to come inside.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ToolsTab({ demoSeeded, betaCircleCount }) {
   return (
     <div className="space-y-4">
+      <WaitlistManager />
       <BetaCircleManager initialCount={betaCircleCount} />
       <DemoDataControl seeded={demoSeeded} />
       <BackfillWritingProfiles />
