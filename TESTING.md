@@ -3490,3 +3490,19 @@ second file to be pasted would simply have been a differently-named migration cl
 identity another one already had, and the apply ledger would have shown one "063".
 
 Read the number from **main**, never from the lane's `ls`. Apply order is 064 then 065.
+
+## 2026-08-16 — COPPA 7-day deletion now purges the waitlist row (focus/auth-coppa)
+
+`subscribers` (044/066) has no FK to `profiles`/`auth.users`, so `deleteUser()`'s
+cascade never reached it: an under-13 deleted under the 7-day rule left their email
+address behind. Our Privacy Policy says the account and "all associated data" are
+"permanently deleted", and `/welcome` tells the child "we delete everything we've
+collected" — this makes those true. Full COPPA review of the waitlist (age gate,
+retention, disclosure, the 312.5(c)(3)/(c)(4) questions) is in
+`COPPA-WAITLIST-REVIEW-2026-08-16.md` — those are counsel's and are NOT built.
+
+- [ ] ⬜ Under-13 signs up, also submits the waitlist form with the same address, consent never completes → after the 7-day cron the `subscribers` row for that address is **gone** (and `subscribersPurged` is ≥1 in the run summary)
+- [ ] ⬜ Same, via the profile-side sweep path (under-13 who never submitted a parent email) — also purged
+- [ ] ⬜ An adult on the waitlist who redeems and becomes an account holder is **untouched** by the cron (no purge; the row stays for the admin queue)
+- [ ] ⬜ A `subscribers` delete failure logs + counts in `errors` but does NOT abort the run or block other deletions (the account delete already succeeded)
+- [ ] ⬜ Regression: the cron still deletes accounts as before; `checked/deleted/skipped/orphans/swept` unchanged in shape

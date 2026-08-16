@@ -30,15 +30,43 @@ export async function GET(request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  let deleted = 0, skipped = 0, orphans = 0
+  let deleted = 0, skipped = 0, orphans = 0, subscribersPurged = 0
   const errors = []
+
+  // `subscribers` (migrations 044/066) holds waitlist/newsletter email addresses and
+  // is NOT reached by deleteUser's cascade — it has no FK to profiles or auth.users.
+  // So an under-13 deleted under the 7-day rule could leave their address behind.
+  //
+  // We already promise otherwise, in our own words: the Privacy Policy says the
+  // account and "all associated data" are "permanently deleted", and /welcome tells
+  // the child "we delete everything we've collected". This makes that true. It is a
+  // data-minimizing correction to match a published commitment — it does NOT
+  // presume any answer to the open COPPA questions about the waitlist itself
+  // (age gate, retention policy, disclosure), which are counsel's and are written
+  // up in COPPA-WAITLIST-REVIEW-2026-08-16.md.
+  //
+  // Best-effort by design: the account deletion has already succeeded by the time
+  // this runs, so a failure here is logged and counted, never fatal to the run.
+  async function purgeSubscriber(email) {
+    if (!email) return
+    const { error: subErr } = await service
+      .from('subscribers').delete().eq('email', String(email).trim().toLowerCase())
+    if (subErr) {
+      console.error('[coppa-cleanup] subscribers purge failed:', subErr.message)
+      errors.push({ subscribers: subErr.message })
+      return
+    }
+    subscribersPurged++
+  }
 
   for (const row of (expired ?? [])) {
     // Re-check the student before deleting — never delete an account that did get
-    // consent (defends against a status field that lagged the approval).
+    // consent (defends against a status field that lagged the approval). `email` is
+    // read HERE because the profile row is cascaded away by deleteUser below, and
+    // it's the only key `subscribers` can be matched on.
     const { data: prof } = await service
       .from('profiles')
-      .select('coppa_consent_given')
+      .select('coppa_consent_given, email')
       .eq('id', row.student_id)
       .single()
 
@@ -62,6 +90,7 @@ export async function GET(request) {
       errors.push({ student_id: row.student_id, error: delErr.message })
       continue // leave status='pending' so the next run retries
     }
+    await purgeSubscriber(prof.email)
     deleted++
   }
 
@@ -98,10 +127,11 @@ export async function GET(request) {
       .limit(1)
     if (active?.length) continue
 
-    // Re-check consent at the moment of deletion (same lag defense as above).
+    // Re-check consent at the moment of deletion (same lag defense as above), and
+    // read the email before the profile row cascades away.
     const { data: prof } = await service
       .from('profiles')
-      .select('coppa_consent_given')
+      .select('coppa_consent_given, email')
       .eq('id', row.id)
       .single()
     if (!prof || prof.coppa_consent_given) continue
@@ -112,10 +142,11 @@ export async function GET(request) {
       errors.push({ student_id: row.id, error: delErr.message })
       continue
     }
+    await purgeSubscriber(prof.email)
     swept++
   }
 
-  const summary = { checked: expired?.length ?? 0, deleted, skipped, orphans, swept, errors }
+  const summary = { checked: expired?.length ?? 0, deleted, skipped, orphans, swept, subscribersPurged, errors }
   console.log('[coppa-cleanup]', JSON.stringify(summary))
   return NextResponse.json({ ok: true, ...summary })
 }
