@@ -3506,3 +3506,33 @@ retention, disclosure, the 312.5(c)(3)/(c)(4) questions) is in
 - [ ] ⬜ An adult on the waitlist who redeems and becomes an account holder is **untouched** by the cron (no purge; the row stays for the admin queue)
 - [ ] ⬜ A `subscribers` delete failure logs + counts in `errors` but does NOT abort the run or block other deletions (the account delete already succeeded)
 - [ ] ⬜ Regression: the cron still deletes accounts as before; `checked/deleted/skipped/orphans/swept` unchanged in shape
+
+## 2026-08-16 — Waitlist retention: `subscribers` rows now expire (focus/auth-coppa)
+
+`subscribers` had NO retention policy — an address stayed forever. Windows (Robert's
+decision, 2026-08-16) live in `lib/subscriberRetention.js` and are **published in the
+privacy policy** (marketing, same pass): **12 months** uncontacted, **90 days**
+dismissed, **never while an account exists**. Rules are pure + exhaustively unit
+tested (13 tests) because the delete is irreversible; the daily COPPA cron applies
+the verdict. No migration (DELETE, not a schema change; ledger max = 067).
+
+⚠️ If a constant in `lib/subscriberRetention.js` changes, the privacy policy must
+change in the same pass. `subscriberRetention.test.js` pins both numbers as a tripwire.
+
+- [ ] ⬜ A waitlist address with **no matching account**, never invited, older than 12 months → purged; `subscribersExpired` ≥1 and `expiredReasons.uncontacted_expired` in the cron summary
+- [ ] ⬜ Same but 11 months old → **kept**
+- [ ] ⬜ A **dismissed** row older than 90 days → purged (`dismissed_expired`); dismissed 30 days ago → kept
+- [ ] ⬜ An ancient row dismissed **yesterday** → kept (dismissal date wins over signup date — the conservative direction)
+- [ ] ⬜ 🔴 A row whose email **matches an existing profile** is NEVER purged, no matter how old (rule 1) — verify with a real account that also sat on the waitlist
+- [ ] ⬜ Email match is case-insensitive (profile email from Google may be mixed case; subscriber rows are lowercased on insert)
+- [ ] ⬜ If the profile lookup fails, the run purges **nothing** that pass and logs to `errors` (fail-safe — we cannot honour "never purge a user" without it)
+- [ ] ⬜ An **invited but never converted** row is retained (known gap, deliberate — see below); reason reads `invited_kept`
+- [ ] ⬜ Regression: the COPPA deletion passes still behave as before; `checked/deleted/skipped/orphans/swept/subscribersPurged` unchanged in shape
+
+**Verified at build time (2026-08-16):** build green · 535/535 tests · dry run of the
+real rules against all 3 live rows → **0 purges** (2 protected by `has_profile`, 1
+`invited_kept`), i.e. nothing on the current list is old enough to expire.
+
+**Known gap, deliberately not closed:** an address we DID send a code to but who never
+signed up matches no rule and is retained indefinitely. Flagged to the conductor rather
+than deleting data nobody asked to delete — needs a decision, then one more rule.

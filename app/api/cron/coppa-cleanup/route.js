@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
+import { purgeDecision, RETENTION_SUMMARY } from '@/lib/subscriberRetention'
 
 // GET /api/cron/coppa-cleanup — deletes under-13 accounts whose parental consent
 // was never given within the 7-day window (the deletion the consent email/Privacy/
@@ -146,7 +147,62 @@ export async function GET(request) {
     swept++
   }
 
-  const summary = { checked: expired?.length ?? 0, deleted, skipped, orphans, swept, subscribersPurged, errors }
+  // ── Waitlist retention (lib/subscriberRetention.js) ──────────────────────────
+  // `subscribers` had no retention policy at all: an address stayed forever. The
+  // windows are PUBLISHED in the privacy policy (12 months uncontacted / 90 days
+  // dismissed), so the constants and the policy move together — see the warning in
+  // that module. An address belonging to an existing account is never touched here;
+  // it follows the account lifecycle, and the COPPA purge above already removes it
+  // the moment that account is deleted.
+  //
+  // Runs after the deletion passes on purpose: those may have just removed profiles,
+  // and the profile lookup below should see the post-deletion world.
+  let subscribersExpired = 0
+  const expiredReasons = {}
+  const { data: subs, error: subsErr } = await service
+    .from('subscribers')
+    .select('id, email, created_at, invited_at, dismissed_at')
+
+  if (subsErr) {
+    console.error('[coppa-cleanup] subscribers read failed:', subsErr.message)
+    errors.push({ retention: subsErr.message })
+  } else if (subs?.length) {
+    // One lookup for every candidate address rather than a query per row. Compared
+    // case-insensitively: /api/subscribe lowercases on insert, but a profile email
+    // comes from Google and is not guaranteed to be.
+    const emails = subs.map(s => String(s.email ?? '').trim().toLowerCase()).filter(Boolean)
+    const { data: profs, error: profErr } = await service
+      .from('profiles').select('email').in('email', emails)
+
+    if (profErr) {
+      // FAIL SAFE: without the profile list we cannot honour "never purge a user",
+      // so purge nothing this run. The next run retries.
+      console.error('[coppa-cleanup] retention profile lookup failed — skipping purge:', profErr.message)
+      errors.push({ retention: profErr.message })
+    } else {
+      const accounts = new Set((profs ?? []).map(p => String(p.email ?? '').trim().toLowerCase()))
+      const now = new Date()
+      for (const s of subs) {
+        const email = String(s.email ?? '').trim().toLowerCase()
+        const { purge, reason } = purgeDecision(s, { hasProfile: accounts.has(email), now })
+        if (!purge) continue
+        const { error: delErr } = await service.from('subscribers').delete().eq('id', s.id)
+        if (delErr) {
+          console.error('[coppa-cleanup] retention delete failed:', delErr.message)
+          errors.push({ retention: delErr.message })
+          continue
+        }
+        expiredReasons[reason] = (expiredReasons[reason] ?? 0) + 1
+        subscribersExpired++
+      }
+    }
+  }
+
+  const summary = {
+    checked: expired?.length ?? 0, deleted, skipped, orphans, swept,
+    subscribersPurged, subscribersExpired, expiredReasons,
+    retention: RETENTION_SUMMARY, errors,
+  }
   console.log('[coppa-cleanup]', JSON.stringify(summary))
   return NextResponse.json({ ok: true, ...summary })
 }
