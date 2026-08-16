@@ -196,6 +196,48 @@ so work could continue; this item is the debt that creates.
 to be a child. This is a "before launch" item, not an incident — but it is P0 because the
 cost of being wrong scales with the first real cohort, not with today's three rows.
 
+## P1 — School-filter access: NDPA + vendor categorization  🔵 ROBERT OWNS · 2026-08-16
+
+Neither of these is a code task, which is why neither has a lane. Both are things only
+Robert can do — one is a document exercise, the other is browser forms behind logins and
+CAPTCHAs. Recorded here so they stop living in a chat scroll.
+
+**Context that makes them urgent-ish:** Securly, GoGuardian and Lightspeed are all
+**customer-gated** — there is no site-owner submission path (see
+[[brainscribe-firewall-categorization]]). You cannot form-fill your way out of a school
+block. The unlock is one friendly district admin, who can both allowlist immediately and
+submit the recategorization from inside the portal, which then updates the vendor's shared
+database for every other district.
+
+### 1. Get NDPA-ready
+The **National Data Privacy Agreement (NDPA v2)** from the Student Data Privacy Consortium
+(`privacy.a4l.org/national-dpa`) is the standard K-12 procurement instrument — 275,000+
+executed since 2016. A district IT admin will ask for a signed DPA before allowlisting
+anything, so this gates every school conversation after the first hello.
+
+⚠️ **Depends on the P0 counsel item above.** A DPA is a contract; signing one on a
+best-understanding reading is a different risk class from writing a privacy policy on one.
+Do the document prep now, sign nothing until counsel has looked.
+
+Adjacent, cheaper, and worth doing in the same pass: a **Common Sense Privacy** listing
+(`commonsense.org/education/privacy-direct`) and the **1EdTech App Vetting Rubric**.
+
+### 2. Confirm the seven general-vendor submissions ever happened
+The 2026-07-13 playbook (Talos · Palo Alto · Zscaler · Blue Coat · Forcepoint · FortiGuard ·
+Trellix) was **prep-only, and no submission was ever recorded**. Per-vendor URLs, the exact
+category to request, and the ⚠️ "do NOT let us be filed under AI/Generative-AI" strategy
+are all written up in [[brainscribe-firewall-categorization]] — it is an afternoon, not a
+project. Many districts run one of these UPSTREAM of the school-specific filter, so a block
+today may not be coming from Securly at all.
+
+### The marketing-lane piece, which is real but downstream
+A **`/for-schools` page** aimed at district IT: what to allowlist (including the
+ElevenLabs/Anthropic endpoints a filter might also stop), what data is collected and how
+long it is kept, COPPA/FERPA posture, DPA availability. Filter vendors and district admins
+both look for exactly that page, and its absence reads as "consumer app". That IS
+`focus/marketing` — but it must state retention and privacy accurately, so it lands AFTER
+the privacy pass, not alongside it.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
