@@ -169,6 +169,33 @@ the data disappoints is the self-confirming failure the indicator exists to prev
 **Do not read "shadow mode" as "safely watching."** For weeks it recorded nothing at all on
 dictated paragraphs and looked identical to having nothing to report.
 
+## P0 — Engage COPPA counsel  🔵 AWAITING ROBERT · flagged 2026-08-16
+
+**There is no legal counsel engaged.** Every COPPA judgment in this repo to date is a
+careful reading by non-lawyers, and two of them are load-bearing for a pre-launch product
+serving under-13s. Decisions were made on best understanding (2026-08-16, Robert's call)
+so work could continue; this item is the debt that creates.
+
+**The specific questions to put in front of counsel**, all written up with facts in
+`COPPA-WAITLIST-REVIEW-2026-08-16.md`:
+
+1. The marketing/waitlist form collects an email with **no age screen**. Is the
+   parent-directed posture (`docs/specs/brainscribe-coppa-marketing-posture-2026-07.md`)
+   sufficient, or does the form need one?
+2. Does the one-time-contact exception (16 CFR 312.5(c)(3)) cover the acknowledgment
+   email, given the copy promises a later second contact?
+3. Does 312.5(c)(4) apply where there is **no parent anywhere in the flow**?
+4. Is the retention window we picked (below) defensible?
+5. Non-US minors: COPPA is US law and the waitlist has an `.ed.jp` address. GDPR-K /
+   Japanese APPI were never scoped.
+6. Separately, and older: the **parent-first under-13 flow** (migration 055) has had
+   "counsel review OPEN" against it since 2026-08-02 and has never been run end-to-end
+   live. See [[brainscribe-parent-first-coppa]].
+
+**Not blocking anything today.** Volume is three addresses; nobody on the list is known
+to be a child. This is a "before launch" item, not an incident — but it is P0 because the
+cost of being wrong scales with the first real cohort, not with today's three rows.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
