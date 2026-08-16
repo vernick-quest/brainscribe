@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { buildWaitlistView, isAccessRequest } from '@/lib/waitlist'
+import { purgeSubscriberEmail } from '@/lib/subscribers'
 import { sendWaitlistCode } from '@/lib/notifications'
 import { NextResponse } from 'next/server'
 
@@ -171,9 +172,31 @@ export async function POST(request) {
         break
       }
 
+      // ── forget ────────────────────────────────────────────────────────────
+      // Honour "we delete it sooner if you ask us to" — a sentence now PUBLISHED in
+      // the privacy policy. Before this, the only implementation was Robert running
+      // SQL by hand, which is the shape of promise that quietly stops being kept.
+      //
+      // Distinct from `dismiss` on purpose. Dismiss is OUR judgement (spam, not a
+      // fit) and keeps the row for 90 days so the address doesn't silently re-enter
+      // the queue. This is THEIR request, so it deletes now and keeps nothing —
+      // retaining a suppression record of someone who asked to be forgotten would
+      // defeat the request. If they later resubmit the form, that is their choice
+      // and the row comes back.
+      case 'forget': {
+        if (!email) return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
+        const { purged, error: purgeErr } = await purgeSubscriberEmail(service, email)
+        if (purgeErr) return NextResponse.json({ error: purgeErr }, { status: 500 })
+        if (!purged) return NextResponse.json({ error: 'That address is not on the waitlist.' }, { status: 404 })
+        console.log('[admin/waitlist] forget (deletion request) honoured')
+        break
+      }
+
       // ── dismiss / restore ─────────────────────────────────────────────────
-      // The row is never deleted: the address would simply re-enter the queue on the
-      // next form submit, with no memory of having been judged.
+      // Our judgement, not theirs: the row is KEPT so the address doesn't re-enter
+      // the queue on the next form submit with no memory of having been judged.
+      // Retention then expires it 90 days after the dismissal (lib/subscriberRetention).
+      // For a person who ASKS to be removed, use `forget` above — that deletes now.
       case 'dismiss':
       case 'restore': {
         if (!email) return NextResponse.json({ error: 'Email is required.' }, { status: 400 })

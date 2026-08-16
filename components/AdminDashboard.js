@@ -2013,6 +2013,9 @@ function WaitlistManager() {
   const [busyKey, setBusyKey] = useState('')
   const [code, setCode] = useState('')
   const [confirmEmail, setConfirmEmail] = useState('')
+  // Separate from confirmEmail: "Forget" is a different, irreversible action and must
+  // not share a confirm latch with Dismiss, or one click could arm the other.
+  const [confirmForget, setConfirmForget] = useState('')
   const [showAll, setShowAll] = useState(false)
 
   const load = useCallback(async () => {
@@ -2156,6 +2159,27 @@ function WaitlistManager() {
                   )}
                 </span>
               )}
+
+              {/* Forget — for when the PERSON asks to be removed. The privacy policy
+                  says "we delete it sooner if you ask us to", and until this existed
+                  the only implementation was running SQL by hand. Shown on every row,
+                  not just actionable ones: anyone can ask, at any state. Distinct from
+                  Dismiss, which is our judgement and keeps the row 90 days. */}
+              <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                {confirmForget === i.email ? (
+                  <button type="button" disabled={busyKey === `forget:${i.email}`}
+                    onClick={() => { setConfirmForget(''); mutate(`forget:${i.email}`, { action: 'forget', email: i.email }, 'Deleted — they asked to be removed.') }}
+                    style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--status-error)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                    {busyKey === `forget:${i.email}` ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setConfirmForget(i.email)}
+                    title="They asked to be removed — deletes the address now, keeping nothing"
+                    style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                    Forget
+                  </button>
+                )}
+              </span>
             </div>
           ))}
         </div>

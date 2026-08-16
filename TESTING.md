@@ -3561,3 +3561,25 @@ alone — those are accounts we create ourselves, not people who joined a waitli
 
 **Verified at build time:** build green (exit 0; the 7 "Error while requesting resource"
 prerender lines are pre-existing — confirmed identical at HEAD) · 535/535 tests.
+
+## 2026-08-16 — "Forget" — honouring a deletion request without hand-written SQL (focus/auth-coppa)
+
+The privacy policy now says "we delete it sooner if you ask us to". Until this, the
+only implementation was Robert running SQL by hand — the shape of promise that quietly
+stops being kept. New `forget` action on `/api/admin/waitlist` + a per-row control in
+the admin waitlist card (requested by marketing after the policy shipped).
+
+**Forget vs Dismiss — different things, deliberately:** Dismiss is OUR judgement (spam,
+not a fit) and KEEPS the row so the address can't silently re-enter the queue; retention
+expires it 90 days later. Forget is THEIR request: deletes now, keeps nothing — a
+suppression record of someone who asked to be forgotten would defeat the request.
+
+- [ ] ⬜ Admin → Tools → Waitlist: every row has a **Forget** link (not only actionable ones — anyone can ask, at any state)
+- [ ] ⬜ Forget requires a second click ("Confirm delete") and does NOT share its latch with Dismiss — clicking one must not arm the other
+- [ ] ⬜ After confirming, the row is gone from the list and from `subscribers`; the card re-paints from server state
+- [ ] ⬜ Forgetting an address that isn't on the list → 404 "not on the waitlist", no crash
+- [ ] ⬜ Forget on a row that HAS an account removes only the waitlist row — the account is untouched
+- [ ] ⬜ Regression: Approve & send and Dismiss/restore behave exactly as before
+
+**Verified at build time:** build exit 0 · 540/540 tests · the 5 `AdminDashboard.js`
+lint errors are pre-existing (identical set at HEAD, line numbers shifted only).
