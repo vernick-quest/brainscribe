@@ -3421,3 +3421,56 @@ folded in. **Use the updated SQL, not the version pasted earlier.**
 **Manual check (after 060):** a finding with 3 errors shows 3 note boxes and no central notes/resolve ·
 resolving all 3 closes the finding · the technical-only finding still has its own note + Mark resolved ·
 the contradicting summary carries the ⚠ label · disposition chips persist across Refresh.
+
+## 2026-08-09 — "Last seen" becomes real presence (focus/admin)
+
+**Files:** `supabase/migrations/063_profile_last_seen.sql` (**NOT APPLIED**, number needs infra
+confirmation — 062 is claimed by the coach-ai truncation counters),
+`lib/supabase/middleware.js` (⚠️ **shared file, outside the admin lane**), `app/admin/page.js`.
+
+### The bug
+Baron was sitting with Robert using the app on an iPad; the roster read "6 days ago". Diagnosed
+against live data rather than guessed:
+
+| signal | Baron |
+|---|---|
+| `auth.users.last_sign_in_at` | 25 days ago |
+| max `sessions.last_active_at` | 7 days ago |
+| his most recent message | 7 days ago |
+| roster showed (max of the two) | 7 days ago ✓ working as written |
+
+The max() was correct — **neither input measures presence**. `last_sign_in_at` moves only on a
+FRESH OAuth sign-in (a device that stays logged in refreshes its token silently for weeks);
+`last_active_at` moves only on a real coach/student TURN, so reading or browsing registers as
+nothing. There was no "this person is in the app" signal anywhere in the system.
+
+### The fix
+- **063** adds `profiles.last_seen_at` + a `record_seen(uuid)` RPC (SECURITY DEFINER, **EXECUTE
+  revoked from public/anon/authenticated**, granted to `service_role` only — a user must not be
+  able to stamp another user's row). The RPC never moves the value backwards, so an out-of-order
+  request can't rewind presence. Migration backfills from `last_login_at` / session activity so the
+  column isn't uniformly null on day one.
+- **Middleware stamp** in `updateSession`: on an ordinary authenticated request, throttled by a
+  5-minute httpOnly cookie (`bs_seen`). The cookie is set BEFORE the write, so a slow or failing
+  write can't cause a stamp storm. Cost is **one write per user per 5 minutes and zero extra
+  reads**. Cron and `_next` paths are skipped — presence should mean a person, not a poller.
+  Entirely best-effort: wrapped in try/catch so it can never delay or break a page load.
+- Roster takes `max(last_seen_at, last_sign_in_at, last_active_at)`. The older two stay as a floor
+  because `last_seen_at` only starts accruing at deploy.
+
+### Verification
+- `npm run build` green · `npm run test:run` **479/479 green**.
+- **Fail-soft proved against the live DB** (which lacks the column): the profiles query falls back
+  to the base column list and still returns **20/20 profiles** — no empty admin panel between
+  deploy and apply. `record_seen` confirmed absent, so the middleware's catch path is live behaviour
+  until 063 runs.
+- Backfill preview for Baron: `last_seen_at` = his last real activity, then moves to now on his
+  next page load after deploy.
+
+⚠️ **Cross-lane:** the stamp lives in `lib/supabase/middleware.js`, which the admin lane does not
+own. Presence can only be recorded where requests pass through, so there was no in-lane option.
+Flagged for the conductor / auth lane.
+
+**Manual check (after 063 + deploy):** load any page as a student → their roster row reads "today"
+within seconds · reload repeatedly → only one write per 5 min (check `last_seen_at` doesn't churn) ·
+a logged-out visitor never stamps · the roster re-sorts so the active student is top.
