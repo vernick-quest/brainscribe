@@ -298,6 +298,50 @@ a manual GoDaddy/Resend task.)
 
 ---
 
+## P1 — The blog list has subscribers but no sender  🔴 added 2026-08-16
+
+**The gap.** `components/NewsletterSignup.js` on `/blog` collects an address on the
+promise *"We'll send new posts as they go up."* **Nothing sends them.** Grepped at
+`f8fa522`: `sendWaitlistAck` and `sendWaitlistCode` are the only subscriber-facing
+emails that exist. There is no post mailing anywhere in the codebase.
+
+**Not yet harming anyone** — all three live `subscribers` rows are `source='waitlist'`;
+there are zero blog subscribers (counted by auth-coppa, 2026-08-16). But a twice-weekly
+Mon/Thu cadence restarted this week specifically to drive traffic, so blog-form signups
+are about to start and the promise starts running with them.
+
+**Two ways out. Both are fine; drifting is not.**
+1. Build the sender (below), or
+2. take the blog form down until it exists.
+
+Deliberately NOT taken: softening the copy. "We'll send new posts" is what the form is
+*for*; watering it down until it promises nothing would leave a form that collects
+addresses for no stated reason.
+
+**If it gets built, the shape — agreed with auth-coppa 2026-08-16:**
+- **`List-Unsubscribe` (RFC 8058 one-click) + a working opt-out endpoint must ship WITH
+  the first mailing, not after.** You cannot retrofit an opt-out onto people you have
+  already mailed, and Gmail/Yahoo bulk-sender rules expect one-click. This is the one
+  ordering constraint that cannot be fixed later.
+- **Guard on `source`, mirror-image of the existing send-code guard.** `source` is the
+  only thing separating a blog subscriber from an access request. `/api/subscribe`
+  already scopes the ack to `source === 'waitlist'`, and `lib/waitlist.js`
+  (`isAccessRequest`) guards the code path. A sender needs the opposite guard: never
+  mail a post to someone who only asked for access. Cheap at build time, expensive to
+  discover afterwards.
+- **Exclude rows that are gone, dismissed, or Forgotten**, and honour Forget
+  (`/api/admin/waitlist`, added 1a6f55d) immediately — otherwise we mail someone who
+  asked to be removed.
+- Retention interacts: see `lib/subscriberRetention.js`. A row can expire out from under
+  a queued send.
+
+**Related copy already fixed (24f05e6):** the success message said "unsubscribe anytime"
+when the codebase contained exactly one occurrence of the word "unsubscribe" — that copy
+string. It now names the real route (email us). That is a stopgap for a list nobody is
+mailing, **not** a substitute for a real opt-out once mailing starts.
+
+---
+
 ## Other deferred items
 (See `TESTING.md` → "Known deferred" for the full list.)
 - Coaching-session redesign (iMessage bubbles, split/stacked toggle, "Working on" context bar) — intentionally not applied; existing session preserved.
