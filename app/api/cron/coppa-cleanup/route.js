@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import { purgeDecision, RETENTION_SUMMARY } from '@/lib/subscriberRetention'
+import { purgeSubscriberEmail } from '@/lib/subscribers'
 
 // GET /api/cron/coppa-cleanup — deletes under-13 accounts whose parental consent
 // was never given within the 7-day window (the deletion the consent email/Privacy/
@@ -50,14 +51,9 @@ export async function GET(request) {
   // this runs, so a failure here is logged and counted, never fatal to the run.
   async function purgeSubscriber(email) {
     if (!email) return
-    const { error: subErr } = await service
-      .from('subscribers').delete().eq('email', String(email).trim().toLowerCase())
-    if (subErr) {
-      console.error('[coppa-cleanup] subscribers purge failed:', subErr.message)
-      errors.push({ subscribers: subErr.message })
-      return
-    }
-    subscribersPurged++
+    const { purged, error: subErr } = await purgeSubscriberEmail(service, email)
+    if (subErr) { errors.push({ subscribers: subErr }); return }
+    if (purged) subscribersPurged++
   }
 
   for (const row of (expired ?? [])) {

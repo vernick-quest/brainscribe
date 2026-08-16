@@ -3536,3 +3536,28 @@ real rules against all 3 live rows → **0 purges** (2 protected by `has_profile
 **Known gap, deliberately not closed:** an address we DID send a code to but who never
 signed up matches no rule and is retained indefinitely. Flagged to the conductor rather
 than deleting data nobody asked to delete — needs a decision, then one more rule.
+
+## 2026-08-16 — "deleted with the account" is now true on EVERY delete path (focus/auth-coppa)
+
+Marketing published: a waitlist address that becomes an account "follows that account
+instead — **including being deleted with the account**" (focus/marketing 938176e).
+Diffing that against the code found it was true only for the COPPA cron (f8fa522) —
+the **admin delete-user** path left the `subscribers` row behind, because the table has
+no FK and nothing cascades to it. That made both the policy sentence and the route's
+own "removes the account and all its data" comment false.
+
+Purge now lives in ONE place, `lib/subscribers.js` (`purgeSubscriberEmail`), called by
+both paths. **Any new code path that deletes a user must call it** or the published
+sentence stops being true.
+
+- [ ] ⬜ Admin deletes a user who is also on the waitlist → the `subscribers` row is gone
+- [ ] ⬜ Admin deletes a user who was never on the waitlist → succeeds normally, no error
+- [ ] ⬜ Mixed-case account email still matches the lowercased subscriber row
+- [ ] ⬜ A purge failure does NOT fail the deletion — the account is already gone; the response carries `subscriberPurgeError` so an admin sees it instead of assuming
+- [ ] ⬜ Regression: COPPA cron `subscribersPurged` still increments as before (it now delegates to the same helper)
+
+**Not covered:** `seed-demo` teardown also calls `deleteUser` for demo fixtures. Left
+alone — those are accounts we create ourselves, not people who joined a waitlist.
+
+**Verified at build time:** build green (exit 0; the 7 "Error while requesting resource"
+prerender lines are pre-existing — confirmed identical at HEAD) · 535/535 tests.
