@@ -2052,9 +2052,10 @@ function WaitlistManager() {
     invited:   pill('var(--surface-sunken)', 'var(--text-muted)'),
     signed_up: pill('var(--surface-sunken)', 'var(--text-default)'),
     writing:   pill('var(--status-ok-tint, var(--surface-sunken))', 'var(--text-default)'),
+    subscriber:pill('var(--surface-sunken)', 'var(--text-muted)'),
     dismissed: pill('var(--surface-sunken)', 'var(--text-muted)'),
   }
-  const STATE_LABEL = { waiting: 'Waiting', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed' }
+  const STATE_LABEL = { waiting: 'Waiting', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed', subscriber: 'Blog' }
 
   const { items, counts, needsAction, codes } = state
   const visible = showAll ? items : items.filter(i => i.needsAction)
@@ -2072,7 +2073,7 @@ function WaitlistManager() {
           </h3>
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
             {counts
-              ? `${counts.waiting} waiting · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up`
+              ? `${counts.waiting} waiting · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up${counts.subscriber ? ` · ${counts.subscriber} blog` : ''}`
               : 'Access requests from the site'}
           </p>
         </div>
@@ -2119,6 +2120,9 @@ function WaitlistManager() {
                 {i.email}
                 {i.account?.fullName && (
                   <span style={{ color: 'var(--text-muted)' }}> · {i.account.fullName} ({i.account.role})</span>
+                )}
+                {i.source && i.source !== 'waitlist' && (
+                  <span style={{ color: 'var(--text-muted)' }}> · via {i.source}</span>
                 )}
               </span>
               <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>

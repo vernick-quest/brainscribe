@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { buildWaitlistView } from '@/lib/waitlist'
+import { buildWaitlistView, isAccessRequest } from '@/lib/waitlist'
 import { sendWaitlistCode } from '@/lib/notifications'
 import { NextResponse } from 'next/server'
 
@@ -129,8 +129,12 @@ export async function POST(request) {
         if (!email || !code) return NextResponse.json({ error: 'Email and code are required.' }, { status: 400 })
 
         const { data: row } = await service
-          .from('subscribers').select('email').eq('email', email).maybeSingle()
+          .from('subscribers').select('email, source').eq('email', email).maybeSingle()
         if (!row) return NextResponse.json({ error: 'That address is not on the waitlist.' }, { status: 404 })
+        // The card already hides the button for these; this is the actual boundary.
+        if (!isAccessRequest(row)) {
+          return NextResponse.json({ error: `${email} signed up for the blog, not for access — sending a code would answer a question they never asked.` }, { status: 400 })
+        }
 
         const { data: codeRow } = await service
           .from('access_codes').select('code, active, uses, max_uses').eq('code', code).maybeSingle()
