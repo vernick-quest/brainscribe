@@ -2202,10 +2202,113 @@ function WaitlistManager() {
   )
 }
 
+// ── Blog mailing ────────────────────────────────────────────────────────────────
+// The blog form promised "we'll send new posts as they go up" from the day it shipped,
+// and nothing sent one until 2026-08-16. Deliberately manual: pick a published post,
+// see the real recipient count, send. Dry-run first because bulk mail is irreversible.
+function BlogMailer() {
+  const [state, setState] = useState({ posts: [], recipientCount: 0, skipped: {}, sends: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [slug, setSlug] = useState('')
+  const [pending, setPending] = useState(null)   // dry-run result awaiting confirmation
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/admin/blog-send')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Could not load the mailing state.'); setLoading(false); return }
+      setState(json)
+      setSlug(sl => sl || json.posts?.find(p => !p.sent)?.slug || '')
+    } catch { setError('Network error.') }
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function post(confirm) {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/admin/blog-send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, confirm }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); setPending(null); return }
+      if (json.dryRun) { setPending(json); return }
+      setNotice(`Sent "${json.title}" to ${json.sent} subscriber${json.sent === 1 ? '' : 's'}.${json.failed ? ` ${json.failed} failed.` : ''}`)
+      setPending(null)
+      load()
+    } catch { setError('Network error.') }
+    finally { setBusy(false) }
+  }
+
+  const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
+  const unsent = state.posts?.filter(p => !p.sent) ?? []
+
+  return (
+    <div style={cardStyle}>
+      <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>Blog mailing</h3>
+      <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 var(--space-3)' }}>
+        {loading ? 'Loading…' : `${state.recipientCount} blog subscriber${state.recipientCount === 1 ? '' : 's'} · ${unsent.length} post${unsent.length === 1 ? '' : 's'} never mailed`}
+      </p>
+
+      {error && <p role="alert" style={{ font: 'var(--type-meta)', color: 'var(--status-error)', margin: '0 0 var(--space-2)' }}>{error}</p>}
+      {notice && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-2)' }}>{notice}</p>}
+
+      {state.recipientCount === 0 && !loading && (
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 0 var(--space-3)' }}>
+          Nobody has signed up for posts yet. The form collects them at the bottom of /blog.
+        </p>
+      )}
+
+      <div className="flex items-center" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <select value={slug} onChange={e => { setSlug(e.target.value); setPending(null) }}
+          aria-label="Post to mail"
+          style={{ font: 'var(--type-body)', padding: '6px 10px', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-card)', color: 'var(--text-default)', maxWidth: '100%' }}>
+          {state.posts?.map(p => (
+            <option key={p.slug} value={p.slug} disabled={p.sent}>
+              {p.sent ? '✓ ' : ''}{p.title}
+            </option>
+          ))}
+        </select>
+        <button type="button" disabled={!slug || busy || !state.recipientCount} onClick={() => post(false)}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+          {busy && !pending ? 'Checking…' : 'Preview send'}
+        </button>
+      </div>
+
+      {pending && (
+        <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-sunken)' }}>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-default)', margin: '0 0 var(--space-2)' }}>
+            Send <strong>{pending.title}</strong> to <strong>{pending.recipientCount}</strong> subscriber{pending.recipientCount === 1 ? '' : 's'}?
+          </p>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-3)' }}>
+            This cannot be undone. Each email carries a one-click unsubscribe.
+            {Object.keys(pending.skipped ?? {}).length > 0 &&
+              ` Skipped: ${Object.entries(pending.skipped).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ')}.`}
+          </p>
+          <button type="button" disabled={busy} onClick={() => post(true)}
+            style={{ font: 'var(--type-meta)', fontWeight: 700, background: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)', padding: '0 14px', minHeight: 44 }}>
+            {busy ? 'Sending…' : 'Send it'}
+          </button>
+          <button type="button" onClick={() => setPending(null)}
+            style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 12px' }}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ToolsTab({ demoSeeded, betaCircleCount }) {
   return (
     <div className="space-y-4">
       <WaitlistManager />
+      <BlogMailer />
       <BetaCircleManager initialCount={betaCircleCount} />
       <DemoDataControl seeded={demoSeeded} />
       <BackfillWritingProfiles />
