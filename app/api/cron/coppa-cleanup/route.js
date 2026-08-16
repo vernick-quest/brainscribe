@@ -167,12 +167,21 @@ export async function GET(request) {
     console.error('[coppa-cleanup] subscribers read failed:', subsErr.message)
     errors.push({ retention: subsErr.message })
   } else if (subs?.length) {
-    // One lookup for every candidate address rather than a query per row. Compared
-    // case-insensitively: /api/subscribe lowercases on insert, but a profile email
-    // comes from Google and is not guaranteed to be.
-    const emails = subs.map(s => String(s.email ?? '').trim().toLowerCase()).filter(Boolean)
+    // One lookup rather than a query per row, and NOT `.in('email', lowercased)`.
+    //
+    // That was the shape here first, and its own comment gave the reason it fails:
+    // /api/subscribe lowercases on insert but a profile email comes from Google and is
+    // "not guaranteed to be" — and `.in()` is an exact match. Under exactly the
+    // condition the comment describes, the lookup misses a real user's profile,
+    // `hasProfile` comes back false, and rule 1 ("never purge a user") silently does
+    // not hold on an IRREVERSIBLE delete. Measured 2026-08-16: all 21 profile emails
+    // are lowercase, so it was latent rather than live — but a safety rule that
+    // depends on data happening to be normalized is not a safety rule.
+    //
+    // Reading every profile email and comparing lowercased in JS removes the
+    // dependency. At this scale it is one small indexed read either way.
     const { data: profs, error: profErr } = await service
-      .from('profiles').select('email').in('email', emails)
+      .from('profiles').select('email')
 
     if (profErr) {
       // FAIL SAFE: without the profile list we cannot honour "never purge a user",
