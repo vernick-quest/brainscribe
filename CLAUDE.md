@@ -74,7 +74,8 @@ find them; being told to assume the author is wrong did.
 - Under-13 7-day auto-deletion is real and required: `/api/cron/coppa-cleanup` (daily Vercel Cron, guarded by `CRON_SECRET`, fails closed). Keep it functioning whenever you touch the COPPA flow.
 
 ## Database
-- **Schema changes only via new numbered migrations** in `supabase/migrations/` (currently through `023_*`; don't trust this number — `ls` the directory, and get the next number from the infra lane). Do **not** run ad-hoc SQL against prod.
+- **Schema changes only via new numbered migrations** in `supabase/migrations/`. Get the next number from **`select max(version) from public.schema_migrations`** (the ledger, migration 067) — NOT from `ls`, which only shows what your tree has and is wrong in a stale worktree. Every migration's FIRST statement records itself in that table, with no `on conflict` clause, so a duplicate number fails loudly instead of silently. Do **not** run ad-hoc SQL against prod.
+- **The Supabase SQL Editor snippet list is not a record of what was applied.** It records saved tabs. Measured 2026-08-16: migrations 044-051, 056 and 058-065 were all applied and none had a snippet. Use the ledger, or check live schema state.
 - **Migrations are applied by hand.** There is no migration runner, no `supabase db push`, and no CI step — after you add a numbered file, a human pastes it into the Supabase SQL editor to run it. Code that depends on a new migration is dead until that paste happens, so **call out explicitly when a change needs a migration run** (and assume it hasn't been applied until confirmed).
 - Historical live-DB drift (`is_admin()`, `invites.assignment_id`, `invites.expires_at`) was reconciled in `018_reconcile_drift.sql` — a fresh rebuild from migrations now matches prod. If you find NEW live-only objects, reconcile them the same way (own numbered migration, verbatim definitions).
 
