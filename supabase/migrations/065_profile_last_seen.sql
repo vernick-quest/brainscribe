@@ -1,7 +1,9 @@
--- 063 — Presence: profiles.last_seen_at
--- ⚠️ CONFIRM THIS NUMBER WITH focus/infra BEFORE APPLYING. 061 is the last one in
--- this repo; 062 is claimed by the coach-ai truncation counters (number was a guess
--- there too). Nothing in the app depends on the number, only the column/function names.
+-- 065 — Presence: profiles.last_seen_at
+-- Number CONFIRMED 065 by the conductor at merge (renumbered from the lane's 063).
+-- The lane's worktree was 11 commits stale and could not see that 063 had already
+-- landed and been APPLIED (coach_rules_version + deploy_sha) and that 064 was
+-- authored. Nothing in the app depends on the number — only the column and function
+-- names — but two migrations sharing a number is how one of them quietly never runs.
 --
 -- Neither existing timestamp means "this person is using the app right now":
 --   auth.users.last_sign_in_at moves ONLY on a fresh OAuth sign-in — a phone or iPad

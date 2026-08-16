@@ -3474,3 +3474,19 @@ Flagged for the conductor / auth lane.
 **Manual check (after 063 + deploy):** load any page as a student → their roster row reads "today"
 within seconds · reload repeatedly → only one write per 5 min (check `last_seen_at` doesn't churn) ·
 a logged-out visitor never stamps · the roster re-sorts so the active student is top.
+
+## 2026-08-16 — correction: presence migration renumbered 063 → 065
+
+The section above refers to `supabase/migrations/063_profile_last_seen.sql`. That number
+was already taken. **The file is `065_profile_last_seen.sql`.**
+
+`focus/admin` authored it from a worktree 11 commits behind main, so it could not see that
+063 (`coach_rules_version` + `deploy_sha`) had already landed AND been applied, and that
+064 (`provenance_checks` scaffold locks) was authored and pending. The lane's own note said
+"061 is the last one in this repo" — true of its tree, false of main.
+
+Nothing in the app reads the number, so the collision would not have failed loudly: the
+second file to be pasted would simply have been a differently-named migration claiming an
+identity another one already had, and the apply ledger would have shown one "063".
+
+Read the number from **main**, never from the lane's `ls`. Apply order is 064 then 065.

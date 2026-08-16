@@ -19,7 +19,7 @@ export default async function AdminPage() {
   // Use service client to bypass RLS — admin sees everything
   const service = createServiceClient()
 
-  // login_count/last_login_at arrive with 059, last_seen_at with 063. Selecting a
+  // login_count/last_login_at arrive with 059, last_seen_at with 065. Selecting a
   // column that doesn't exist yet fails the WHOLE profiles query, which would render
   // an empty admin panel between deploy and apply — so ask for them, and fall back to
   // the base column list if the DB doesn't have them yet.
@@ -28,7 +28,7 @@ export default async function AdminPage() {
     const withLogins = await service.from('profiles')
       .select(`${PROFILE_COLS_BASE}, login_count, last_login_at, last_seen_at`).order('role').order('created_at')
     if (!withLogins.error) return withLogins
-    console.warn('[admin] login/presence columns unavailable (migration 059/063 not applied yet):', withLogins.error.message)
+    console.warn('[admin] login/presence columns unavailable (migration 059/065 not applied yet):', withLogins.error.message)
     return service.from('profiles').select(PROFILE_COLS_BASE).order('role').order('created_at')
   }
 
@@ -73,7 +73,7 @@ export default async function AdminPage() {
     const cur = lastActiveById.get(sess.student_id)
     if (!cur || new Date(t) > new Date(cur)) lastActiveById.set(sess.student_id, t)
   }
-  // profiles.last_seen_at (migration 063) is the only true PRESENCE signal — stamped
+  // profiles.last_seen_at (migration 065) is the only true PRESENCE signal — stamped
   // by the session middleware on ordinary authenticated requests. The other two are
   // kept in the max() as a floor: last_seen_at starts accruing at deploy, and a
   // long-lived login that never re-authenticates would otherwise read as never-seen.
