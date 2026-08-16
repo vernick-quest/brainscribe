@@ -14,7 +14,11 @@ export default function NewsletterSignup({
   subtitle = 'Practical writing help for kids who freeze at the blank page — a couple of times a week. No spam.',
   cta = 'Subscribe',
   successTitle = "You're in — thanks!",
-  successBody = "We'll send new posts as they go up. No spam, unsubscribe anytime.",
+  // "unsubscribe anytime" implied a link in the email. There isn't one — the only
+  // way off the list today is asking us, so say that instead of implying a button
+  // that doesn't exist. A real List-Unsubscribe header is required before any bulk
+  // post mailing ships; see the note on the blog list in the privacy policy work.
+  successBody = "We'll send new posts as they go up. No spam — email brainscribe.io@gmail.com any time to come off the list.",
 }) {
   const [email, setEmail] = useState('')
   const [state, setState] = useState('idle') // idle | sending | done | error
