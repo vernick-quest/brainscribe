@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { assertComplete, ModelTruncatedError } from '@/lib/modelResponse'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
@@ -70,7 +71,11 @@ export async function POST(request) {
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2000,
+    // 8000, raised from 2000 on 2026-08-16. This is the WHOLE ESSAY, not one paragraph,
+    // and the prompt forbids adding anything — so output length is the sum of what the
+    // student already wrote. 2000 tokens is ~1,500 words, which a long narrative or a
+    // multi-section essay passes without being unusual.
+    max_tokens: 8000,
     system: `You are a faithful editor. Your only job is to smooth the transitions between the provided paragraphs into a cohesive essay.
 
 STRICT RULES:
@@ -87,5 +92,20 @@ STRICT RULES:
   })
 
   logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
+
+  // This one returns RAW TEXT, so a cut is completely silent — the student would be shown
+  // a truncated essay as their finished piece, with the ending simply absent. Refuse.
+  try {
+    assertComplete(response, { what: 'the assembled essay', sessionId })
+  } catch (e) {
+    if (e instanceof ModelTruncatedError) {
+      return Response.json({
+        error: "This essay is too long to stitch together in one pass. Nothing was changed — every paragraph is still saved.",
+        code: e.code,
+      }, { status: 413 })
+    }
+    throw e
+  }
+
   return Response.json({ assembled: response.content[0].text.trim() })
 }
