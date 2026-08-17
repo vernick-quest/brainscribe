@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:prompts": "node scripts/prompt-harness/word-target.mjs && node scripts/prompt-harness/continuation.mjs",
+    "test:prompts": "node scripts/prompt-harness/word-target.mjs && node scripts/prompt-harness/continuation.mjs && node scripts/prompt-harness/getting-started.mjs",
     "test:continuation": "node scripts/continuation-gate.mjs"
   },
   "dependencies": {
