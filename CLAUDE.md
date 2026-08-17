@@ -43,6 +43,15 @@ and they all fail in the REASSURING direction:
   in the other.
 - **A silent no-op is the enemy.** Every one of the six losses returned unchanged state with
   no throw and no log. When a write can't land, say so loudly and record it.
+- **Ask whether a safety net WEAKENS a different one.** Each net is written and reviewed
+  alone, so the destructive path is the one that only exists when two compose. `[DONE:]`
+  refuses to overwrite confirmed text on an inexact match — but `resolveComponentWrite`'s
+  cross-section redirect (added to stop a drop that cost 151 words) returns `exact: true`,
+  which *disables* that refusal. Both are correct in isolation; together a guessed id
+  overwrites finished writing. Two more from the same week: a "rescue" redirect became the
+  destructive path once continuations changed what the stored cursor meant, and a proposed
+  provenance guard would have erased the evidence needed to test its own premise. When you
+  add a net, name every other net it can now reach, and ask what it makes possible.
 
 **Prompt changes are code.** `scripts/prompt-harness/` builds the prompt FROM SOURCE and runs
 it against the real model in ~4s for about a cent (`npm run test:prompts`). Two prompt "fixes"
