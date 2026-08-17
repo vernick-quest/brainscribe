@@ -1388,7 +1388,7 @@ function StudentRosterLegend() {
       <span className="flex-1" />
       {item(IconEyeSm, 'Last seen', 'var(--text-subtle)')}
       {item(IconLogins, 'Logins', 'var(--text-subtle)')}
-      {item(IconDoc, 'Assignments', 'var(--text-subtle)')}
+      {item(IconDoc, 'Assignments (+Np = practice warm-ups)', 'var(--text-subtle)')}
       {item(IconCheck, 'Completed', 'var(--text-subtle)')}
       {item(IconWarnTri, 'Warnings', 'var(--text-subtle)')}
     </div>
@@ -1412,6 +1412,14 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
   // only done the warm-up correctly reads as 0 assignments.
   const assignments = sessions.filter(s => !s.is_onboarding)
   const completed = assignments.filter(s => s.status === 'complete').length
+  // The FTUE warm-up is not an assignment, but it IS work the student did, and it used
+  // to be visible when the first column counted sessions. Swapping that column to logins
+  // left practice with no numeric home at all: a student who has only ever done the
+  // warm-up read as a flat 0 / 0, and the only trace was the FTUE glyph by their name —
+  // which is how a completed practice became something you had to remote in to find.
+  // Shown beside the assignment count, never added to it: warm-up and real work must not
+  // be conflated in the same number.
+  const practiceDone = sessions.filter(s => s.is_onboarding && s.status === 'complete').length
   const warn = student.audit_warnings
   // Logins are counted from migration 059 onward — Supabase keeps no lifetime count
   // and the auth schema can't be read back, so pre-059 history is genuinely unknown.
@@ -1465,8 +1473,13 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
           title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>
           {logins ?? '—'}
         </span>
-        <span className={`${COL} text-xs`} style={{ color: assignments.length ? 'var(--text-muted)' : 'var(--text-subtle)' }} title="Assignments">
+        <span className={`${COL} text-xs`} style={{ color: assignments.length ? 'var(--text-muted)' : 'var(--text-subtle)' }}
+          title={`${assignments.length} assignment${assignments.length === 1 ? '' : 's'}` +
+            (practiceDone ? ` · ${practiceDone} practice warm-up${practiceDone === 1 ? '' : 's'} completed (not counted as an assignment)` : '')}>
           {assignments.length}
+          {practiceDone > 0 && (
+            <span style={{ color: 'var(--status-success)', marginLeft: 3 }}>+{practiceDone}p</span>
+          )}
         </span>
         <span className={`${COL} text-xs`} style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }} title="Completed">
           {completed}
