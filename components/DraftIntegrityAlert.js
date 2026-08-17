@@ -253,6 +253,33 @@ function FlagCard({ f, accent, onSaved }) {
         {f.orphanedWords > 0 && <> · working draft <strong>{f.workingWords}w</strong> · <span style={{ color: accent }}>{f.orphanedWords}w missing</span></>}
         {f.targetWords ? ` · target ${f.targetWords}w` : ''}
       </p>
+      {/* Recorded facts, not heuristics — shown as their own chips so they read louder
+          than the inferred reasons below them. */}
+      {(f.lockOverClaims > 0 || (f.refusedRevisions ?? []).length > 0) && (
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {f.lockOverClaims > 0 && (
+            <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+              title="Recorded server-side: the coach claimed a section was saved and the write did not land"
+              style={{ backgroundColor: 'var(--status-error)', color: 'white' }}>
+              {f.lockOverClaims} LOCK OVER-CLAIM{f.lockOverClaims === 1 ? '' : 'S'}
+            </span>
+          )}
+          {(f.refusedRevisions ?? []).filter(r => r.kind === 'cross-section').length > 0 && (
+            <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+              title="The scaffold-write guard refused a write aimed at a different section than the coach named"
+              style={{ backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
+              {f.refusedRevisions.filter(r => r.kind === 'cross-section').length} CROSS-SECTION REFUSED
+            </span>
+          )}
+          {(f.refusedRevisions ?? []).filter(r => r.kind === 'inexact').length > 0 && (
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+              title="The guard preserved existing text rather than overwrite it on an inexact match"
+              style={{ backgroundColor: 'var(--status-thin-bg)', color: 'var(--status-thin)' }}>
+              {f.refusedRevisions.filter(r => r.kind === 'inexact').length} inexact refused
+            </span>
+          )}
+        </div>
+      )}
       <ul className="mt-1.5 space-y-0.5">
         {f.reasons.map((r, i) => (
           <li key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>• {r}</li>

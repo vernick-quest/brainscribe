@@ -3886,3 +3886,47 @@ Gate: build green · `test:run` **671 passed** (53 in scaffoldWrite) · `test:co
   `[THESIS:]`+`[DONE:thesis:]` mandate) → **coach-ai's lane**, coach-prompt skill + test:prompts.
 - Post-assembly cross-section revisits were ALREADY refused unrecorded (`resolveComponentWrite`
   returns null, console-only, and `changed=true` still fires a no-op PATCH) — pre-existing.
+
+## 2026-08-17 — Surface revisionRefused + lock_over_claims (focus/admin, P1×2)
+
+**Files:** `lib/draftIntegrity.js`, `lib/draftIntegrityReview.js`,
+`app/api/admin/draft-integrity/route.js`, `components/DraftIntegrityAlert.js`, + tests.
+**No migration** (070 already applied).
+
+Both were being WRITTEN and never READ — "recorded but never surfaced" is the half-finished
+shape that lets a signal look healthy.
+
+- **`revisionRefused`** — stamped on the scaffold item by `resolveComponentWrite`
+  (`lib/scaffoldWrite.js:248`) as `'cross-section'` or `'inexact'`. `checkDraftIntegrity` now
+  scans items for it. **Cross-section is an ALERT**: the guard stopped a coach writing into a
+  different section than it named, so the edit the student watched be announced did not land where
+  they were told. **Inexact is a WARN**: the guard preserved existing text rather than overwrite on
+  a guess — correct behaviour, still worth seeing.
+- **`sessions.lock_over_claims`** (070) — read through the route into the check. **An ALERT on its
+  own**, because unlike every other signal in that module it is a RECORDED fact, not an inference:
+  the server counted a lock the coach claimed and the write did not make.
+- Both render as their own chips ABOVE the inferred reason list, so recorded facts read louder
+  than heuristics.
+
+**The fingerprint had to grow with them.** `signalFingerprint` now includes `refusedRevisions` and
+`lockOverClaims`. Without that, a session resolved earlier would keep hiding while a NEW over-claim
+or refusal accrued underneath — a fresh, recorded loss buried behind an old shrug. Two tests pin
+the resurfacing property.
+
+### Honest limit on validation
+Live prevalence today is **0 and 0**: no session carries `lock_over_claims > 0`, and no scaffold
+item carries `revisionRefused`. Both mechanisms only just shipped and accrue going forward, so
+unlike the Sierra case there is **no real-data confirmation available yet** — this is unit-tested
+against synthetic fixtures only. First real occurrence is the true test; worth an eye on the panel
+the first time either fires.
+
+**Verification:** `npm run test:run` **702/702 green** (37 files) · build green.
+
+### Still open
+- **P2 — `everRun` is inferred, not recorded.** Conductor is right: `rows.length > 0` is
+  directional. Once the corpus is genuinely healthy and the pass legitimately writes zero rows, the
+  panel would say "Not checked yet" forever and could never report a true all-clear. Safe direction,
+  still wrong. Durable fix is a recorded run timestamp (a `health_runs` row or a settings key) —
+  needs a migration. Not urgent: nothing is clean enough to hit it yet.
+- **Threshold re-check** a week after scaffold growth sees real use: re-run the
+  sections-per-scaffold comparison; Sierra remains the per-signal self-clearing test.
