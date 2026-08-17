@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem } from '@/lib/scaffoldWrite'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -1372,9 +1372,23 @@ export default function TutorSession({
           // Don't downgrade an already-locked component back to a candidate — a
           // late/stray NUGGET shouldn't undo something the student confirmed.
           const nugTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
-          if (nugTarget) sc = updateComponentItem(sc, nugTarget.paraIdx, nugTarget.id, item =>
-            item.status === 'confirmed' ? item : { ...item, status: 'candidate', nuggetText }
-          )
+          if (nugTarget) sc = updateComponentItem(sc, nugTarget.paraIdx, nugTarget.id, item => {
+            if (item.status === 'confirmed') return item
+            // Refusing on `confirmed` alone was not enough: a CANDIDATE's nuggetText is
+            // the student's captured words too, and an INFERRED target (inexact id, or a
+            // cross-section redirect) would replace them with words meant for another
+            // component. Same rule as the [DONE:] guard — an inference must not cost the
+            // student words that are already on the page.
+            if (shouldPreserveExisting(nugTarget, item)) {
+              console.warn(
+                `[token-safety-net] [NUGGET:${componentId}:…] resolved to an INFERRED target ` +
+                `(${nugTarget.crossSection ? `cross-section → paragraph ${nugTarget.paraIdx}` : 'inexact id'}) ` +
+                `that already holds captured words — keeping them rather than overwriting.`
+              )
+              return item
+            }
+            return { ...item, status: 'candidate', nuggetText }
+          })
           changed = true
           }
         }
@@ -1395,11 +1409,26 @@ export default function TutorSession({
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
         const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
         if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
-          // On an INEXACT match we are guessing which component was meant, so never let
+          // On an INFERRED target we are guessing which component was meant, so never let
           // the guess overwrite real text — confirm what the student already has. Their
-          // words outrank our inference about which slot they belong in.
-          if (!doneTarget.exact && (item.text || item.nuggetText)) {
-            return { ...item, status: 'confirmed', text: item.text || item.nuggetText, writeDropped: false }
+          // words outrank our inference about which slot they belong in. "Inferred" now
+          // includes a CROSS-SECTION redirect: the id matched exactly, but which section
+          // the coach meant is still inference, and that path skipped this guard entirely
+          // (shouldPreserveExisting documents the trade).
+          if (shouldPreserveExisting(doneTarget, item)) {
+            console.warn(
+              `[token-safety-net] [DONE:${componentId}:…] resolved to an INFERRED target ` +
+              `(${doneTarget.crossSection ? `cross-section → paragraph ${doneTarget.paraIdx}` : 'inexact id'}) ` +
+              `that already holds the student's words — keeping them rather than overwriting. ` +
+              `The revision did NOT land; it is recoverable via Revise/Edit.`
+            )
+            // Bank the words and stamp the refusal — see preserveExistingItem. (An
+            // earlier draft of this fix returned the item untouched on a cross-section
+            // hit, reasoning that a [DONE:] aimed elsewhere is not approval. Correct in
+            // principle, but it left a candidate as a candidate, and assembly takes
+            // confirmed items only — which is exactly how words go missing from a Final
+            // Draft. Losing writing outranks confirming a beat early.)
+            return preserveExistingItem(item, doneTarget)
           }
           // A late recap quoting only part of a confirmed line must not truncate it. Only
           // guards the case where the new text is contained in the old — a genuine revision
