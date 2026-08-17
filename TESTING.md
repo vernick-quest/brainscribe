@@ -3798,3 +3798,37 @@ would trip.
 Gate: build green · `test:run` **638 passed** · `test:continuation` GREEN.
 Manual check owed: grow Sierra's session (button or one POST), confirm her 1,200 words are
 untouched and the new section accepts a scene.
+
+## 2026-08-17 — Session health: validated against Sierra, and a false all-clear closed (focus/admin)
+
+**Files:** `app/api/admin/session-health/route.js`, `components/AdminDashboard.js`. No migration
+(069 is applied).
+
+### The validation the conductor asked for — PASSES
+Run against live data, `no_draft_despite_locks` fires **CRITICAL** on the one case whose answer we
+already know:
+```
+Sierra — "Short story about a squirrel litter" [active]
+  sections=1 items=4 confirmed=4 paragraphs=0
+  no_draft_despite_locks: FIRES [critical] — all 4 scaffold items confirmed but 0 paragraphs
+  + truncated_turn [high], overstuffed_section [medium], late_scaffold [medium]
+```
+
+### A false all-clear the same run exposed
+`session_health_findings` had **0 stored rows** — 069 applied, cron not yet run — and the panel
+rendered "Student work: nothing at risk". **Zero rows is ambiguous by construction**: findings clear
+by DELETION, so an empty table means either "ran and healthy" or "never ran", and reporting the
+second as the first is exactly the reassuring-direction silence this detector exists to break.
+Fixed without a migration: `last_seen_at` on any row IS the last-run time, so the route returns
+`everRun`/`lastRunAt`, and with no rows the panel says **"Not checked yet — the pass has not run"**
+plus an explicit note that this is not all-clear.
+
+### Scaffold growth — no drift yet, re-check after real use
+Sections per scaffold today: **18 × 1-section, 1 × 2, 1 × 4, 1 × 5** — growth has landed but most
+sessions are still single-section, so `CHARS_PER_SECTION_LIMIT` (2500) has not yet been exercised
+against a grown corpus. **Sierra's session is single-section with 30,512 student chars**, so her
+`overstuffed_section` finding is the self-clearing test: if she grows, chars/section falls and the
+pass should DELETE that row while leaving `no_draft_despite_locks` untouched. Worth re-running the
+count comparison a week after growth sees real use.
+
+**Verification:** `npm run test:run` **661/661 green** (36 files) · build green.
