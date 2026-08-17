@@ -1398,7 +1398,7 @@ function StudentRosterLegend() {
 // Student card. The collapsed row is identity + five aligned numbers, nothing else:
 // the FTUE state is a glyph before the name, and Remote in / Delete live INSIDE the
 // expanded body rather than crowding every row with buttons that are rarely used.
-function StudentCard({ student, sessions, onRoleChanged, children }) {
+function StudentCard({ student, sessions, onRoleChanged, renderSession }) {
   const [open, setOpen] = useState(false)
   // ALWAYS expandable. This was `sessions.length > 0`, which hid the chevron on a
   // student with no work — and since Remote in / Delete account moved into the body,
@@ -1419,7 +1419,8 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
   // which is how a completed practice became something you had to remote in to find.
   // Shown beside the assignment count, never added to it: warm-up and real work must not
   // be conflated in the same number.
-  const practiceDone = sessions.filter(s => s.is_onboarding && s.status === 'complete').length
+  const practice = sessions.filter(s => s.is_onboarding)
+  const practiceDone = practice.filter(s => s.status === 'complete').length
   const warn = student.audit_warnings
   // Logins are counted from migration 059 onward — Supabase keeps no lifetime count
   // and the auth schema can't be read back, so pre-059 history is genuinely unknown.
@@ -1507,7 +1508,22 @@ function StudentCard({ student, sessions, onRoleChanged, children }) {
           </p>
           {assignments.length === 0
             ? <p className="text-xs italic" style={{ color: 'var(--text-subtle)' }}>No assignments yet.</p>
-            : children}
+            : assignments.map(s => renderSession?.(s))}
+
+          {/* Practice warm-ups, listed under their own heading. The row's "+Np" marker
+              promises these exist, so hiding them here made the card contradict itself:
+              Amitris showed "0 +1p" above and "No assignments yet." below, with the one
+              session she HAD done nowhere to be found. Kept separate from assignments
+              rather than merged in — the whole point of the split is that a warm-up is
+              not an assignment. */}
+          {practice.length > 0 && (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--text-subtle)' }}>
+                Practice warm-up{practice.length === 1 ? '' : 's'}
+              </p>
+              {practice.map(s => renderSession?.(s))}
+            </>
+          )}
           {/* Account actions live here, not on the collapsed row — they're occasional,
               and putting them on every row is what made the roster feel crowded. */}
           <div className="flex items-center justify-between gap-3 pt-3"
@@ -2649,9 +2665,8 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               {filteredStudents.map(student => {
                 const sessions = sessionsByStudent[student.id] ?? []
                 return (
-                  <StudentCard key={student.id} student={student} sessions={sessions}>
-                    {sessions.map(s => <SessionRow key={s.id} session={s} compact />)}
-                  </StudentCard>
+                  <StudentCard key={student.id} student={student} sessions={sessions}
+                    renderSession={s => <SessionRow key={s.id} session={s} compact />} />
                 )
               })}
               {filteredStudents.length > 0 && <StudentRosterLegend />}

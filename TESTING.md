@@ -3913,12 +3913,20 @@ shape that lets a signal look healthy.
 or refusal accrued underneath — a fresh, recorded loss buried behind an old shrug. Two tests pin
 the resurfacing property.
 
-### Honest limit on validation
-Live prevalence today is **0 and 0**: no session carries `lock_over_claims > 0`, and no scaffold
-item carries `revisionRefused`. Both mechanisms only just shipped and accrue going forward, so
-unlike the Sierra case there is **no real-data confirmation available yet** — this is unit-tested
-against synthetic fixtures only. First real occurrence is the true test; worth an eye on the panel
-the first time either fires.
+### NOT VALIDATED — and "0 occurrences" here is not a measurement
+Both queries return zero, but the DENOMINATOR IS ALSO ZERO: **0 coach turns have run since
+migration 070 was applied** (2026-08-17 05:13 UTC; 895 assistant turns exist all-time). So
+`lock_over_claims = 0` and `revisionRefused = 0` are **0-out-of-0 — no measurement at all**, not
+evidence the paths are quiet.
+
+Recording it as "live prevalence 0" (the original wording here) reads as a clean bill of health and
+is exactly the reassuring-direction error this file exists to prevent: an empty denominator
+reported as a result. Corrected after the conductor caught it.
+
+**Status: surfacing is wired and unit-tested against synthetic fixtures ONLY.** The first real
+coach turn that trips either path is the actual test. If the chip does not appear then, the wiring
+is wrong and no test here would have said so — worth watching the panel deliberately the first time
+either fires rather than waiting to notice.
 
 **Verification:** `npm run test:run` **702/702 green** (37 files) · build green.
 
@@ -4011,5 +4019,25 @@ separate. Tooltip spells it out; the legend now reads "Assignments (+Np = practi
 **Verified against the live roster** — Amitris now renders `0 +1p`; 10 of 13 students show the
 marker. It also restores a distinction that had been lost: Amir and Serenity render a bare `0`
 (never completed the warm-up) where Amitris renders `0 +1p`, where previously both read `0`.
+
+`npm run test:run` **702/702 green** · build green.
+
+## 2026-08-17 — The card contradicted itself: "+1p" above, "No assignments yet" below (focus/admin)
+
+**File:** `components/AdminDashboard.js` only.
+
+Amitris's row read `0 +1p` (one completed practice warm-up) while expanding it said
+**"No assignments yet."** — the one session she had actually done was nowhere in the card. The
+empty-state was gated on `assignments.length === 0`, which EXCLUDES onboarding, so `children`
+(which held every session, practice included) was never rendered at all.
+
+Adding the `+Np` marker without also listing what it points at is what created the contradiction:
+the row promises a session exists, the expansion denies it.
+
+**Fix:** the card now renders the two groups itself — **Assignments** (real work, or "No assignments
+yet.") and a separate **Practice warm-up(s)** heading listing the onboarding sessions. Kept
+separate rather than merged, since the whole reason for the split is that a warm-up is not an
+assignment. `StudentCard` takes `renderSession` instead of pre-rendered `children`, so it can
+decide which group each session belongs to.
 
 `npm run test:run` **702/702 green** · build green.
