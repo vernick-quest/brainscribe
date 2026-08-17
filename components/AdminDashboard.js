@@ -12,6 +12,9 @@ import { DEMO_EMAILS } from '@/lib/demoAccounts'
 import { unwrapPastedText } from '@/lib/unwrapText'
 import { breachKey, breachProgress, summaryContradictsBreaches } from '@/lib/auditBreach'
 import { presenceLabel, isActiveNow } from '@/lib/presence'
+import { HEALTH_SIGNALS } from '@/lib/sessionHealth'
+
+const HEALTH_SIGNAL_LABEL = Object.fromEntries(Object.entries(HEALTH_SIGNALS).map(([k, v]) => [k, v.label]))
 
 // Paste handler for the admin note fields. Text copied from a terminal, chat pane, or
 // email is hard-wrapped at ~80 columns, and those newlines are real — pasted in, a note
@@ -874,6 +877,127 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
   )
 }
 
+
+// ── Student work at risk ────────────────────────────────────────────────────────
+// Mechanical findings from the nightly deterministic pass. Kept visually apart from
+// judge findings: a red-bordered block with its own heading, because "the student's
+// writing may be gone" and "the coach could have phrased that better" are not the same
+// class of problem and must not be dismissible with the same shrug.
+const HEALTH_TONE = {
+  critical: { bg: 'var(--status-error-bg)', fg: 'var(--status-error)', word: 'AT RISK' },
+  high:     { bg: 'var(--status-error-bg)', fg: 'var(--status-error)', word: 'HIGH' },
+  medium:   { bg: 'var(--status-thin-bg)',  fg: 'var(--status-thin)',  word: 'CHECK' },
+}
+
+function SessionHealthPanel({ sessionById, profileById }) {
+  const [state, setState] = useState({ loading: true, findings: [], pending: false, error: '' })
+  const [showPre, setShowPre] = useState(false)
+  const [running, setRunning] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/session-health', { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setState({ loading: false, findings: [], pending: false, error: json.error ?? 'Failed to load.' }); return }
+      setState({ loading: false, findings: json.findings ?? [], pending: !!json.pending, error: '' })
+    } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function rerun() {
+    setRunning(true)
+    try { await fetch('/api/admin/session-health', { method: 'POST' }); await load() }
+    catch {} finally { setRunning(false) }
+  }
+
+  async function acknowledge(f, next) {
+    await fetch('/api/admin/session-health', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: f.session_id, signal: f.signal, acknowledged: next }),
+    })
+    load()
+  }
+
+  if (state.loading) return null
+  if (state.pending) {
+    return (
+      <div className="rounded-2xl px-4 py-3 text-xs"
+        style={{ border: '1px dashed var(--border-strong)', color: 'var(--text-muted)' }}>
+        Session-health pass is deployed but migration 069 has not been applied yet — no findings can be stored.
+      </div>
+    )
+  }
+
+  const open = state.findings.filter(f => !f.acknowledged)
+  const live = open.filter(f => !f.pre_existing)
+  const pre = open.filter(f => f.pre_existing)
+  const shown = showPre ? open : live
+  const worst = live.some(f => f.severity === 'critical')
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{ border: `2px solid ${live.length ? 'var(--status-error)' : 'var(--border-default)'}`,
+               backgroundColor: live.length ? 'var(--status-error-bg)' : 'var(--surface-card)' }}>
+      <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+          {live.length ? `${live.length} session${live.length === 1 ? '' : 's'} where student work may be at risk` : 'Student work: nothing at risk'}
+        </span>
+        {worst && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+            style={{ backgroundColor: 'var(--status-error)', color: 'white' }}>CRITICAL</span>
+        )}
+        <span className="flex-1" />
+        {pre.length > 0 && (
+          <button onClick={() => setShowPre(v => !v)} className="text-xs underline cursor-pointer" style={{ color: 'var(--primary)' }}>
+            {showPre ? 'Hide' : `Show ${pre.length} pre-existing`}
+          </button>
+        )}
+        <button onClick={rerun} disabled={running} className="text-xs font-semibold cursor-pointer disabled:opacity-60" style={{ color: 'var(--text-muted)' }}>
+          {running ? 'Checking…' : 'Re-check'}
+        </button>
+      </div>
+
+      <div className="px-4 pb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+        Deterministic checks over every session — locks that never became a draft, cut-off
+        replies, writing piling up where it will not assemble. No model judgement: these are
+        facts about whether the work survived.
+      </div>
+
+      {shown.length > 0 && (
+        <div className="px-4 pb-4 space-y-2">
+          {shown.map(f => {
+            const tone = HEALTH_TONE[f.severity] ?? HEALTH_TONE.medium
+            const sess = sessionById?.[f.session_id]
+            const who = profileById?.[sess?.student_id]?.full_name
+            return (
+              <div key={`${f.session_id}:${f.signal}`} className="rounded-xl px-3 py-2 text-xs"
+                style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', opacity: f.pre_existing ? 0.7 : 1 }}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ backgroundColor: tone.bg, color: tone.fg }}>{tone.word}</span>
+                  <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{HEALTH_SIGNAL_LABEL[f.signal] ?? f.signal}</span>
+                  {f.pre_existing && (
+                    <span className="text-[10px] rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)' }}>pre-existing</span>
+                  )}
+                  <span className="flex-1" />
+                  <button onClick={() => acknowledge(f, true)} className="text-[10px] font-semibold px-2 py-1 rounded-full cursor-pointer"
+                    style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>Acknowledge</button>
+                </div>
+                <p className="mt-1" style={{ color: 'var(--text-strong)' }}>
+                  {who ? `${who} · ` : ''}{sess?.title || 'Untitled session'}
+                </p>
+                <p style={{ color: 'var(--text-muted)' }}>{f.detail}</p>
+                <a href={`/transcript/${f.session_id}`} className="underline mt-1 inline-block" style={{ color: 'var(--primary)' }}>
+                  Open session →
+                </a>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) {
   const [state, setState] = useState({ loading: true, findings: [], runs: [], breachReviews: {}, error: '' })
   const [running, setRunning] = useState(false)
@@ -943,6 +1067,10 @@ function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) 
 
   return (
     <div className="space-y-4">
+      {/* Student work at risk — deliberately ABOVE and visually apart from the judge
+          findings. These are mechanical: did the writing survive? Not "could the
+          coaching be better". They must not read as the same kind of item. */}
+      <SessionHealthPanel sessionById={sessionById} profileById={profileById} />
       {/* Control bar */}
       <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
         style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
