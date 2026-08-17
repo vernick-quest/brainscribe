@@ -340,7 +340,45 @@ the app can do, and it drifts silently because nothing type-checks prose. Any ch
 adds or removes a token or a structural affordance must grep `lib/prompts.js` for the
 now-false claim in the same change.
 
-## P0 — Growth gives a STORY essay-shaped sections  🔴 added 2026-08-17 · BLOCKS SIERRA
+## P0 — Flip narrative growth to custom "Scene N" — TWO parts, not one line  🔴 2026-08-17
+**Robert approved the flip 2026-08-17.** Owner: `focus/coaching-session`. Do NOT ship part 1
+without part 2.
+
+**Part 1 (trivial):** `growthTypeFor('narrative')` → `'custom'`, with `Scene N` labels
+instead of the `Part N` default. Stops every appended scene carrying its own `closing`, so
+the student is not handed a second ending. Already exposed and tested via `opts.type`.
+
+**🔴 Part 2 (the blocker the verification pass found).** `components/TutorSession.js:3440`
+renders, for ANY custom section whose items are all confirmed:
+
+```js
+para.type === 'custom' ? (
+  <button onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}>
+    Lock in all parts
+  </button>
+) : ( <button …>Assemble paragraph</button> )
+```
+
+That button **ends the whole session**, not the section. The assumption is sound today —
+every custom scaffold is a SINGLE-section form (a haiku, a poem, the FTUE hook), where
+"lock in all parts" genuinely means "I'm done." Flipping narrative growth to custom breaks
+that assumption: a ten-scene story would show "Lock in all parts" on scene 2, and tapping it
+would mark the entire assignment complete.
+
+Consequences if shipped as one line: her session goes `status='complete'`, which (a) is the
+watcher-facing record and the integrity baseline, (b) makes `/api/scaffold/[id]/grow` return
+409 `session_complete`, so she cannot add scene 3, and (c) sends her to "Keep working on
+this" — a v2 — for what should have been a section advance.
+
+Part 2 must make the custom-section action per-SECTION for a multi-section scaffold
+(confirm the section, emit `[PARA_DONE]`, advance the cursor) and keep whole-session
+completion only for a single-section custom form. ⚠️ This touches the live writing UI and
+the scaffold write path, so per CLAUDE.md it needs an adversarial pass before merge.
+
+**Until both land, the narrative-inherits-narrative default is correct and safe** — a
+student can grow and keep writing today. The flip is an improvement, not a fix.
+
+## P0 — Growth gives a STORY essay-shaped sections  ✅ DONE 2026-08-17 (b72a94f)
 **Owner:** `focus/coaching-session` (`lib/scaffoldGrowth.js:96`).
 
 ```js
@@ -410,6 +448,29 @@ the student wrote it. Non-negotiable constraints if it is ever built:
 Sierra would have produced one 1,200-word paragraph AND self-cleared her critical
 `no_draft_despite_locks` finding, turning the panel green with the real problem untouched.
 The tool was not the blocker; the prompt was. Weigh that before building it.
+
+## P1 — The Warnings column must be THE call-to-action  🔴 added 2026-08-17
+**Robert, 2026-08-17:** *"any warnings that need my attention should get flagged here, this
+is a CTA for me."* Owner: `focus/admin`.
+
+Today the ⚠ column counts **only guardrail-audit findings** — the coaching-quality judge.
+The mechanical "student work at risk" findings live in a separate red panel on the Audit
+tab, so **Sierra can carry a CRITICAL `no_draft_despite_locks` and render a dash** on the
+roster row. That is how her problem needed a remote-in to find in the first place.
+
+Treat the column as a promise: *if something here needs Robert, it appears in this number.*
+That makes it a design rule, not a one-off fix — every future detector has to declare
+whether it feeds this column, and the default must be yes.
+
+In scope now: guardrail-audit findings + session-health findings (`no_draft_despite_locks`,
+`truncated_turn`, `overstuffed_section`, `late_scaffold`) + `lock_over_claims` +
+`revisionRefused`. Severity should dominate the count — one critical outranks five mediums,
+and the colour must reflect the worst, not the newest. Clicking should land on the finding,
+not on the tab.
+
+⚠️ Do not let this become an over-count that gets skimmed. Precedent: the transcript-audit
+sampler's over-flag rate went 37% → 7% before it was trustworthy, and a noisy CTA is worse
+than a quiet one because it trains the reader to ignore it.
 
 ## P1 — `revisionRefused` is recorded but nothing alerts on it  🔴 added 2026-08-17
 **Owner:** the `draftIntegrity` file's owner. Surfaced by `focus/coaching-session`.
