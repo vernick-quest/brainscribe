@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import AdminDashboard from '@/components/AdminDashboard'
+import { attentionForStudent } from '@/lib/attention'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -39,9 +40,11 @@ export default async function AdminPage() {
     { data: allAssignmentTeachers },
     { data: auditFindings },
     authUsers,
+    healthRes,
+    scaffoldRes,
   ] = await Promise.all([
     readProfiles(),
-    service.from('sessions').select('id, title, assignment_text, status, student_id, persona, is_onboarding, created_at, updated_at, completed_at, last_active_at').order('updated_at', { ascending: false }),
+    service.from('sessions').select('id, title, assignment_text, status, student_id, persona, is_onboarding, created_at, updated_at, completed_at, last_active_at, lock_over_claims').order('updated_at', { ascending: false }),
     service.from('relationships').select('watcher_id, student_id'),
     service.from('assignment_teachers').select('session_id, teacher_id'),
     // Open guardrail-audit findings, for the per-student warning count. severity
@@ -51,7 +54,17 @@ export default async function AdminPage() {
     // admin API. perPage covers the whole user base in one call today; if it ever
     // exceeds this the list simply truncates (sign-in shows as "—"), never errors.
     service.auth.admin.listUsers({ page: 1, perPage: 1000 }).catch(() => null),
+    // Mechanical health findings (069). Fail-soft to [] so the roster still renders if
+    // the table is missing — but note that means the column UNDER-reports rather than
+    // erroring, so a read failure is logged loudly below.
+    service.from('session_health_findings')
+      .select('session_id, signal, severity, pre_existing, acknowledged, detail'),
+    // Scaffold items carrying revisionRefused — the guard's record of a write it declined.
+    service.from('paragraph_scaffolds').select('session_id, components'),
   ])
+
+  if (healthRes?.error) console.error('[admin] session_health read failed — attention column will UNDER-report:', healthRes.error.message)
+  if (scaffoldRes?.error) console.error('[admin] scaffold read failed — refused-revision signal missing:', scaffoldRes.error.message)
 
   const lastSignInById = new Map(
     (authUsers?.data?.users ?? []).map(u => [u.id, u.last_sign_in_at ?? null])
@@ -113,13 +126,58 @@ export default async function AdminPage() {
     warningsBySession[f.session_id] = w
   }
 
+  // ── The ⚠ column: everything that needs Robert, in one number ──────────────────
+  // Every in-scope detector feeds this (see lib/attention.js for the design rule and
+  // why the count is per-SESSION rather than per-finding).
+  const sessionsByOwner = new Map()
+  for (const s of allSessions ?? []) {
+    if (!s.student_id) continue
+    if (!sessionsByOwner.has(s.student_id)) sessionsByOwner.set(s.student_id, [])
+    sessionsByOwner.get(s.student_id).push(s)
+  }
+  const healthByStudent = new Map()
+  {
+    const ownerOf = new Map((allSessions ?? []).map(s => [s.id, s.student_id]))
+    for (const f of healthRes?.data ?? []) {
+      const owner = ownerOf.get(f.session_id)
+      if (!owner) continue
+      if (!healthByStudent.has(owner)) healthByStudent.set(owner, [])
+      healthByStudent.get(owner).push(f)
+    }
+  }
+  const refusedBySession = new Map()
+  for (const sc of scaffoldRes?.data ?? []) {
+    const items = (Array.isArray(sc.components) ? sc.components : []).flatMap(c => (Array.isArray(c?.items) ? c.items : []))
+    const refused = items.filter(i => i?.revisionRefused)
+    if (refused.length) {
+      refusedBySession.set(sc.session_id, {
+        crossSection: refused.some(i => i.revisionRefused === 'cross-section'),
+        kind: refused.some(i => i.revisionRefused === 'cross-section') ? 'cross-section' : 'inexact',
+      })
+    }
+  }
+  const attentionById = new Map()
+  for (const p of allProfiles ?? []) {
+    const mine = sessionsByOwner.get(p.id) ?? []
+    attentionById.set(p.id, attentionForStudent({
+      healthFindings: healthByStudent.get(p.id) ?? [],
+      auditFindings: (auditFindings ?? []).filter(f => f.student_id === p.id),
+      lockOverClaimSessions: mine.filter(s => Number(s.lock_over_claims) > 0)
+        .map(s => ({ id: s.id, count: Number(s.lock_over_claims) })),
+      refusedRevisionSessions: mine.filter(s => refusedBySession.has(s.id))
+        .map(s => ({ id: s.id, ...refusedBySession.get(s.id) })),
+    }))
+  }
+
   const profilesWithActivity = (allProfiles ?? []).map(p => ({
     ...p,
     // Kept for anything that genuinely wants "when did they authenticate".
     last_sign_in_at: lastSignInById.get(p.id) ?? null,
     // What the roster's "Last seen" column and its sort read.
     last_seen_at: lastSeenById.get(p.id) ?? null,
+    // Superseded by `attention` — kept only so nothing reading the old field breaks.
     audit_warnings: warningsById.get(p.id) ?? null,
+    attention: attentionById.get(p.id) ?? null,
   }))
 
   return (
