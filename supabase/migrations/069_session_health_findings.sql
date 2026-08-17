@@ -1,7 +1,11 @@
 -- 069 — Session health findings (ledger head was 068; verified via
 -- `select max(version) from public.schema_migrations`, not `ls`)
 begin;
-insert into public.schema_migrations (version) values ('069');
+-- applied_at MUST be real here. A NULL in that column means "backfilled by 067, the true
+-- date is unknown" — that is what 001-066 carry. Omitting it would file a migration that
+-- ran today alongside the ones whose history we admit we don't have.
+insert into public.schema_migrations (version, applied_at, note)
+values ('069', now(), 'session health findings');
 
 -- Sierra's data loss was found because a human opened her session and read it. The
 -- nightly audit judges COACHING QUALITY from transcripts; her failure was MECHANICAL —
@@ -44,6 +48,9 @@ create table if not exists public.session_health_findings (
   note        text,
   primary key (session_id, signal)
 );
+
+comment on table public.session_health_findings is
+  'Deterministic mechanical-health findings about a session (locks that never became a draft, truncated turns, an overstuffed section). Separate from transcript_audit_findings, which judges COACHING QUALITY from transcripts and has UNIQUE(session_id) — one session can carry a judge row AND several health rows. These are queries, not judgements, so the pass reconciles: a fixed condition deletes its row rather than leaving it resolved-but-stale.';
 
 create index if not exists session_health_findings_triage_idx
   on public.session_health_findings (acknowledged, severity, last_seen_at desc);
