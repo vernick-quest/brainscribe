@@ -41,7 +41,17 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ findings: data ?? [], pending: false })
+  // "Zero rows" is AMBIGUOUS by construction: findings clear by deletion, so an empty
+  // table means either "the pass ran and everything is healthy" or "the pass has never
+  // run". Reporting the second as the first is a false all-clear — precisely the silence
+  // this detector exists to break. last_seen_at on any row IS the last run time; with no
+  // rows we cannot know, so we say so instead of reassuring.
+  const rows = data ?? []
+  const lastRunAt = rows.length
+    ? rows.reduce((m, r) => (r.last_seen_at > m ? r.last_seen_at : m), rows[0].last_seen_at)
+    : null
+
+  return NextResponse.json({ findings: rows, pending: false, lastRunAt, everRun: rows.length > 0 })
 }
 
 export async function POST() {

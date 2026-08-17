@@ -890,7 +890,7 @@ const HEALTH_TONE = {
 }
 
 function SessionHealthPanel({ sessionById, profileById }) {
-  const [state, setState] = useState({ loading: true, findings: [], pending: false, error: '' })
+  const [state, setState] = useState({ loading: true, findings: [], pending: false, everRun: false, error: '' })
   const [showPre, setShowPre] = useState(false)
   const [running, setRunning] = useState(false)
 
@@ -899,7 +899,7 @@ function SessionHealthPanel({ sessionById, profileById }) {
       const res = await fetch('/api/admin/session-health', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setState({ loading: false, findings: [], pending: false, error: json.error ?? 'Failed to load.' }); return }
-      setState({ loading: false, findings: json.findings ?? [], pending: !!json.pending, error: '' })
+      setState({ loading: false, findings: json.findings ?? [], pending: !!json.pending, everRun: !!json.everRun, error: '' })
     } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -940,7 +940,11 @@ function SessionHealthPanel({ sessionById, profileById }) {
                backgroundColor: live.length ? 'var(--status-error-bg)' : 'var(--surface-card)' }}>
       <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
-          {live.length ? `${live.length} session${live.length === 1 ? '' : 's'} where student work may be at risk` : 'Student work: nothing at risk'}
+          {live.length
+            ? `${live.length} session${live.length === 1 ? '' : 's'} where student work may be at risk`
+            : state.everRun
+              ? 'Student work: nothing at risk'
+              : 'Not checked yet — the pass has not run'}
         </span>
         {worst && (
           <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
@@ -957,6 +961,13 @@ function SessionHealthPanel({ sessionById, profileById }) {
         </button>
       </div>
 
+      {!state.everRun && (
+        <div className="px-4 pb-2 text-xs font-semibold" style={{ color: 'var(--status-error)' }}>
+          No findings are stored, which is NOT the same as all-clear: findings clear by deletion, so
+          an empty table also looks like this before the first run. The nightly pass writes at 09:30 UTC —
+          or hit Re-check to run it now.
+        </div>
+      )}
       <div className="px-4 pb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
         Deterministic checks over every session — locks that never became a draft, cut-off
         replies, writing piling up where it will not assemble. No model judgement: these are
