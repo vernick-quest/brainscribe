@@ -317,6 +317,61 @@ the full echo was cut.
 provenance scorer stops carrying signal for them. Correct, but the threshold work must not be
 calibrated on a mixed corpus.
 
+## P0 — The prompt still says a scaffold cannot grow  🔴 added 2026-08-17 · BLOCKS SIERRA
+**Owner:** `focus/coach-ai` (needs the `coach-prompt` skill + `npm run test:prompts`).
+
+Scaffold growth shipped and **the coach does not know it exists.** `lib/prompts.js` states in
+three places that the count cannot be increased, and all three are now false:
+
+- **312** — *"the paragraph count CANNOT be increased later (there is no token that adds a
+  section…). Never promise you can add one later; you cannot."*
+- **444** — *"the count is fixed for the whole session, and it cannot be changed later"*
+- **455** — *"The paragraph count is fixed for the session (Rule 2), so do not promise to add
+  a section"*
+
+Until this lands, growth is **student-button-only** and growing a session produces sections
+the coach refuses to move into and will actively tell the student cannot exist. That is worse
+than not growing it: the student gets visible evidence the app contradicts itself. It also
+means the one live case (Sierra, ten scenes in a 1-section scaffold) cannot be unblocked.
+
+**Generalise it.** A capability shipped in one lane while another lane's prompt still denies
+the capability is a class of bug, not an incident — the prompt is the coach's model of what
+the app can do, and it drifts silently because nothing type-checks prose. Any change that
+adds or removes a token or a structural affordance must grep `lib/prompts.js` for the
+now-false claim in the same change.
+
+## P1 — `revisionRefused` is recorded but nothing alerts on it  🔴 added 2026-08-17
+**Owner:** the `draftIntegrity` file's owner. Surfaced by `focus/coaching-session`.
+
+The crossSection no-overwrite guard stamps `revisionRefused` on the row when it refuses. The
+fact is durable and nothing reads it, so a refused write is invisible on every dashboard —
+the exact half-finished shape ("recorded, never surfaced") that lets a signal look healthy.
+
+## P1 — The coach gets no feedback when a write is refused  🔴 added 2026-08-17
+**Owner:** `focus/coach-ai`. Surfaced by `focus/coaching-session`.
+
+The described recovery — "retry with the cursor on that section" — **cannot happen**: there is
+no signal to retry on. The refusal is server/client-side only. Needs a note back to the coach
+and/or a Rule 11 / `[THESIS:]`-mandate change. A guard the model cannot observe converts a
+destructive bug into a silent stall, which is better but is not the intended behaviour.
+
+## P2 — "Never checked" is inferred from zero findings, not recorded  🔵 added 2026-08-17
+**Owner:** `focus/admin`. Follow-on to the false-all-clear fix (shipped `b3e9292`).
+
+`everRun` is derived as `rows.length > 0`. That closes the false all-clear, but it is
+directional: once the corpus is genuinely healthy and the pass legitimately writes zero rows,
+the panel will say **"Not checked yet"** forever and can never report a true all-clear. Safe
+direction, still wrong. The durable fix is a recorded run timestamp (a `health_runs` row, or a
+single-row `last_run_at`), not inference from the findings table. Low urgency: no session is
+currently clean enough to hit it.
+
+## P2 — Persist the over-claim magnitudes  🔵 added 2026-08-17
+`record_lock_over_claim(p_session_id, p_claimed, p_emitted)` (migration 070) **accepts
+`p_claimed`/`p_emitted` and stores neither** — deliberate and documented in the migration, and
+the numbers live in the route's `console.error` alongside the offending sentence. Worth
+persisting so admin triage can answer "how bad" without reading a transcript. The signature
+already has room; no call-site change needed.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
