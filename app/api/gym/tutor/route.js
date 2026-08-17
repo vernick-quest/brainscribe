@@ -9,14 +9,25 @@ import { ageInYears } from '@/lib/coppa'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getSkill, getGradeBand } from '@/lib/gymCurriculum'
 import { getChallenge } from '@/lib/gymChallengeBank'
+import { hasLandedLockToken, stripCoachTokens } from '@/lib/coachTokens'
 
 const anthropic = new Anthropic()
 
-// Streaming gym coach. Mirrors /api/tutor exactly (cached static prefix + dynamic
-// tail, inline token protocol, usage logging) — the ONLY delta is the gym-mode block
-// injected into the dynamic tail (opts.gym). Same Sonnet model, same guardrails, same
-// stream tokens. Kept as its own route so gym prompt changes never touch assignment
-// mode and vice-versa (coach-prompt lane isolation).
+// Streaming gym coach. Mirrors /api/tutor (cached static prefix + dynamic tail, inline
+// token protocol, usage logging) — the intended delta is the gym-mode block injected into
+// the dynamic tail (opts.gym). Same Sonnet model, same guardrails, same stream tokens.
+// Kept as its own route so gym prompt changes never touch assignment mode and vice-versa
+// (coach-prompt lane isolation).
+//
+// ⚠️ "MIRRORS EXACTLY" IS A CLAIM THAT ROTS, AND IT DID. This header used to say the gym
+// block was the ONLY delta. By 2026-08-16 the file had also drifted into: a max_tokens
+// ceiling left at 1000 after the assignment path went to 4000, no stop_reason check at
+// all, and its own copy of the token-strip regex that was missing [CARE] and [SOURCE]. So
+// Sierra's exact data-loss chain — oversized [DONE:] payload, turn cut mid-payload, lock
+// silently never parsed — was live in Skill Studio and, with no truncation counter here,
+// invisible in a way the assignment path no longer was. Lane isolation duplicates the
+// FILE; it must not duplicate the SAFETY LOGIC. Anything shared now comes from
+// lib/coachTokens.js, and any new guard on /api/tutor belongs here in the same change.
 export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -81,7 +92,12 @@ export async function POST(request) {
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
+    // Matches /api/tutor deliberately. This ceiling is not "how much may the coach say" —
+    // a [DONE:id:…] payload carries the STUDENT'S EXACT WORDS, so it is really "how long
+    // may a piece of their writing be". Billed on actual output, so ordinary turns are
+    // unaffected. Skill Studio pieces are shorter than essays, which is exactly why this
+    // sat unnoticed at 1000; shorter is not short.
+    max_tokens: 4000,
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicTail },
@@ -90,7 +106,6 @@ export async function POST(request) {
   })
 
   const encoder = new TextEncoder()
-  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):[^\]]*\]|\[COMPLETE\]/g
 
   let resolveResult
   const resultReady = new Promise(resolve => { resolveResult = resolve })
@@ -100,10 +115,15 @@ export async function POST(request) {
       let fullText = ''
       let inputTokens = 0
       let outputTokens = 0
+      let stopReason = null
       try {
         for await (const chunk of stream) {
           if (chunk.type === 'message_start') inputTokens = chunk.message.usage?.input_tokens ?? 0
-          if (chunk.type === 'message_delta')  outputTokens = chunk.usage?.output_tokens ?? 0
+          if (chunk.type === 'message_delta') {
+            outputTokens = chunk.usage?.output_tokens ?? 0
+            // stop_reason arrives on message_delta. 'max_tokens' = cut off mid-turn.
+            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason
+          }
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             fullText += chunk.delta.text
             controller.enqueue(encoder.encode(chunk.delta.text))
@@ -113,15 +133,41 @@ export async function POST(request) {
       } catch (err) {
         controller.error(err)
       } finally {
-        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
-        resolveResult({ inputTokens, outputTokens, savedText })
+        // Same discriminator as /api/tutor: a truncated turn that landed NO lock is the
+        // one that may have destroyed confirmed student words. The student already saw
+        // the text, so we still deliver and persist it — what we refuse is to treat a
+        // truncated turn as a clean one.
+        const savedText = stripCoachTokens(fullText)
+        resolveResult({
+          inputTokens, outputTokens, savedText, stopReason,
+          truncated: stopReason === 'max_tokens',
+          hadLockToken: hasLandedLockToken(fullText),
+        })
       }
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText } = await resultReady
+    const { inputTokens, outputTokens, savedText, truncated, hadLockToken, stopReason } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+
+    // Truncation, recorded against the SAME counter as the assignment path. `sessionId`
+    // here is the linked `sessions` row (re-read via RLS and confirmed a gym session
+    // above), which is what record_coach_turn_truncation keys on — so gym truncation
+    // lands in one place with essay truncation instead of being a second dark corner.
+    // Service client because the counter is a safety signal: a user-callable RPC on an
+    // arbitrary session id would be forgeable. Granted to service_role alone.
+    if (truncated) {
+      console.error(
+        `[gym/tutor] TRUNCATED coach turn (stop_reason=${stopReason}) session=${sessionId} ` +
+        `lock_token_present=${hadLockToken} — ${hadLockToken ? 'tokens emitted before the cut' : 'NO landed lock: a [DONE]/[CARE] may have been dropped'}`
+      )
+      const { error: truncErr } = await createServiceClient().rpc('record_coach_turn_truncation', {
+        p_session_id: sessionId,
+        p_had_lock_token: hadLockToken,
+      })
+      if (truncErr) console.error('[gym/tutor] truncation record failed:', truncErr.message)
+    }
     if (savedText) {
       // Persist the coach turn via the SERVICE-ROLE client, not the student's RLS
       // client. This is the gym-lane half of audit finding E1: the `messages` table

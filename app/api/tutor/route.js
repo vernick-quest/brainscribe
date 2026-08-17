@@ -8,7 +8,7 @@ import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { parseCommitments } from '@/lib/coachCommitments'
-import { hasLandedLockToken } from '@/lib/coachTokens'
+import { hasLandedLockToken, stripCoachTokens } from '@/lib/coachTokens'
 
 const anthropic = new Anthropic()
 
@@ -153,7 +153,7 @@ export async function POST(request) {
   // [SOURCE:…] is the research/citations capture token (coaching-session lane): it
   // opens the source-confirm card client-side and must be stripped from the persisted
   // coach turn like every other control token.
-  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE|SOURCE):[^\]]*\]|\[COMPLETE\]|\[CARE\]/g
+  // Token stripping lives in lib/coachTokens.js — see the note there on the fourth copy.
 
   // The stream's text tokens are enqueued to the client as they arrive, then the
   // stream closes immediately. The usage log + message insert run in after(), so the
@@ -186,7 +186,7 @@ export async function POST(request) {
       } catch (err) {
         controller.error(err)
       } finally {
-        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
+        const savedText = stripCoachTokens(fullText)
         // ── Truncation detection (audit finding 2026-08-09) ────────────────────
         // EVERY control token is emitted at the END of a coach turn ([DONE:id:words],
         // [PARA_DONE], [THESIS], [COMPLETE], [CARE]). A turn cut off at max_tokens can

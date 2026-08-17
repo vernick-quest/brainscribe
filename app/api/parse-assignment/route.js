@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
+import { assertComplete } from '@/lib/modelResponse'
 
 const anthropic = new Anthropic()
 
@@ -70,7 +71,12 @@ export async function POST(request) {
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
+    // 1024 was a silent data-loss ceiling on the INTAKE path, not a cost knob. This call
+    // transcribes the student's OWN existing answers verbatim (see the ALREADY WRITTEN BY
+    // THE STUDENT section below), and that section is instructed to come LAST — so a cut
+    // drops THEIR WORK FIRST and leaves a complete-looking assignment above it. A filled-in
+    // worksheet plus a rubric clears 1024 easily. Haiku, billed on actual output.
+    max_tokens: 4000,
     messages: [{
       role: 'user',
       content: [
@@ -116,6 +122,21 @@ If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
   })
 
   logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
+
+  // A truncated extraction is a successful API call carrying a partial worksheet, and the
+  // partial LOOKS fine — the assignment reads complete and only the student's own answers
+  // are missing off the end. Refuse it and say so, rather than opening a session whose
+  // "ALREADY WRITTEN" section silently lost half their work. Raising the ceiling makes
+  // this rare; it does not make it impossible, and the failure is invisible without this.
+  try {
+    assertComplete(response, { what: 'the assignment extraction' })
+  } catch (err) {
+    if (err.code !== 'model_truncated') throw err
+    return Response.json(
+      { error: "That worksheet was too long to read in one pass. Try uploading it a page at a time, or paste the assignment text directly." },
+      { status: 422 }
+    )
+  }
 
   // Find the text block explicitly — content[0] isn't guaranteed to be text on
   // every model (e.g. thinking-enabled models emit a thinking block first).
