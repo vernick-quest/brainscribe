@@ -82,14 +82,10 @@ assertNoSplitLock(p1, 'P1')
 // negative assertions above trivially true on this probe, which is why PROBE 2 exists:
 // it drives the conversation to the turn where locks actually fire and asserts they did.
 // Naming the size is the honest half of the rule — not a cover story about the app.
-// The concept, not one phrasing of it: the coach must NOTICE this is more than a single
-// slot's worth. Observed phrasings so far — "at least three distinct moments", "a few
-// different moments", "five paragraph slots ... all going into paragraph one", "it reads
-// as one long block". Widened to the concept after two too-narrow versions failed replies
-// that were doing exactly the right thing.
-// Probabilistic — it phrases the observation differently run to run (seen: "at least three
-// distinct moments", "a few different moments", "five paragraph slots ... all going into
-// paragraph one"). Reported, not gated, for the same reason as above.
+// Match the CONCEPT, not one phrasing: observed forms include "at least three distinct
+// moments", "a few different moments", "five paragraph slots ... all going into paragraph
+// one", "it reads as one long block". Two narrower versions failed replies that were doing
+// exactly the right thing. Reported rather than gated — the phrasing varies run to run.
 observe('P1: notices this is more than one section\'s worth',
   /\b(?:two|three|four|five|a few|several|multiple|at least \w+)\s+(?:distinct\s+|separate\s+|different\s+)?(?:scenes?|sections?|paragraphs?|parts?|moments?|slots?)\b/i.test(p1)
   || /(?:separate|different|its own)\s+paragraphs?\b|more than one (?:paragraph|section|scene)|one long block|all going into (?:paragraph|the first)|big (?:chunk|piece)|bigger than one/i.test(p1))
@@ -196,8 +192,21 @@ const { text: p3 } = await coachTurn({
 console.log('\n' + p3 + '\n' + '─'.repeat(70))
 const p3Dones = assertNoSplitLock(p3, 'P4')
 check('P4: at most one lock — no split when there is nowhere to split to', p3Dones.length <= 1, `${p3Dones.length} [DONE:]`)
-check('P4: does not promise to add a new section (Rule 2: the count is fixed)',
-  !/\b(?:add|create|make|open|set up) (?:a |an |one )?(?:new |extra |another |sixth |6th )(?:paragraph|section|scene|slot)\b/i.test(p3))
+// ⚠️ THIS CHECK WAS INVERTED, 2026-08-17. It used to assert the coach must NOT offer a new
+// section, labelled "Rule 2: the count is fixed". That rule was deleted when growth
+// shipped — Rule 25 now tells the coach to point at "+ Add another section" in exactly
+// this situation. It still PASSED, so a green safety probe would have rejected a correct
+// prompt change. A probe that outlives its rule is worse than no probe: it enforces the
+// old behaviour with the authority of a test.
+//
+// What actually survived from the old invariant is narrower: the coach must not claim to
+// add a section ITSELF (there is no token; it is the student's tap), and must never
+// re-emit [SCAFFOLD].
+check('P4: does not claim IT can add the section — that is the student\'s tap',
+  !/\b(?:i'?ll|i will|i can|let me|i'?ve|i have)\s+(?:just\s+)?(?:add|create|make|open|set up)\w*\s+(?:a |an |one |another |the )?(?:new |extra |sixth |6th )?(?:paragraph|section|scene|slot)\b/i.test(p3),
+  (p3.match(/\b(?:i'?ll|i will|i can|let me)\s+(?:just\s+)?(?:add|create|make|open|set up)\w*[^.!?]{0,30}/i) ?? [''])[0])
+observe('P4: points at the real control when it raises more room',
+  !/more room|another section|add a section/i.test(p3) || /add another section/i.test(p3))
 check('P4: never re-emits [SCAFFOLD] (it would erase every confirmed scene)',
   !/\[SCAFFOLD:/.test(p3))
 

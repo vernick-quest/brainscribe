@@ -76,8 +76,9 @@ check(`scaffolds on the ready signal at least once in ${P1_RUNS}`, p1Built > 0, 
 console.log(`  📊 RATE: ${p1Built}/${P1_RUNS} — baseline without Rule 24 measured 4/6, with it 5/6. Track the trend.`)
 
 // ── PROBE 2 — ready signal WITHOUT a count (the Rule 2 / Rule 24 seam) ───────────────
-// [SCAFFOLD:type:count] needs a number and the number is fixed for the session, so the
-// structure question is the one thing allowed to precede the build. What must NOT happen
+// [SCAFFOLD:type:count] needs a number and fires only once, so the structure question is
+// the one thing allowed to precede the build. (Sections CAN be added later by the student
+// since growth shipped; that does not make the up-front number optional.) What must NOT happen
 // is that permission being used as a doorway back into idea questions.
 console.log('PROBE 2 — ready, but the shape is not stated (structure question is allowed)')
 const { text: p2 } = await coachTurn({
