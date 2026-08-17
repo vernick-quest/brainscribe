@@ -263,13 +263,30 @@ the transcript reading nicely:
   one-shot turn-1 assessment and unrecoverable if wrong
 - provenance scores the student's own long prose as theirs, not as coach-authored
 
-**Existing infra to build on:** `scripts/redteam/` and `scripts/prompt-harness/`. The
-harness runs the real prompt in ~4s for about a cent; a full session sim is a different
-cost class.
+**⚠️ MOSTLY FREE — do not defer this as an expensive job. It splits three ways, and the
+tier that would have caught Sierra costs nothing.**
 
-⚠️ **BILLED. Estimate and get Robert's go before running.** A full essay-funnel run has
-cost $25–35 before. Log spend via `scripts/redteam/lib/logUsage.mjs`. A low API balance
-takes the live coach down for everyone, so this is never a background job.
+**Tier 1 — free, deterministic, no model.** The entire failure chain is pure functions:
+build a `[DONE:body:<700 words>]` payload, cut it at a token boundary, assert the client's
+`tokenRE` parses ZERO locks, and assert `hadLockToken` returns TRUE on the same string —
+which pins the counter bug. Same for newline survival through the payload, scaffold-size
+arithmetic, and provenance scoring long student prose. **This is most of the value and it
+should have existed.** Milliseconds, no API key.
+
+**Tier 2 — Fable on the Claude Code subscription, as AUTHOR not tester.** Generate the
+fixtures: a ten-scene outline, a 700-word scene in a 13-year-old's voice, the pushback
+turns. Committed once. The repo is public so fixtures must be synthetic anyway — this is
+the right way to get them. No per-run cost.
+
+**Tier 3 — billed API, and genuinely unavoidable.** THE COACH CANNOT BE FABLE: `/api/tutor`
+runs `claude-sonnet-4-6` through `ANTHROPIC_API_KEY`, and swapping in a subscription model
+tests a different system. But what actually needs it is narrow — the JUDGMENT questions:
+does the coach emit `[SCAFFOLD:narrative:10]` rather than `:1`, and does it stop asking
+when a student signals readiness. Those are two targeted `npm run test:prompts` probes at
+roughly a CENT each, not the $25–35 essay funnel.
+
+Reserve the funnel for end-to-end behaviour across a whole session. Log spend via
+`scripts/redteam/lib/logUsage.mjs`; a low API balance downs the live coach for everyone.
 
 Sizing note: high-school work is the target market, and high-school work is long. The
 ceiling was raised to 4000 today, which buys headroom rather than removing the class —
