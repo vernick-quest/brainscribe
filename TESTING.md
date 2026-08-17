@@ -3634,3 +3634,68 @@ window, a genuinely present user would flicker out of it between writes.
 there · switch tabs for 10 min → it ages out of "Active now" rather than lying · leave the tab open
 and idle overnight → it stops updating (no zombie presence) · DevTools network shows one
 `/api/presence` per minute, not per interaction.
+
+## 2026-08-16 — Session health: a deterministic pass that asks whether the WORK survived (focus/admin)
+
+**Files:** `lib/sessionHealth.js` + `.test.js` (new), `lib/runSessionHealth.js` (new),
+`supabase/migrations/069_session_health_findings.sql` (**NOT APPLIED**),
+`app/api/cron/transcript-audit/route.js` (extended), `app/api/admin/session-health/route.js` (new),
+`components/AdminDashboard.js` (panel). **vercel.json unchanged — no second cron.**
+
+### Why
+Sierra's data loss was found because a human opened her session and read it. The nightly audit
+judges COACHING QUALITY from transcripts; her failure was MECHANICAL. An audit that reads what the
+coach SAID is structurally blind to whether the student's work SURVIVED.
+
+### The correction that matters — measured, not assumed
+The brief's signal 2 ("confirmed items > 0 AND zero paragraphs") returned **3** for me, not 1.
+Investigating instead of tuning to match: **12 of 15 live active sessions have zero paragraphs**,
+because paragraphs are written at assembly. Comparing item statuses found the real discriminator:
+
+| session | item statuses | paragraphs | |
+|---|---|---|---|
+| Robert | 1 confirmed, 1 working, 2 locked | 0 | mid-flight |
+| Baron | 3 confirmed, **1 working** | 0 | mid-flight |
+| **Sierra** | **4 confirmed, nothing else** | **0** | 🔴 finished, never assembled |
+
+The signal is **EVERY item confirmed** + zero paragraphs — "the student finished all their pieces
+and none became a draft". The naive version would have flagged two healthy in-flight sessions
+beside the real one, which is how a tab earns a shrug.
+
+**All three of the conductor's validated counts reproduce exactly:**
+`no_draft_despite_locks` 1 (Sierra) · `truncated_turn` 1 (Sierra) · `overstuffed_section` 4.
+
+### Design
+- **Deterministic — zero model calls.** Free to run nightly over the whole corpus, and
+  **re-derivable**, so the pass RECONCILES: a finding whose condition is fixed is deleted, not
+  left resolved-but-stale. An alert that can never clear is what trains people to stop looking.
+- **One cron, two outputs.** The health pass runs INLINE and FIRST in `/api/cron/transcript-audit`
+  (seconds, no model calls) so it can't fail merely because the sampled audit did; its error is
+  returned in the payload, never swallowed.
+- **Separate table, and the reason was checked not assumed:** `transcript_audit_findings` has
+  UNIQUE(session_id) — verified live by attempting a second insert (failed 23505). It physically
+  cannot hold a judge row and a health row for the same session, and Sierra's already has a judge
+  row. Lifecycles differ too: judge findings are expensive one-shot history; health findings are
+  recomputed nightly and must self-clear.
+- **`truncated_turns_no_lock` null = UNKNOWN, never 0.** Pre-fix values are meaningless, and
+  reporting "no locks dropped" from a field that never counted them is the reassuring-direction
+  error. Unit-tested.
+- **Historical noise contained.** Sessions before 2026-07-21 are marked `pre_existing` and
+  collapsed behind "Show pre-existing" — recorded, but they cannot flood the first run.
+- **Visually distinct in the tab:** a red-bordered "student work may be at risk" block above the
+  judge findings, with Acknowledge rather than the judge's Resolve — these must not be dismissible
+  with the same shrug.
+
+### Verification
+- `npm run test:run` **638/638 green** (35 files; 23 new session-health assertions) · build green.
+- **Dry-run of the real runner against live data** — first run will write **6 live findings
+  (1 critical) + 15 pre-existing**. Sierra's session lights up on four signals, critical first:
+  `all 4 scaffold items confirmed but 0 paragraphs`, `2 truncated coach turns`, overstuffed section,
+  late scaffold. **The pass catches the loss that a human had to find by reading.**
+- Missing-table behaviour proven: GET reports `pending:true` (panel says the migration is not
+  applied) rather than a false all-clear; the runner throws and the cron surfaces `healthError`.
+- Not visually verified — /admin is behind Google OAuth.
+
+**Manual check (after 069):** Sierra's session appears as CRITICAL at the top · Baron's in-flight
+session does NOT appear for missing paragraphs · Acknowledge hides a finding · re-run "Re-check"
+after a session is repaired and the finding disappears by itself.
