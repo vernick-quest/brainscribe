@@ -21,6 +21,7 @@ import {
   buildContinuationSources,
   CONTINUATION_ENABLED,
 } from '@/lib/sessionContinuation'
+import { growComponents, verifyGrowth, MAX_GROWTH } from '@/lib/scaffoldGrowth'
 import { sessionStamp } from '@/lib/sessionStamp'
 
 export async function POST(request, { params }) {
@@ -35,6 +36,16 @@ export async function POST(request, { params }) {
       { status: 503 }
     )
   }
+
+  // Optional: append N empty sections to the copied scaffold so the student has somewhere
+  // to put new work (see the growth block below). Clamped and validated here; 0 = the
+  // previous behaviour exactly. Body is optional — tolerate an empty request.
+  const reqBody = await request.json().catch(() => ({}))
+  const rawGrow = Number(reqBody?.growBy ?? 0)
+  if (!Number.isInteger(rawGrow) || rawGrow < 0 || rawGrow > MAX_GROWTH) {
+    return Response.json({ error: `growBy must be an integer 0..${MAX_GROWTH}`, code: 'bad_growth_request' }, { status: 400 })
+  }
+  const growBy = rawGrow
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -133,7 +144,24 @@ export async function POST(request, { params }) {
   }
 
   // 2) Copy scaffold, paragraphs, sources under the new session id.
+  // Optional growth on copy: a v2 whose scaffold is the same size as a FINISHED v1 has
+  // its cursor parked at the all-done sentinel, so every dictated addition is refused
+  // (correctly — see lib/scaffoldWrite.js). Appending empty sections makes that cursor
+  // in-range and unoccupied, the one case the guard allows, so the student can actually
+  // add. Growth goes through the SAME pure append-only function the in-place grow
+  // endpoint uses, so there is one implementation of "never touch existing sections".
   const scaffoldRow = buildContinuationScaffold(v1Scaffold, v2.id)
+  if (scaffoldRow && growBy > 0) {
+    try {
+      const g = growComponents(scaffoldRow.components, growBy, { now: new Date().toISOString() })
+      const check = verifyGrowth(scaffoldRow.components, g.components, g.added)
+      if (!check.ok) return abort('scaffold growth', check.reason)
+      scaffoldRow.components = g.components
+      scaffoldRow.total_paragraphs = g.components.length
+    } catch (e) {
+      return abort('scaffold growth', e.message)
+    }
+  }
   if (scaffoldRow) {
     const { error } = await supabase.from('paragraph_scaffolds').insert(scaffoldRow)
     if (error) return abort('scaffold copy', error.message)
@@ -159,7 +187,13 @@ export async function POST(request, { params }) {
   ])
   const v1Text = srcParagraphs.map(p => p.scribed_text).join('\n\n')
   const v2Text = (chkParas ?? []).map(p => p.scribed_text).join('\n\n')
-  const scaffoldOk = !scaffoldRow || (chkScaffold?.components?.length === (v1Scaffold.components?.length ?? 0))
+  // Section count must equal v1's PLUS any sections growth intentionally appended — NOT
+  // v1's alone. A grown v2 is a legitimate new case, and an assertion that fails on a
+  // legitimate case is the assertion that gets deleted for convenience the next time it
+  // fires. It stays, widened to the exact expected number: a wrong-sized copy (short,
+  // over-copied, or grown by the wrong amount) still fails here.
+  const expectedSections = (v1Scaffold?.components?.length ?? 0) + growBy
+  const scaffoldOk = !scaffoldRow || (chkScaffold?.components?.length === expectedSections)
   if ((chkParas?.length ?? 0) !== paraRows.length || (chkSourceCount ?? 0) !== sourceRows.length ||
       v1Text !== v2Text || !scaffoldOk) {
     return abort('read-back verify',

@@ -39,7 +39,7 @@ export default async function TeacherDashboardPage() {
   if (sessionIds.length > 0) {
     const { data: sessionData } = await service
       .from('sessions')
-      .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, student_id, subject, subject_custom_label, requirements')
+      .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, student_id, subject, subject_custom_label, requirements, continued_from, version')
       .in('id', sessionIds)
       .order('last_active_at', { ascending: false, nullsFirst: false })
       .limit(100)
@@ -66,7 +66,7 @@ export default async function TeacherDashboardPage() {
   // assignments they review, and excluding any practice/onboarding run.
   const { data: ownSessionData } = await service
     .from('sessions')
-    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, is_onboarding, subject, subject_custom_label, requirements')
+    .select('id, title, assignment_text, status, persona, created_at, updated_at, completed_at, last_active_at, is_onboarding, subject, subject_custom_label, requirements, continued_from, version')
     .eq('student_id', targetId)
     .order('last_active_at', { ascending: false, nullsFirst: false })
     .limit(20)

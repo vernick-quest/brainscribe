@@ -3699,3 +3699,102 @@ beside the real one, which is how a tab earns a shrug.
 **Manual check (after 069):** Sierra's session appears as CRITICAL at the top · Baron's in-flight
 session does NOT appear for missing paragraphs · Acknowledge hides a finding · re-run "Re-check"
 after a session is repaired and the finding disappears by itself.
+## 2026-08-09 (b) — Fire-and-forget sweep + watcher Draft-N chip — focus/coaching-session
+
+**Sweep for the fire-and-forget write pattern** (third instance in two days, now a standing
+rule: find one → grep for the rest, because the shape gets COPIED precisely because it looks
+harmless). Swept `components/` + `app/` for `.catch(console.error)` and for `fetch(` with no
+`res.ok` check. Results:
+- **0 live `.catch(console.error)`** remaining (the only hit is the explanatory comment in
+  saveDirectEdit).
+- **2 real instances on student work — FIXED:** both `/api/messages` writes (the student's OWN
+  turns) swallowed their result — `handleConversation` via `.catch(() => {})`, `handleDictation`
+  via a discarded `Promise.all` slot. A failed insert was invisible: the session keeps working
+  (the coach receives the text in the request body), but the turn is missing from the transcript
+  a watcher reads and from the record the integrity layer reads. New `persistUserTurn()` helper —
+  still NON-BLOCKING (blocking would add a round-trip to every turn on the hot voice path) but no
+  longer silent: checks `res.ok` and logs a loud, greppable `[messages] student turn NOT
+  persisted…`. Deliberately no student-facing banner — alarming and useless for a transient blip.
+- **Not student work, left alone:** `/api/profile/voice` (a preference), `/api/admin/usage` and
+  `/api/admin/draft-integrity` (admin reads).
+
+**Watcher Draft-N chip — the last visible gap in "Keep working", now closed.** Root cause was
+NOT missing UI: `ParentDashboard` and `TeacherDashboard` both already render the student's own
+`SessionsList`, which has the Draft-N badge + "Continued from / in a new draft" chips. The four
+watcher session selects simply never asked for `continued_from, version`, so `SessionsList`
+computed no links. Added those two columns to all four (parent ×2, teacher ×2). Safe by
+construction: the link map is built only from sessions IN the list, so a v2 the watcher can't
+see yields NO chip rather than a dead link.
+
+⚠️ **Flagged, not silently changed:** `assignment_teachers` rows are NOT copied to a v2, so a
+teacher watching v1 never sees the continuation at all (no chip, no v2 in their list). That is a
+SHARING decision — auto-granting a teacher access to a newly minted session without the student
+doing anything is not a call this lane should make unilaterally. Parent watchers are unaffected
+(they see all their child's sessions, so both drafts and the chips appear).
+
+Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN.
+
+## 2026-08-16 — Scaffold GROWTH: escape the fixed structure (Sierra) — focus/coaching-session
+
+**The trap.** `[SCAFFOLD:type:count]` fires once and the structure is fixed for the life of
+the session. A ten-scene story scaffolded as ONE section had to hold every scene in that one
+container, so its assembly payload grew until it hit the model ceiling: ~1,200 confirmed
+words, 30k characters in `messages`, and nowhere to put the next scene.
+
+**Verified before building (all three handed-over claims held).** The continuation guard
+ALREADY permits growth — re-confirmed against the real function, not taken on report:
+same-size v2 → `null` (refused), grown → points at the first new empty section. No guard
+weakening. `continue/route.js` does require `status='complete'`, so it genuinely cannot reach
+a live session. The read-back did assert `components.length === v1's`, which a grown scaffold
+would trip.
+
+- **`lib/scaffoldGrowth.js`** (pure): `growComponents` appends empty sections, carrying every
+  existing section by OBJECT IDENTITY — "grow AND edit" is unrepresentable through the API,
+  not merely guarded. Plus `verifyGrowth` (the post-write assertion, kept pure so it is itself
+  tested) and `reconcileComponentsWrite` (the stale-shrink guard). **23 tests.**
+- **`POST /api/scaffold/[sessionId]/grow`** — growth IN PLACE on a live session, which is what
+  reaches Sierra. Client sends only a COUNT; the server appends to what is STORED, so no wire
+  format can carry an altered section. Owner-only; 409 on a complete session; read error
+  checked (a swallowed read would append to `[]`); property proven before the write AND
+  against what landed; **compare-and-swap on `updated_at`** so a concurrent lock cannot be
+  silently reverted.
+- **Read-back FIXED, not deleted** — `v1.components.length + growBy`, with `growBy` a
+  validated (0..20) parameter running through the same pure append-only function.
+- **UI**: "+ Add another section", gated on `phase === 'listening'`, adopting the server's
+  returned components via `applyScaffold` (see the red-team notes below for why that matters).
+
+### Adversarial pass (Fable) — 2 ship-blockers found and FIXED, both real
+- **F1 HIGH — id collision destroying confirmed text.** New custom items were minted `c${sectionIndex}`,
+  but Sierra's ONE section holds `c0..c9`, so the first grown section got `c1` — Scene 2's id.
+  `[DONE:c1:…]` takes the local exact match and the exact path lets a revision win over
+  confirmed text, so a revision aimed at Scene 2 would have OVERWRITTEN the grown section's
+  words. This is exactly the "component ids are unique" premise CLAUDE.md records as FALSE —
+  and my own test asserted the colliding id as *correct*. Ids are now minted against every id
+  in the whole tree; regression tests cover the ten-scene shape and id gaps.
+- **F2 HIGH — no server-side shrink guard.** Growth silently invalidated the premise every
+  whole-array writer depends on ("the client array is always a superset"). A second tab opened
+  before a growth would, on its next lock — or on COMPLETION, which freezes it into the
+  watcher-facing record — write back a shorter array and delete the grown section and its work.
+  Sections are only ever appended, so a shorter incoming array means a stale sender: both the
+  scaffold PATCH and `upsertScaffoldSnapshot` now carry the stored tail across and log loudly.
+- **F4 MED** — grow's read-modify-write could revert a concurrent lock while its read-back
+  passed against its own stale baseline → fixed with the CAS above (409 + retry).
+- **F5 MED** — grow never updated `total_paragraphs`, so the coach prompt kept describing the
+  OLD size and never learned the new section existed → fixed.
+- **F6 MED** — appended type inherited the LAST section's type, so a finished essay grew a
+  SECOND CONCLUSION → prose now grows by a `body`; custom stays custom.
+- **F3 MED** — an in-flight coach turn re-applies a pre-grow copy → button gated on `listening`.
+- **Clean per the review:** authz, rate limiting, resolver behaviour on grown scaffolds (both
+  modes), append-only purity, and continue's rollback ordering.
+
+### Known / deliberately NOT fixed here
+- **F7** an unused grown section blocks the full-essay assembly card (no shrink/undo exists).
+- **F8** `lib/prompts.js:309` still tells the coach the paragraph count "CANNOT be increased
+  later", and nothing teaches it to advance onto a grown section — **coach-ai's lane**, needs
+  the coach-prompt skill + `test:prompts`. Until then the student drives growth via the button.
+- Empty grown sections are inert at completion (both `assembleUnbuiltParagraphs` and
+  `persistCustomFinals` require a confirmed item with text) — verified by reading the filters.
+
+Gate: build green · `test:run` **638 passed** · `test:continuation` GREEN.
+Manual check owed: grow Sierra's session (button or one POST), confirm her 1,200 words are
+untouched and the new section accepts a scene.
