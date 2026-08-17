@@ -3984,3 +3984,49 @@ assignment. `StudentCard` takes `renderSession` instead of pre-rendered `childre
 decide which group each session belongs to.
 
 `npm run test:run` **702/702 green** · build green.
+
+## 2026-08-17 — The ⚠ column becomes the CTA it was promised to be (focus/admin, P1)
+
+**Files:** `lib/attention.js` + `.test.js` (new), `app/admin/page.js`,
+`components/AdminDashboard.js`. No migration.
+
+Robert: *"any warnings that need my attention should get flagged here, this is a CTA for me."*
+It counted only guardrail-audit findings, so Sierra rendered a dash while carrying a CRITICAL
+`no_draft_despite_locks` — which is why finding her problem took a remote-in.
+
+**The design rule, encoded not just written:** `ATTENTION_SOURCES` in `lib/attention.js` lists every
+detector with `feeds` + `why`, and a test asserts every source declares both and that the default is
+YES. A new detector that forgets to decide fails the suite rather than silently going unseen.
+In scope now: session-health (all 4 signals) · guardrail-audit · lock_over_claims · revisionRefused.
+
+### The over-count was measured, not guessed
+Four policies scored against live data before any UI was written:
+
+| policy | total | Sierra | Baron | Elio |
+|---|---|---|---|---|
+| A raw findings | 15 | 4 | 7 | **4** |
+| B distinct sessions | 9 | 1 | 5 | **3** |
+| **C live only (chosen)** | **4** | **1** | 3 | **0** |
+| D live + critical/high | 2 | 1 | 1 | 0 |
+
+**A is the trap**: Elio's four pre-era mediums render the same magnitude as Sierra's one genuine
+critical. C counts **distinct sessions** (you open a session, not a finding — Sierra's four findings
+are one thing to look at) and excludes pre-existing + acknowledged/resolved. Elio drops to 0 while
+Sierra stays visible. Colour follows the **worst**, never the newest; the click uses the existing
+`jumpToAudit` so it lands on the finding, not the tab.
+
+### ⚠️ NOT YET MET IN PROD — the column is gated on the health pass having run
+Verified with the shipped aggregator against live data: **Sierra currently renders a dash**, because
+`session_health_findings` has **0 rows** — the nightly pass has not run since 069 was applied. Only
+Baron shows a number (1, medium, from a guardrail finding). So on deploy the CTA will still miss
+Sierra until either the 09:30 UTC cron runs or an admin clicks **Re-check** in the health panel.
+**Stating this rather than reporting the wiring as the outcome:** the promise is met when the table
+is populated, not when this ships.
+
+**Verification:** `npm run test:run` **716/716 green** (38 files; 14 new attention assertions) ·
+build green. Health-table read failures are logged loudly because a fail-soft `[]` makes the column
+UNDER-report, which is the reassuring direction.
+
+### Carried
+- **P2 health-run timestamp (071 free)** — `everRun` still inferred from `rows.length > 0`.
+- **Threshold re-check** a week after growth sees real use; Sierra = per-signal self-clearing test.

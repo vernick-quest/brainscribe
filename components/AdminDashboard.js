@@ -13,6 +13,7 @@ import { unwrapPastedText } from '@/lib/unwrapText'
 import { breachKey, breachProgress, summaryContradictsBreaches } from '@/lib/auditBreach'
 import { presenceLabel, isActiveNow } from '@/lib/presence'
 import { HEALTH_SIGNALS } from '@/lib/sessionHealth'
+import { ATTENTION_RANK } from '@/lib/attention'
 
 const HEALTH_SIGNAL_LABEL = Object.fromEntries(Object.entries(HEALTH_SIGNALS).map(([k, v]) => [k, v.label]))
 
@@ -1390,7 +1391,7 @@ function StudentRosterLegend() {
       {item(IconLogins, 'Logins', 'var(--text-subtle)')}
       {item(IconDoc, 'Assignments (+Np = practice warm-ups)', 'var(--text-subtle)')}
       {item(IconCheck, 'Completed', 'var(--text-subtle)')}
-      {item(IconWarnTri, 'Warnings', 'var(--text-subtle)')}
+      {item(IconWarnTri, 'Needs attention (click → finding)', 'var(--text-subtle)')}
     </div>
   )
 }
@@ -1399,6 +1400,8 @@ function StudentRosterLegend() {
 // the FTUE state is a glyph before the name, and Remote in / Delete live INSIDE the
 // expanded body rather than crowding every row with buttons that are rarely used.
 function StudentCard({ student, sessions, onRoleChanged, renderSession }) {
+  // Same jump the per-assignment warning badge uses, so the CTA lands on the finding.
+  const { jumpToAudit } = useContext(AuditJumpContext)
   const [open, setOpen] = useState(false)
   // ALWAYS expandable. This was `sessions.length > 0`, which hid the chevron on a
   // student with no work — and since Remote in / Delete account moved into the body,
@@ -1422,6 +1425,7 @@ function StudentCard({ student, sessions, onRoleChanged, renderSession }) {
   const practice = sessions.filter(s => s.is_onboarding)
   const practiceDone = practice.filter(s => s.status === 'complete').length
   const warn = student.audit_warnings
+  const att = student.attention
   // Logins are counted from migration 059 onward — Supabase keeps no lifetime count
   // and the auth schema can't be read back, so pre-059 history is genuinely unknown.
   // Show "—" rather than "0 logins", which would assert something we don't know.
@@ -1485,11 +1489,27 @@ function StudentCard({ student, sessions, onRoleChanged, renderSession }) {
         <span className={`${COL} text-xs`} style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }} title="Completed">
           {completed}
         </span>
-        <span className={`${COL} text-xs font-semibold`}
-          title={warn?.total ? `${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}` : 'No open warnings'}
-          style={{ color: !warn?.total ? 'var(--text-subtle)' : warn.high > 0 ? 'var(--status-error)' : 'var(--status-thin)' }}>
-          {warn?.total || '—'}
-        </span>
+        {/* THE CTA. Robert: "any warnings that need my attention should get flagged
+            here." So EVERY in-scope detector feeds it — mechanical health, guardrail
+            breaches, lock over-claims, refused revisions (lib/attention.js holds the
+            rule). Counts SESSIONS not findings, because Sierra's four findings are one
+            session to open and counting them as four made a historical medium look the
+            same size as a live critical. Colour follows the WORST, and the click lands
+            on the finding via the same jump the per-assignment badge uses. */}
+        {att?.count > 0 ? (
+          <button
+            onClick={() => jumpToAudit?.(att.sessions[0].sessionId)}
+            title={`${att.count} session${att.count === 1 ? '' : 's'} need attention · worst: ${att.worst}\n` +
+              att.sessions.map(x => `• ${x.severity} — ${x.label}${x.detail ? ` (${x.detail})` : ''}`).join('\n') +
+              '\nClick to open the most urgent.'}
+            aria-label={`${att.count} session${att.count === 1 ? '' : 's'} need attention, worst ${att.worst} — open the most urgent`}
+            className={`${COL} text-xs font-bold cursor-pointer hover:opacity-80 transition`}
+            style={{ color: att.worst === 'critical' || att.worst === 'high' ? 'var(--status-error)' : 'var(--status-thin)' }}>
+            {att.count}
+          </button>
+        ) : (
+          <span className={`${COL} text-xs`} style={{ color: 'var(--text-subtle)' }} title="Nothing needs attention">—</span>
+        )}
 
         {/* Expand — one control at the right edge, no label */}
         <button onClick={toggle} disabled={!hasBody}
