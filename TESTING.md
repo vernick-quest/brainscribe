@@ -3832,3 +3832,57 @@ pass should DELETE that row while leaving `no_draft_despite_locks` untouched. Wo
 count comparison a week after growth sees real use.
 
 **Verification:** `npm run test:run` **661/661 green** (36 files) · build green.
+## 2026-08-17 — crossSection writes bypassed the no-overwrite guard — focus/coaching-session
+
+**The bug, verified at both ends before changing anything.** `resolveComponentWrite`
+returns `exact: true` for a CROSS-SECTION hit (`lib/scaffoldWrite.js`), and the `[DONE:]`
+handler's no-overwrite guard tested `exact` alone — so a redirect into another section
+skipped the guard and overwrote confirmed text. Cursor on a body paragraph, coach emits
+`[DONE:hook:…]` (body templates have no `hook`), it uniquely matches the intro's hook, and
+a finished paragraph is replaced with body content.
+
+**The audit ("does anything else promote an inexact write to exact").** `[DONE:]` is the
+only handler that overwrites *confirmed* text. **But the completeness claim was WRONG and
+the red-team caught it:** `[NUGGET:]` refuses on `confirmed` only, so an inferred target
+would replace a CANDIDATE's `nuggetText` — the student's captured words by the same
+standard. Both now use the shared rule. Verified clean: ACTIVE (status-only), THESIS
+(session-level by design), PARA_DONE (no text writes), the `[COMPLETE]` promotion
+(onboarding-scoped), Nets A/B, `confirmNugget`/`saveComponentEdit` (explicit UI-supplied
+paraIdx+id, exact by construction), growth, and the dictation path.
+
+**The trade, decided not assumed.** crossSection exists so a thesis revisit from a body
+paragraph lands rather than being discarded. A legitimate revisit and a mis-aimed id are
+structurally identical ("exact id, other section"); only fuzzy text matching could separate
+them, which this file's history forbids. Six destructive paths against one drop-by-refusal
+→ refuse. Scoped so the guard fires ONLY when there are words to lose: a cross-section
+write into an EMPTY component still lands, which is the non-destructive half the redirect
+was built for (Baron's 151 words were a drop into an unfilled slot, not an overwrite).
+
+- `shouldPreserveExisting(target, item)` — pure, so the RULE is unit-tested (the handler is
+  JSX and cannot be). Preserves when the target is inferred (`!exact || crossSection`) AND
+  the item already holds text/nuggetText.
+- `preserveExistingItem(item, target)` — pure. **Banks** the words as confirmed and
+  **stamps** `revisionRefused: 'cross-section' | 'inexact'`.
+
+**Two self-corrections during this change, both from the review:**
+1. I first made a cross-section DONE return the item *untouched*, reasoning that a token
+   aimed elsewhere is not approval. Principled but WRONG on the axis that matters: a
+   candidate left as a candidate is dropped at assembly (confirmed-only) — Baron's shape.
+   Losing writing outranks confirming a beat early, so it banks the words.
+2. The refusal was console-only. `lib/prompts.js` MANDATES `[DONE:thesis:…]` alongside
+   `[THESIS:…]` and Rule 11 has the coach refine the thesis from body paragraphs, so this
+   path fires routinely: `sc.thesis` would take the new wording while the component kept
+   the old, and nothing recorded the divergence (the commitment reconciler counts the
+   promise kept; the integrity detector sees no orphan). Now stamped on the row.
+
+Gate: build green · `test:run` **671 passed** (53 in scaffoldWrite) · `test:continuation` GREEN.
+
+### Flagged, NOT fixed here
+- **draftIntegrity does not yet surface `revisionRefused`** — the fact is now recorded but
+  nothing alerts on it. Small follow-up, owner of `lib/draftIntegrity.js`.
+- **The coach gets no feedback that its revision was refused**, so the "retry with the
+  cursor on that section" recovery cannot happen — it has no signal. That needs a system
+  note back to the coach and/or a prompt change (`lib/prompts.js` Rule 11 / the
+  `[THESIS:]`+`[DONE:thesis:]` mandate) → **coach-ai's lane**, coach-prompt skill + test:prompts.
+- Post-assembly cross-section revisits were ALREADY refused unrecorded (`resolveComponentWrite`
+  returns null, console-only, and `changed=true` still fires a no-op PATCH) — pre-existing.
