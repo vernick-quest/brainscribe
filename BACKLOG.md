@@ -238,6 +238,43 @@ both look for exactly that page, and its absence reads as "consumer app". That I
 `focus/marketing` — but it must state retention and privacy accurately, so it lands AFTER
 the privacy pass, not alongside it.
 
+## P1 — Simulate the LONG-FORM student with Fable  🔴 2026-08-16
+
+**Nothing in the test suite writes anything big.** Every fixture is short, every probe is a
+few sentences, and 570 unit tests say nothing about what happens when a student hands the
+coach 700 words at once. Sierra's truncation was found by a human reading a transcript —
+which is the detection method this repo keeps proving is the last line, not the first.
+
+**What it would have caught, before a real student hit it:** a `[DONE:id:…]` payload
+carrying the student's exact words blew `max_tokens: 1000`, the token never closed, the
+client's `tokenRE` (which requires the closing bracket) parsed ZERO locks, and ~30k
+characters never reached `paragraphs`. Every link failed quietly.
+
+**The sim:** drive a full session as a prolific writer — a multi-scene narrative, a
+research essay, a student who pastes an existing draft — and assert on the ARTIFACT, not
+the transcript reading nicely:
+- every `[DONE:]` payload parses (opens AND closes) — the exact failure above
+- `paragraphs` rows exist and their text matches what the student sent, byte for byte
+- paragraph and dialogue breaks survive the payload round-trip
+- `truncated_turns` stays 0, and `truncated_turns_no_lock` is read only after the counter
+  bug is fixed (`hadLockToken` matches the OPENING bracket; the client needs the closing
+  one, so today it under-reports exactly this case)
+- the scaffold gets the right NUMBER of sections for the work — scene-scaffolding is a
+  one-shot turn-1 assessment and unrecoverable if wrong
+- provenance scores the student's own long prose as theirs, not as coach-authored
+
+**Existing infra to build on:** `scripts/redteam/` and `scripts/prompt-harness/`. The
+harness runs the real prompt in ~4s for about a cent; a full session sim is a different
+cost class.
+
+⚠️ **BILLED. Estimate and get Robert's go before running.** A full essay-funnel run has
+cost $25–35 before. Log spend via `scripts/redteam/lib/logUsage.mjs`. A low API balance
+takes the live coach down for everyone, so this is never a background job.
+
+Sizing note: high-school work is the target market, and high-school work is long. The
+ceiling was raised to 4000 today, which buys headroom rather than removing the class —
+a long enough section exceeds any number.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
