@@ -8,6 +8,7 @@ import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { parseCommitments } from '@/lib/coachCommitments'
+import { hasLandedLockToken } from '@/lib/coachTokens'
 
 const anthropic = new Anthropic()
 
@@ -197,7 +198,10 @@ export async function POST(request) {
         // We still deliver + persist the text (the student already saw it); what we
         // refuse to do is treat a truncated turn as a clean, complete turn.
         const truncated = stopReason === 'max_tokens'
-        const hadLockToken = /\[(DONE|THESIS|PARA_DONE|COMPLETE|CARE)[:\]]/.test(fullText)
+        // A lock only counts if it CLOSED — an opening bracket is what a cut turn leaves
+        // behind, so matching it made no_lock read 0 on the dropped-lock case. See
+        // lib/coachTokens.js.
+        const hadLockToken = hasLandedLockToken(fullText)
         resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText, truncated, hadLockToken, stopReason })
       }
     },
