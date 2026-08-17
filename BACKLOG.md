@@ -292,6 +292,31 @@ Sizing note: high-school work is the target market, and high-school work is long
 ceiling was raised to 4000 today, which buys headroom rather than removing the class —
 a long enough section exceeds any number.
 
+## P0 — Locking by reference: remove the coach's echo from the save path
+
+Full spec: **`SPEC-lock-by-reference.md`** (repo root — `docs/specs` is gitignored, and the
+lanes need to read this). Approved by Robert 2026-08-16, not started.
+
+Every token ceiling in the app currently bounds THE STUDENT'S WRITING, not coach verbosity,
+because saving requires the coach to retype their words inside `[DONE:id:…]`. Six ceilings
+were raised on 2026-08-16 and all six are workarounds — a long enough section beats any
+number, and high-school work is long.
+
+**The stronger reason is authorship.** While the coach retypes, it can alter. Rule 23 exists
+because that already happened in production. A reference cannot be changed in transit, which
+turns the product's central promise from a rule the model follows into a property of the
+system.
+
+Two mechanisms, because the locked text is not always text the student typed: bare
+`[DONE:id]` for dictation (the client already holds the scribed text), and an anchored span
+`[DONE:body:"first words"…"last words"]` for typed or pasted prose. **The model already
+produces the anchored form unprompted** — it did so in the incident, on its own retry, after
+the full echo was cut.
+
+⚠️ Interacts with Lever B: referenced locks have novelFraction 0 by construction, so the
+provenance scorer stops carrying signal for them. Correct, but the threshold work must not be
+calibrated on a mixed corpus.
+
 ## P1 — Adversarial review as a gate, not a reaction
 **Why:** A red-team pass found three high-severity bugs *in the fixes for the previous three* —
 one of which destroyed text. Self-review found none of them.
