@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import PendingActions from './PendingActions'
 import Icon from '@/components/Icon'
+import LogoLockup from '@/components/LogoLockup'
 
 export const metadata = { title: 'Waiting for approval — BrainScribe' }
 
@@ -70,8 +71,7 @@ export default async function CoppaPendingPage() {
       }}>
 
         {/* Logo */}
-        <img
-          src="/brainscribe-logo.png"
+        <LogoLockup
           alt="BrainScribe"
           style={{ width: 160, height: 'auto', marginBottom: '1.75rem' }}
         />

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, Suspense, useEffect } from 'react'
+import { useState, useRef, Suspense, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { displayNameNeedsConfirm } from '@/lib/displayName'
 import Icon from '@/components/Icon'
 import { UNDER13_SETUP_COPY } from '@/lib/parentFirst'
+import LogoLockup from '@/components/LogoLockup'
+import { nextWelcomeStep } from '@/lib/welcomeFlow'
 
 const ROLES = [
   {
@@ -48,8 +50,7 @@ function Card({ children }) {
         boxShadow: 'var(--shadow-lg)',
         border: '1px solid var(--border-default)',
       }}>
-        <img
-          src="/brainscribe-logo.png"
+        <LogoLockup
           alt="BrainScribe"
           style={{ width: 160, height: 'auto', display: 'block', margin: '0 auto 1.75rem' }}
         />
@@ -62,7 +63,9 @@ function Card({ children }) {
 function WelcomeContent() {
   const router = useRouter()
 
-  // Age first, then profile. step: 'name' (only when flagged) | 'age' | 'role' | 'parent-email'
+  // Question order lives in lib/welcomeFlow.js:
+  //   age → name (only when flagged) → access-code (13+ only) → role
+  // step: 'age' | 'name' | 'access-code' | 'role' | 'parent-email' | 'parent-asked'
   const [step, setStep] = useState('age')
   const [ageBracket, setAgeBracket] = useState(null)
   const [role, setRole] = useState(null)
@@ -78,16 +81,27 @@ function WelcomeContent() {
   const [lastName, setLastName] = useState('')
   const [savingName, setSavingName] = useState(false)
   // Beta Circle access gate (migration 045). A brand-new self-signup with no code and
-  // no invite lands on the code step FIRST; grandfathered + invited users have
-  // access_granted=true and never see it. nameNudge is remembered so a successful
-  // redeem lands on the right next step (name confirm, else age).
+  // no invite must eventually enter one; grandfathered + invited users have
+  // access_granted=true and never see it. It is now the LAST gate (after age, after
+  // the name nudge) rather than the first — asking it first meant anyone without a
+  // code never reached the age question, so we held a name and email with no age
+  // assertion and the parent-first under-13 flow never ran.
   const [code, setCode] = useState('')
   const [redeeming, setRedeeming] = useState(false)
-  const [nameNudge, setNameNudge] = useState(false)
+  // The two flow flags live in REFS, not state, and the in-flight init() is awaited
+  // before any step is resolved. init() is async and age is now the first question,
+  // so a fast tapper could otherwise answer age before the flags land and silently
+  // skip the code gate — and /welcome is the ONLY place a code can be entered, so a
+  // skip strands them outside the product for good.
+  const nameNudgeRef = useRef(false)
+  const accessGatedRef = useRef(false)
+  const initRef = useRef(null)
 
-  // Admins should never be here — redirect straight to /admin. Same fetch also
-  // decides the name nudge. Pre-migration-040 this select errors on the missing
-  // column → data is null → nudge silently stays off (fail-open by design).
+  // Admins should never be here — redirect straight to /admin. Same fetch decides
+  // the name nudge and whether the access gate applies. FAIL-OPEN by design: if the
+  // select errors (a pre-migration column missing) data is null and we return, so
+  // BOTH flags stay false — no name nudge, no code step — and the user still gets
+  // the age question. Never lock someone out on a schema lag.
   useEffect(() => {
     const supabase = createClient()
     async function init() {
@@ -102,7 +116,7 @@ function WelcomeContent() {
         setFirstName(words[0] ?? '')
         setLastName(words.slice(1).join(' '))
         setFlaggedName(data.full_name ?? '')
-        setNameNudge(true)
+        nameNudgeRef.current = true
       }
 
       // Beta Circle access gate: only a fresh self-signup with no code AND no invite
@@ -111,18 +125,38 @@ function WelcomeContent() {
       // access somehow wasn't set (odd row), treat as linked and DON'T lock them out —
       // the server-side session gate is the real enforcement. Pre-migration-045 the
       // select errors → data is null → we returned above (gate stays off, fail-open).
+      //
+      // This only RECORDS whether the gate applies — it must never move the step.
+      // Jumping to the code step here is exactly the bug being fixed: it returned
+      // before the age question ever rendered, so a self-signup (including a
+      // twelve-year-old) sat in the DB with no age assertion and the parent-first
+      // flow never ran. The step stays 'age'; the code is asked later, by
+      // nextWelcomeStep, and only for 13+.
       if (data.access_granted !== true) {
         const { count } = await supabase.from('relationships').select('id', { count: 'exact', head: true })
-        if (!count) { setStep('access-code'); return }
+        if (!count) accessGatedRef.current = true
       }
-
-      // Only jump in if the user hasn't already moved past the first step.
-      if (nudge) setStep(s => (s === 'age' ? 'name' : s))
     }
-    init()
+    // Swallow failures: an init that throws must leave the flags false (gate off),
+    // never block the flow. Same fail-open contract as the null-row return above.
+    initRef.current = init().catch(e => { console.error('[welcome] init error:', e) })
   }, [router])
 
-  // Redeem a Beta Circle code, then continue into onboarding (name confirm, else age).
+  // Read the flow flags, waiting for init() if it's still in flight. Capped so a
+  // slow/hanging profile read can never trap the user on the age step — after the
+  // cap we proceed with whatever we have, which is the same fail-open outcome as an
+  // init that errored (gate off; the server-side gate in lib/access.js is the real
+  // enforcement either way).
+  async function flowFlags() {
+    try {
+      await Promise.race([initRef.current, new Promise(r => setTimeout(r, 3000))])
+    } catch { /* fail-open */ }
+    return { nameNudge: nameNudgeRef.current, accessGated: accessGatedRef.current }
+  }
+
+  // Redeem a Beta Circle code. The code is now the LAST gate, so age and any name
+  // nudge are already answered by the time we get here — continue forward to the
+  // role picker, never back to a question the user has already been asked.
   async function handleRedeem() {
     if (!code.trim()) return
     setRedeeming(true)
@@ -139,7 +173,10 @@ function WelcomeContent() {
         setRedeeming(false)
         return
       }
-      setStep(nameNudge ? 'name' : 'age')
+      // The gate is cleared. Clear the flag too so a later "← Back" can't bounce
+      // them into the code step again.
+      accessGatedRef.current = false
+      setStep(nextWelcomeStep('access-code', { ageBracket, accessGated: false }))
     } catch (e) {
       console.error('[welcome] redeem error:', e)
       setError('Something went wrong. Please try again.')
@@ -147,8 +184,10 @@ function WelcomeContent() {
     setRedeeming(false)
   }
 
-  // Save the confirmed/corrected name, then continue to the age step. Fail-open:
-  // the nudge must never block signup, so any error still advances the flow.
+  // Save the confirmed/corrected name, then continue. The nudge now sits AFTER the
+  // age answer, so "next" is the parent flow for an under-13 and the code/role step
+  // for 13+. Fail-open: the nudge must never block signup, so any error still
+  // advances the flow.
   async function handleConfirmName() {
     if (!firstName.trim()) return
     setSavingName(true)
@@ -164,28 +203,39 @@ function WelcomeContent() {
       console.error('[welcome] confirm-name error:', e)
     }
     setSavingName(false)
-    setStep('age')
+    setStep(nextWelcomeStep('name', { ageBracket, ...(await flowFlags()) }))
   }
 
-  // Step 1 — age. 13+ unlocks the full role picker; under-13 can only ever be a
-  // student and goes straight into the parental-consent flow.
+  // Step 1 — AGE, always first. 13+ continues through the name nudge / code gate to
+  // the role picker; under-13 can only ever be a student, is recorded as under-13
+  // immediately (this PATCH is the age assertion that used to never happen), and
+  // goes into the parent-first flow — never the access code.
   async function handleAge(bracket) {
     setError('')
     if (bracket === '13plus') {
       setAgeBracket('13plus')
-      setStep('role')
+      setLoading(true)
+      const flags = await flowFlags()
+      setLoading(false)
+      setStep(nextWelcomeStep('age', { ageBracket: '13plus', ...flags }))
       return
     }
-    // Under 13 → forced student, held for parental consent.
+    // Under 13 → forced student, held for parent-led consent (migration 055).
     setLoading(true)
     const res = await fetch('/api/profile/confirm-role', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'student', age_bracket: 'under13' }),
     })
+    if (!res.ok) {
+      setLoading(false)
+      setError('Something went wrong. Please try again.')
+      return
+    }
+    const flags = await flowFlags()
     setLoading(false)
-    if (!res.ok) { setError('Something went wrong. Please try again.'); return }
-    setStep('parent-email')
+    setAgeBracket('under13')
+    setStep(nextWelcomeStep('age', { ageBracket: 'under13', ...flags }))
   }
 
   // Step 2 (13+ only) — apply the chosen role and route to its home.
@@ -199,6 +249,18 @@ function WelcomeContent() {
       body: JSON.stringify({ role, age_bracket: '13plus' }),
     })
     if (!res.ok) {
+      // A returning under-13 who re-answers "13 or older" is refused by the sticky
+      // COPPA lock (confirm-role, 403 coppa_locked). That refusal is correct, but a
+      // generic error would leave them on the role picker with no way forward — so
+      // send them where they actually belong: the parent-first flow.
+      const body = await res.json().catch(() => ({}))
+      if (body.code === 'coppa_locked') {
+        setAgeBracket('under13')
+        setLoading(false)
+        // nameNudge false: they've already been past the nudge to get here.
+        setStep(nextWelcomeStep('age', { ageBracket: 'under13', nameNudge: false }))
+        return
+      }
       setError('Something went wrong. Please try again.')
       setLoading(false)
       return
@@ -338,7 +400,7 @@ function WelcomeContent() {
               borderRadius: 14,
               fontWeight: 700,
               fontSize: '1rem',
-              color: '#fff',
+              color: 'var(--text-on-accent)',
               backgroundColor: code.trim() && !redeeming ? 'var(--brand-orange)' : 'var(--border-strong)',
               border: 'none',
               cursor: code.trim() && !redeeming ? 'pointer' : 'not-allowed',
@@ -412,7 +474,7 @@ function WelcomeContent() {
             borderRadius: 14,
             fontWeight: 700,
             fontSize: '1rem',
-            color: '#fff',
+            color: 'var(--text-on-accent)',
             backgroundColor: role && !loading ? 'var(--brand-orange)' : 'var(--border-strong)',
             border: 'none',
             cursor: role && !loading ? 'pointer' : 'not-allowed',
@@ -494,7 +556,7 @@ function WelcomeContent() {
             borderRadius: 14,
             fontWeight: 700,
             fontSize: '1rem',
-            color: '#fff',
+            color: 'var(--text-on-accent)',
             backgroundColor: firstName.trim() && !savingName ? 'var(--brand-orange)' : 'var(--border-strong)',
             border: 'none',
             cursor: firstName.trim() && !savingName ? 'pointer' : 'not-allowed',
@@ -652,7 +714,7 @@ function WelcomeContent() {
               borderRadius: 14,
               fontWeight: 700,
               fontSize: '1rem',
-              color: '#fff',
+              color: 'var(--text-on-accent)',
               backgroundColor: parentEmail && !sendingEmail ? 'var(--brand-orange)' : 'var(--border-strong)',
               border: 'none',
               cursor: parentEmail && !sendingEmail ? 'pointer' : 'not-allowed',

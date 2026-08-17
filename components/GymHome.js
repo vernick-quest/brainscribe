@@ -163,7 +163,7 @@ function badgeFace(credit, tier) {
     case 'studio':
     case 'locked_in':
       return {
-        background: tier.color, color: '#fff', border: 'none',
+        background: tier.color, color: 'var(--text-on-accent)', border: 'none',
         boxShadow: credit === 'locked_in' ? 'var(--shadow-spark)' : 'var(--shadow-sm)',
         opacity: 1,
       }

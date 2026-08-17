@@ -33,6 +33,21 @@ const sections = [
     ),
   },
   {
+    id: 'waitlist', label: 'Waitlist & updates', title: 'Waitlist and email updates',
+    body: (
+      <>
+        <p>You can give us an email address <strong>without creating an account</strong>, in two places: the early-access form on our home page, and the new-posts form on our blog. Everything described above applies to people who have signed in; this section covers these two forms.</p>
+        <ul>
+          <li><strong>What we store</strong> — the email address you type, and which of the two forms it came from. Nothing else. We do not ask for a name, an age, or any information about a student.</li>
+          <li><strong>Why</strong> — if you asked for early access, so we can acknowledge your request and email you an access code when a spot opens. If you asked for new posts, so we can send you new posts. We do not use these addresses for any other purpose, we do not sell them, and we do not add them to any other list.</li>
+          <li><strong>Who processes it</strong> — Resend delivers these emails, and the address is stored in our Supabase database, as described in How we share data.</li>
+          <li><strong>How long we keep it</strong> — if you never create an account, we delete the address <strong>12 months</strong> after you join the list, or 12 months after we send you an invite if we sent one and you never used it. We delete it sooner if you ask us to, or if we remove you from the queue. If the address does become a BrainScribe account, it follows that account instead — including being deleted with the account, and under our 7-day parental-consent rule where that applies. We delete addresses once we no longer need them.</li>
+          <li><strong>How to be removed</strong> — email <strong>brainscribe.io@gmail.com</strong> and we will delete the address. You do not need to give a reason.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
     id: 'children', label: "Children's privacy", title: "Children's privacy (COPPA)",
     body: (
       <>
@@ -74,7 +89,7 @@ const sections = [
           <li><strong>Anthropic (Claude AI)</strong> — Assignment text and session history are sent to Anthropic&apos;s API to generate coaching responses. Anthropic does not train on API inputs by default. See <a className="inline" href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener noreferrer">Anthropic&apos;s privacy policy</a>.</li>
           <li><strong>ElevenLabs</strong> — Coach response text is sent to ElevenLabs to generate voice audio. See <a className="inline" href="https://elevenlabs.io/privacy" target="_blank" rel="noopener noreferrer">ElevenLabs&apos; privacy policy</a>.</li>
           <li><strong>Supabase</strong> — Our database and authentication provider. Data is stored in Supabase&apos;s infrastructure. See <a className="inline" href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">Supabase&apos;s privacy policy</a>.</li>
-          <li><strong>Resend</strong> — Used to send notification emails to teachers and parents. No student content is included in these emails.</li>
+          <li><strong>Resend</strong> — Used to send our email: notifications to parents and teachers, and — for people who have given us an address without creating an account — an acknowledgment and later an access code if you asked for early access, or new posts if you asked for those. No student content is included in any of these emails.</li>
           <li><strong>Legal requirements</strong> — We may disclose information if required by law, court order, or to protect the rights and safety of our users.</li>
         </ul>
         <p><strong>We do not sell your data. We do not share your data for advertising. We do not use student data to build profiles for any purpose outside of BrainScribe.</strong></p>
@@ -164,7 +179,7 @@ export default function PrivacyPage() {
   return (
     <LegalDoc
       title="Privacy Policy"
-      updated="June 2026"
+      updated="August 2026"
       intro="BrainScribe is a voice-first writing coach used by students — often minors — at school and at home. This policy explains what we collect, why, and the choices you and your family have. We collect the minimum we need to run the coaching experience, and we never sell personal information."
       tldr="BrainScribe does not sell student data. We do not advertise to students. We do not share children's personal information with third parties except where strictly required to operate the service. The words students speak and write belong to them."
       sections={sections}

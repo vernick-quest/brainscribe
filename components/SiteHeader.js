@@ -5,6 +5,8 @@
 // Props:
 //   active — 'about' | 'blog' to bold the current section's link (omit on legal/landing)
 //   sticky — translucent blurred bar pinned to the top (used on the long legal pages)
+import LogoLockup from '@/components/LogoLockup'
+
 const NAV_LINKS = [
   { href: '/about', label: 'About', key: 'about' },
   { href: '/blog', label: 'Blog', key: 'blog' },
@@ -25,13 +27,13 @@ export default function SiteHeader({ active, sticky = false }) {
             position: 'sticky',
             top: 0,
             zIndex: 50,
-            backgroundColor: 'color-mix(in srgb, var(--cream-100) 86%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--bg-page) 86%, transparent)',
             backdropFilter: 'blur(10px)',
           }
         : { backgroundColor: 'var(--surface-card)' }),
     }}>
       <a href="/" aria-label="BrainScribe home">
-        <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ height: 28, width: 'auto', display: 'block' }} />
+        <LogoLockup alt="BrainScribe" style={{ height: 28, width: 'auto', display: 'block' }} />
       </a>
 
       <nav style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>

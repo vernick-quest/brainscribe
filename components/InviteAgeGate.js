@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Icon from '@/components/Icon'
+import LogoLockup from '@/components/LogoLockup'
 
 // Shown when someone opens a parent/teacher invite but hasn't asserted their age
 // yet. Parent/teacher accounts require 13+; an under-13 can't accept the invite
@@ -34,7 +35,7 @@ export default function InviteAgeGate({ token, role }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', backgroundColor: 'var(--brand-cream)' }}>
       <div style={{ backgroundColor: 'var(--surface-card)', borderRadius: 24, padding: '2.5rem', maxWidth: 440, width: '100%', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-default)' }}>
-        <img src="/brainscribe-logo.png" alt="BrainScribe" style={{ width: 160, height: 'auto', display: 'block', margin: '0 auto 1.75rem' }} />
+        <LogoLockup alt="BrainScribe" style={{ width: 160, height: 'auto', display: 'block', margin: '0 auto 1.75rem' }} />
 
         {tooYoung ? (
           <div style={{ textAlign: 'center' }}>
@@ -45,7 +46,7 @@ export default function InviteAgeGate({ token, role }) {
             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
               This invite can't be used on a under-13 account. If you're a student, you can set up your own account instead.
             </p>
-            <a href="/welcome" style={{ display: 'block', textAlign: 'center', padding: '0.9rem', borderRadius: 12, fontWeight: 700, fontSize: '0.9rem', color: '#fff', backgroundColor: 'var(--brand-orange)', textDecoration: 'none' }}>
+            <a href="/welcome" style={{ display: 'block', textAlign: 'center', padding: '0.9rem', borderRadius: 12, fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-on-accent)', backgroundColor: 'var(--accent)', textDecoration: 'none' }}>
               Set up a student account →
             </a>
           </div>

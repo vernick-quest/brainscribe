@@ -170,8 +170,8 @@ function Landing() {
       {/* ── The writing is always theirs (anti-cheating) ── */}
       <section style={sectionWrap}>
         <div style={{
-          backgroundColor: 'var(--brand-navy)',
-          color: 'var(--brand-cream)',
+          backgroundColor: 'var(--surface-ink)',
+          color: 'var(--text-on-dark)',
           borderRadius: 24,
           padding: 'clamp(36px, 6vw, 56px)',
           textAlign: 'center',
@@ -270,7 +270,7 @@ function Landing() {
           <NewsletterSignup
             source="waitlist"
             title="Get early access"
-            subtitle="BrainScribe is invite-only while we're in early access. Join the list and we'll send you an invite as we open up more spots."
+            subtitle="BrainScribe is invite-only while we're in early access. Parents, guardians and teachers: add your email and we'll send you an invite as we open up more spots."
             cta="Request an invite"
             successTitle="You're on the list!"
             successBody="We'll email you an invite as we open up more spots — keep an eye on your inbox."

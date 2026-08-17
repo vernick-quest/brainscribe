@@ -176,8 +176,8 @@ function ErrorPage({ message, linkLabel, linkHref }) {
         {linkLabel && linkHref && (
           <a href={linkHref} style={{
             display: 'inline-block',
-            backgroundColor: 'var(--brand-orange)',
-            color: '#fff',
+            backgroundColor: 'var(--accent)',
+            color: 'var(--text-on-accent)',
             padding: '10px 22px',
             borderRadius: 10,
             fontSize: '0.875rem',

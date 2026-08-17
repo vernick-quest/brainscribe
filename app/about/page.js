@@ -128,8 +128,8 @@ export default function AboutPage() {
 
         {/* Scene block */}
         <div style={{
-          backgroundColor: 'var(--brand-navy)',
-          color: 'var(--brand-cream)',
+          backgroundColor: 'var(--surface-ink)',
+          color: 'var(--text-on-dark)',
           padding: '36px',
           borderRadius: 16,
           margin: '48px 0',
@@ -180,7 +180,7 @@ export default function AboutPage() {
             That was the lightbulb moment. What my son needed wasn't an AI that would write for him — he needed one that would ask him the right questions until he figured out what he already knew. A Socratic coach that holds the door open instead of walking through it for you.
           </p>
           <p style={{ marginBottom: 28 }}>
-            That's what BrainScribe is. A voice-first writing coach that asks questions, listens to your answers, and turns what you say into clean paragraphs — in your words, with your ideas. It doesn't write your essay. It helps you write it.
+            That's what BrainScribe is. A voice-first writing coach that asks your kid questions, listens to their answers, and turns what they say into clean paragraphs — in their words, with their ideas. It doesn't write the essay. It helps them write it.
           </p>
           <p style={{ marginBottom: 28 }}>
             What started as a late-night experiment became something I couldn't stop thinking about. I started building it — for my son, and for every other kid sitting in front of a blinking cursor at 11pm with three good paragraphs and no idea how to finish.

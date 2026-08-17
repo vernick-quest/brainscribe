@@ -6,8 +6,14 @@ import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
+import { sessionStamp } from '@/lib/sessionStamp'
 
 const anthropic = new Anthropic()
+
+// Every `sessions` insert carries the provenance stamp so an audit finding can be
+// triaged against the coach rules that were live WHEN THE SESSION RAN. Captured here at
+// creation, never at audit time — the nightly audit runs later, so stamping there would
+// record the version live at AUDIT time and be actively misleading. See lib/sessionStamp.js.
 
 function extractJSON(text) {
   try { return JSON.parse(text) } catch {}
@@ -172,6 +178,7 @@ export async function POST(request) {
           is_onboarding: true,
           onboarding_prompt_key: onboardingPromptKey,
           last_active_at: new Date().toISOString(),
+          ...sessionStamp(),
         })
         .select()
         .single()
@@ -212,6 +219,7 @@ export async function POST(request) {
           // sorts to the TOP of the assignment list (ordered by last_active_at) and
           // shows "just now" — otherwise it's null and sorts last.
           last_active_at: new Date().toISOString(),
+          ...sessionStamp(),
         })
         .select()
         .single()

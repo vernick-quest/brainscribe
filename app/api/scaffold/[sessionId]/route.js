@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkProvenance } from '@/lib/provenance'
-import { annotateScaffoldProvenance, hasNewLocks } from '@/lib/scaffoldProvenance'
+import { annotateScaffoldProvenance, needsProvenancePass } from '@/lib/scaffoldProvenance'
+import { createServiceClient } from '@/lib/supabase/service'
+import { after } from 'next/server'
 
 // GET — fetch scaffold for a session
 export async function GET(request, { params }) {
@@ -44,6 +46,50 @@ export async function POST(request, { params }) {
   return Response.json(data)
 }
 
+// Persist every scaffold-lock provenance score, pass AND fail.
+//
+// The scaffold JSON keeps the latest record per lock, which is what the coach reads —
+// but it is overwritten in place and carries no timestamp, so it cannot answer "what
+// does the normal distribution look like, and is it drifting?". That question is the
+// gate on Phase 2 (enforcement), and it was unanswerable: measured 2026-08-11, the
+// scaffold JSON held 19 records while provenance_checks held ONE row, because only
+// /api/paragraphs ever wrote to it.
+//
+// Recording the PASSES is the point. Failures alone cannot tell you where to put a
+// threshold — you need the baseline they have to be separated from.
+//
+// Service role: provenance_checks is deny-by-default (admin read only, migration 051).
+//
+// Deferred via after(), NOT left as a bare un-awaited promise: on a serverless runtime
+// the function can be reclaimed the moment the response is returned, so a floating
+// insert may simply never run — which would reproduce the empty table this exists to
+// fill, and reproduce it invisibly. after() keeps it off the student's critical path
+// while still guaranteeing it executes. It writes a derived QA signal, never student
+// work, so it must never delay or fail a lock.
+async function recordProvenanceChecks({ sessionId, studentId, checked }) {
+  if (!checked?.length) return
+  try {
+    const rows = checked.map(c => ({
+      session_id: sessionId,
+      student_id: studentId ?? null,
+      position: c.paraIndex,
+      kind: c.kind,
+      item_id: c.itemId ?? null,
+      trigger: 'lock',
+      passed: c.provenance.pass,
+      novel_fraction: Math.min(9.9999, Number(c.provenance.novelFraction ?? 0)),  // numeric(5,4)
+      novel_words: (c.provenance.novelWords ?? []).slice(0, 8).join(' ') || null,
+      content_count: c.provenance.contentCount ?? null,
+    }))
+    const { error } = await createServiceClient().from('provenance_checks').insert(rows)
+    // .catch() would only ever see a network fault — a 4xx from PostgREST comes back
+    // in `error` and reads as success. Check the value, not the absence of a throw.
+    if (error) console.error(`[provenance-shadow] check insert failed (${error.code}): ${error.message}`)
+  } catch (e) {
+    console.error('[provenance-shadow] check insert threw:', e)
+  }
+}
+
 // PATCH — update scaffold state (component status, thesis, paragraph progress)
 export async function PATCH(request, { params }) {
   const supabase = await createClient()
@@ -78,12 +124,16 @@ export async function PATCH(request, { params }) {
       const thesisChanged = typeof body.thesis === 'string' && body.thesis.trim() !== '' &&
         body.thesis !== storedRow?.thesis
 
-      if (hasNewLocks(body.components, stored) || thesisChanged) {
-        const [{ data: msgs }, { data: paras }] = await Promise.all([
+      if (needsProvenancePass(body.components, stored) || thesisChanged) {
+        const [{ data: msgs }, { data: paras }, { data: sess }] = await Promise.all([
           supabase.from('messages').select('content')
             .eq('session_id', sessionId).eq('role', 'user'),
           supabase.from('paragraphs').select('position, scribed_text, raw_spoken_text')
             .eq('session_id', sessionId),
+          // The session OWNER, not the acting user: under admin remote-in those differ,
+          // and provenance_checks.student_id is what the COPPA cascade deletes on — a
+          // fragment of a child's writing must not survive the child's account.
+          supabase.from('sessions').select('student_id').eq('id', sessionId).single(),
         ])
         const studentSources = [
           ...(paras ?? []).map(p => p.raw_spoken_text),
@@ -92,7 +142,7 @@ export async function PATCH(request, { params }) {
         const paragraphTexts = Object.fromEntries(
           (paras ?? []).map(p => [p.position, p.scribed_text])
         )
-        const { components, flagged } = annotateScaffoldProvenance({
+        const { components, checked, flagged, unscorable } = annotateScaffoldProvenance({
           incoming: body.components, stored, paragraphTexts, studentSources,
         })
         update.components = components
@@ -103,6 +153,22 @@ export async function PATCH(request, { params }) {
             `(novelFraction ${f.provenance.novelFraction}) — WOULD flag; lock persisted (shadow mode)`
           )
         }
+        // A lock we could not score is a HOLE in the signal, not a quiet pass. The
+        // paragraph arm silently scored nothing for weeks and read as "nothing to
+        // report" — that is exactly the shape this line exists to break.
+        for (const u of unscorable) {
+          console.warn(
+            `[provenance-shadow] session ${sessionId} ${u.kind} para ${u.paraIndex}` +
+            `${u.itemId ? ` item ${u.itemId}` : ''} NOT SCORED (${u.reason}) — ` +
+            `lock persisted UNMONITORED; will retry on the next PATCH`
+          )
+        }
+        // Persist EVERY check, pass and fail, to provenance_checks (migration 051 +
+        // 064). The scaffold JSON already holds the latest record per lock, but it is
+        // overwritten in place and carries no timestamp, so it cannot answer "what is
+        // the distribution, and is it moving?" — the question Phase 2 is gated on.
+        // Measured 2026-08-11: 19 records in scaffold JSON, ONE row in the table.
+        after(() => recordProvenanceChecks({ sessionId, studentId: sess?.student_id ?? null, checked }))
         // Top-level [THESIS] has no storage slot without a migration (text column)
         // — log-only. The thesis usually ALSO locks as an item (covered above).
         if (thesisChanged) {

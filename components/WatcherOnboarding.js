@@ -261,12 +261,12 @@ function InviteStep({ isParent, onDone }) {
         className="w-full rounded-xl px-4 py-3 text-sm mb-3"
         style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', color: 'var(--text-strong)' }}
       />
-      {error ? <p className="text-sm mb-3" style={{ color: 'var(--status-danger, #DC2626)' }}>{error}</p> : null}
+      {error ? <p className="text-sm mb-3" style={{ color: 'var(--status-error)' }}>{error}</p> : null}
       <button
         type="submit"
         disabled={loading || !email.trim()}
         className="w-full rounded-full py-3.5 text-sm font-bold transition disabled:opacity-50"
-        style={{ backgroundColor: 'var(--accent)', color: '#fff' }}>
+        style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)' }}>
         {loading ? 'Sending…' : 'Send the invite →'}
       </button>
       {/* Never a dead end: understanding outranks doing. */}

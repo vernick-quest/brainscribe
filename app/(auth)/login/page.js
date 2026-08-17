@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import LogoLockup from '@/components/LogoLockup'
 
 function LoginContent() {
   const searchParams = useSearchParams()
@@ -25,8 +26,7 @@ function LoginContent() {
       style={{ backgroundColor: 'var(--bg-page)' }}>
 
       {/* Logo — above the card */}
-      <img
-        src="/brainscribe-logo.png"
+      <LogoLockup
         alt="BrainScribe"
         style={{ width: 280, maxWidth: '80%', height: 'auto', marginBottom: '2rem' }}
       />

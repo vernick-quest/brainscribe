@@ -2962,6 +2962,678 @@ Manual checks owed (live): finish an assignment → Keep working → v2 opens wi
 Edit on a carried paragraph, change it, save → reload and confirm it persisted and the others
 didn't move; ask the coach to strengthen a paragraph → it should point at Edit, not the mic.
 
+---
+
+# Testing checklist — 2026-08-08 · Dark mode (`focus/coach-visuals`)
+
+Dark mode as a **token remap**: no layout, type, spacing, radius or component-structure
+changes. Source of truth is `docs/specs/Brainscribe dark mode design.zip` (v1 = the token
+layer) and `… v2.zip` (adds the coach ring/disc decision). Not merged, not deployed.
+
+**Trigger:** OS preference only — `@media screen and (prefers-color-scheme: dark)`.
+No theme toggle, no `localStorage`, no `data-theme` attribute, no blocking `<head>`
+script. The design README also specifies a persisted manual override; that half is
+**deliberately not in this lane** (it is new behaviour and new state). Deferred.
+
+## Automated gate — `npm run test:run`
+New `lib/theme.test.js` (89 assertions) parses `app/globals.css` the way a browser
+resolves it (light `:root`, then the dark `@media` block layered on, `var()` chains
+followed) and asserts:
+- [x] ✅ Dark is **never worse than light** on 26 real pairings (text 4.5:1, non-text 3:1).
+      Where the brand already ships below AA in light — white-on-orange 2.67:1, the amber
+      status chip 2.41:1 — dark must at least match it. Those are pre-existing brand
+      decisions and were not changed.
+- [x] ✅ All 24 semantic aliases actually get redefined in dark (a missed one silently
+      keeps resolving to its cream light value — invisible to `next build`).
+- [x] ✅ Per-coach ink is readable on the selected picker card in **both** themes, and the
+      six coaches stay ≥ΔE 15 apart (CIELAB, not luminance).
+- [x] ✅ No `var(--token, <color literal>)` anywhere in `app/` or `components/`.
+- [x] ✅ `lib/coachColors.js` hex matches `globals.css` in both themes (no drift).
+- [x] ✅ Light mode is **pinned**: 39 semantic aliases assert their exact pre-change hex.
+- [x] ✅ `globals.css` has balanced comments/braces.
+
+### ⚠️ `npm run build` is NOT a gate for this file
+Verified by deliberately breaking `globals.css`: the production build **prints**
+`Parsing CSS source code failed` and still **exits 0**, while `next dev` 500s every
+route. A completely broken stylesheet would have passed the definition-of-done gate.
+The brace/comment assertion above now catches it (confirmed: it fails on the break,
+passes when fixed).
+
+## Verified live in a browser (dev server, Chromium, both `prefers-color-scheme` values)
+- [x] ✅ Computed tokens read back correctly under emulated dark: `--bg-page #101a24`,
+      `--surface-card #17232e`, `--accent-text #fbb85a`, `--surface-ink #1d4d78`,
+      `--brand-cream #101a24`, `--brand-navy #fcf8f0`, `--tutor-tilly-tint #243941`.
+- [x] ✅ Home `/` — hero, orange CTA, coach demo card, the inverted "prove it" band.
+- [x] ✅ Login `/login` — card, Google button, the three role cards.
+- [x] ✅ Legal `/privacy` — hero gradient wash, sticky TOC active state, TL;DR card.
+- [x] ✅ 404 page.
+- [x] ✅ Writing panel + coach picker, via a **temporary harness route** (deleted before
+      commit; OAuth screens can't be rendered headlessly in this lane). Used the real
+      `ConversationLog` and `PersonaAvatar`; the draft-panel blocks, mic dock and status
+      chips are reconstructed markup using the same tokens. Draft text, the orange mic
+      with `--shadow-spark`, locked-in checkmarks, and all four status chips coexist
+      legibly; the selected coach card shows the dark tint + stepped-up ring.
+
+## Light mode — unchanged
+- [x] ✅ Every light token value is byte-identical to `HEAD` (diffed by resolving both
+      stylesheets; zero changed).
+- [x] ✅ Legacy `--brand-*` aliases were repointed from raw scale tokens to semantic ones
+      (`--brand-navy: var(--text-strong)`, `--brand-cream: var(--bg-page)`, …) so they
+      follow the theme. Each resolves to the same light value it always did.
+- [ ] ⬜ **Light-mode visual change, admin only:** `AdminDashboard` chips move off the
+      leftover create-next-app indigo/amber (`#EEF2FF`/`#4338CA`/`#FEF3C7`/`#92400E`) onto
+      brand tokens, so they read navy/amber instead of indigo. The design README asks for
+      exactly this conversion. Needs a look.
+- [ ] ⬜ Four inverted "dark band" blocks now use `--surface-ink`/`--text-on-dark` instead
+      of `--brand-navy`/`--brand-cream` (home, about, CoachDemo, COPPA consent button).
+      Light value identical except `--text-on-dark` is `#FFFEF9` vs the old `#FDFBF3` —
+      imperceptible, but noted.
+
+## Known-broken in dark — assets, not code
+- [ ] ⬜ **Coach portraits.** `public/coaches/*.png` are opaque (`hasAlpha: no`) with a
+      cream square + halo disc **baked into the artwork**, so they render as a pale ring
+      on the dark card. The v2 spec's `color-mix` disc is a **silent no-op** against these
+      files — no CSS can fix an opaque PNG. Regeneration spec written:
+      `docs/specs/coach-portraits-dark-mode-instructions.md`. Once the six `-dark.png`
+      files land, `PersonaAvatar` needs a `<picture>` + `media="(prefers-color-scheme: dark)"`
+      source (~6 lines). **Not wired yet** — a `<picture>` source pointing at a missing
+      file would break avatars in dark.
+- [ ] ⬜ **Logo lockup** `/brainscribe-logo.png` — navy wordmark, near-illegible on dark.
+      Already listed as an open item in the design README; needs a dark export.
+- [ ] ⬜ **ISTE EdTech Index badge** in the footer — baked light.
+
+## Deliberately NOT changed
+- `app/api/coppa/*` hex — transactional email templates; email clients don't do dark mode.
+- `components/ImpersonationBanner.js` `#C0271E` + white — an alarm-red band that is
+  correct and identical in both themes.
+- `components/CoachDemo.js` `#F6C48B` — an on-dark tint sitting on a theme-invariant band.
+- Google "G" brand colors in `login/page.js` and `SessionsList.js` — brand-mandated.
+- `components/Logo.js` — **dead code, zero consumers**; left alone rather than churned.
+- `lib/coachColors.js` **light** values — the v2 spec quotes light hues that differ from
+  what ships for 5 of 6 coaches (see the table in the portraits spec). Light is out of
+  scope for this lane; someone should decide which set is stale.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ A live writing session end to end in dark: mic listening state, barge-in, the
+      scribe preview, `[SCAFFOLD]`/`[DONE]` chips, the draft-integrity alert.
+- [ ] ⬜ `/folder`, `/transcript/[id]`, parent + teacher dashboards, Skill Studio, admin.
+- [ ] ⬜ **Print a transcript from a dark-mode browser.** Dark is scoped to `screen`
+      precisely so print keeps the light palette; worth confirming on paper once.
+- [ ] ⬜ iOS/Android dark mode (`color-scheme: dark` should carry form controls).
+
+## 2026-08-08 — `components/Logo.js` untrapped (`focus/coach-visuals`)
+
+Supersedes the "Deliberately NOT changed" entry for `components/Logo.js` earlier in the
+dark-mode section (line ~3006). That entry said the component was left alone because it is
+dead code — still true that it is dead, no longer true that it is untouched.
+
+**Why it changed anyway.** The three base rects sit on the page background, so a hardcoded
+`#1E2D5A` there is a landmine that only detonates the day someone wires the component up —
+and it looks *correct* in light mode forever. Measured in the running app against the real
+painted `html` backdrop (`#101a24`, = `--bg-page`): the old navy base scored **1.32:1** in
+dark; on `--text-strong` it is **16.59:1**. Deleting was the alternative and was rejected:
+this is the only theme-adaptive logo asset in the repo, and `/brainscribe-logo.png` is a
+still-open dark-export item two entries above.
+
+The brain squiggles were deliberately left at `#1E2D5A`. They sit on the orange bulb, which
+is the same color in both themes — theming them would make them *vanish* at night. That is
+now an assertion, not a comment.
+
+- [x] ✅ `components/Logo.test.js` — renders the real component via `react-dom/server` and
+      asserts the base reaches `--text-strong` with no frozen literal, and that the squiggles
+      stay navy. Contrast is **not** re-derived here: `lib/theme.test.js` already gates
+      `--text-strong` against `--bg-page` at 4.5:1 in both themes.
+- [x] ✅ Gate proven by mutation, not just observed green: reverting one rect to `#1E2D5A`
+      fails 2 assertions; "fixing" the squiggles to `--text-strong` fails a 3rd. Restored → green.
+- [x] ✅ `var()` inside an SVG `fill` **presentation attribute** confirmed to actually paint —
+      computed fill read from the live DOM in both schemes (`#14385a` light / `#fcf8f0` dark),
+      not inferred from the markup string. Precedent already shipped at `app/folder/page.js:163`.
+- [x] ✅ `npm run test:run` 438/438 · `npm run build` green.
+- [ ] ⬜ Nothing to eyeball in the app: the component still has **zero consumers**. If it ever
+      gets wired up, screenshot it on `--bg-page` in both themes then.
+
+**Toolchain note (affects every future test).** `vitest.config.js` gained a small `jsx-in-js`
+plugin. This repo puts JSX in `.js` files, and Vite 8 infers the parser from the extension, so
+importing *any* component from a test was previously a hard parse error — no component in this
+codebase could be render-tested at all. `oxc.include` alone does not fix it (it processes `.js`
+but still as plain JS); the language has to be named. Scoped to `app/` and `components/` so
+`lib/` keeps its existing transform path. All 21 pre-existing test files still pass.
+
+## 2026-08-08 — Admin student roster: two-row card + last-active ordering (focus/admin)
+
+**Files:** `components/AdminDashboard.js` (new `StudentCard`, replaces `PersonCard` for students;
+dead `CompletedStat` removed), `app/admin/page.js` (two new data sources). No migration.
+
+A single row had to choose between identity and activity and showed neither well. Students now render
+as two rows inside one card:
+- **Row 1 (who):** avatar · name · joined · age badge · FTUE status · role · Remote in · delete
+- **Expand control** sits BETWEEN the rows, right-aligned ("N assignments" + chevron), so the
+  disclosure sits next to what it reveals instead of competing with the action buttons
+- **Row 2 (what they did):** email · last sign-in · # sessions · # assignments · # completed · warnings
+
+**Ordering:** most recent sign-in first; accounts that have NEVER signed in sort last (not treated as
+oldest). Parents/teachers keep the existing `PersonCard`.
+
+**Two new data sources** (`app/admin/page.js`):
+- `last_sign_in_at` — lives on `auth.users`, not `profiles`, so it comes from
+  `service.auth.admin.listUsers()`. Wrapped in `.catch(() => null)`: if it ever fails or the user base
+  outgrows one page, sign-in renders "Never signed in" and nothing else breaks.
+- **Warnings** = UNRESOLVED, non-`none` `transcript_audit_findings` per student. Colour-coded: red when
+  any finding is `high`, amber otherwise; hidden entirely at zero. (`severity='none'` rows are the
+  clean-audit ledger, not warnings — counting them would have shown a warning badge on every audited
+  student.)
+
+**Counts are deliberately three different things:** *sessions* = every coaching session including the
+FTUE warm-up; *assignments* = real work (warm-ups excluded); *completed* = assignments with
+`status='complete'`. Confirm this reading is what you want — a warm-up is why "1 session / 0
+assignments" is correct and not a bug.
+
+**Verified against live data** (read-only script, service role):
+- Ordering monotonic newest→oldest with never-signed-in last: **true**; 10/11 students have a sign-in.
+- Spot-check: Baron Vernick 10 sessions / 9 assignments / 7 completed / 3 warnings (1 high);
+  Elio Casias 5 / 4 / 3 / 1 (1 high); Bruce Wong 1 session / 0 assignments (warm-up only).
+- `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin):** roster is ordered by last sign-in · both rows render without wrapping at
+desktop width · expand shows the student's assignments · warning pill colour matches severity ·
+under-13 avatars still initials-only (COPPA suppression unchanged).
+
+## 2026-08-08 — Admin roster: login counts + shared mark on the stat tiles (focus/admin)
+
+**Files:** `supabase/migrations/059_profile_login_count.sql` (**NOT APPLIED**),
+`app/api/auth/callback/route.js` (⚠️ one hook OUTSIDE the admin lane — see below),
+`app/admin/page.js`, `components/AdminDashboard.js`.
+
+### Login count — had to be started, not read
+"# of logins" did not exist anywhere. Verified directly: the `auth` schema is not exposed through
+PostgREST (`Invalid schema: auth`, so `auth.sessions` / `auth.audit_log_entries` are unreachable),
+the admin API's user object carries only `last_sign_in_at` with no count, and there was no app-side
+login table. So counting starts now:
+- **Migration 059** adds `profiles.login_count` + `last_login_at` and a `record_login(uuid)` RPC that
+  increments in ONE `UPDATE` (a read-then-write would lose concurrent logins — two tabs finishing
+  OAuth both read N and both write N+1). SECURITY DEFINER, so **EXECUTE is revoked from
+  public/anon/authenticated** and granted only to `service_role` — otherwise any authenticated user
+  could inflate their own or another user's count.
+- **The auth callback** calls it after a successful session exchange, best-effort in a try/catch:
+  a failure logs and the sign-in still completes. **This is the one edit outside the admin lane**
+  (~8 lines, beside the existing `avatar_url` profile write) — sign-in is the only place the number
+  can be recorded. Flagging for the conductor/auth lane.
+- **Counts start at apply time and are NOT backfilled** — pre-059 sign-ins were never recorded, so
+  the UI shows **"— logins"** rather than "0 logins", which would assert history we don't have.
+
+### Deploy-order hazard caught before shipping
+Selecting `login_count` before 059 is applied fails the WHOLE profiles query → an EMPTY admin panel
+between deploy and apply. `readProfiles()` now tries the new columns and falls back to the pre-059
+column list on error. **Proved against the live DB (which genuinely lacks the columns):** fallback
+path taken, **20/20 profiles still returned**, UI degrades to "— logins". Deploy order is therefore
+safe either way, though applying 059 first is still preferred.
+
+### Stat tiles use the header mark
+The four tiles carried four unrelated Feather-style glyphs; they now all carry
+`/brainscribe-mark.png` — the same mark as the header logo — so the page uses one piece of
+iconography. The tinted chip behind each mark is retained so the tiles stay distinguishable at a
+glance (label + count still name them). The four now-dead glyph components were removed.
+**Note:** four identical marks are less scannable than four distinct glyphs; if the tiles start
+feeling samey, the fix is per-tile mark tinting, not a return to unrelated icons.
+
+### Verification
+- `npm run build` green · `npm run test:run` **260/260 green**.
+- Pre-migration fallback proved against live data (above).
+- `record_login` confirmed absent pre-apply, so the callback's fail-soft path is the live behaviour
+  until 059 runs.
+
+**Manual check (after 059 applies + deploy):** sign out and back in → that student's row increments
+by exactly 1 · a second sign-in increments again · the roster still sorts by last sign-in ·
+tiles show the mark and still select their tab.
+
+## 2026-08-08 — Student card layout fix: avatar spans both rows, single right-edge chevron (focus/admin)
+
+**File:** `components/AdminDashboard.js` (`StudentCard`) only. No data/route/schema change.
+
+The first two-row pass put the avatar inside row 1 and the expand control on its own line between
+the rows, which read as a stray third row ("0 assignments ›" floating mid-card). Restructured to
+three flex siblings on one centered row:
+1. **Avatar** — `shrink-0`, 36px → **52px**, so it spans the height of both text rows (COPPA
+   suppression to initials for under-13 is inside `Avatar` and unchanged).
+2. **Content column** — `flex-1 min-w-0`, holding row 1 (name · joined · age · FTUE · role ·
+   Remote in · delete) and row 2 (email · last sign-in · logins · assignments · completed ·
+   warnings) stacked.
+3. **Chevron** — one control at the right edge, vertically centered across both rows, **no label**;
+   rotates 90° when open. Same `IconChevron` as before.
+
+`min-w-0` on the content column keeps the long email truncating instead of forcing the card wider.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green** · DOM nesting checked
+(avatar / content column / chevron are siblings; no intermediate row remains).
+
+**Manual check (admin):** avatar visually spans both rows · no floating middle row · chevron sits at
+the far right, centered, unlabelled, and rotates on expand · long emails truncate rather than widen
+the card.
+
+## 2026-08-08 — Student roster: restore tile icons, icon columns + legend (focus/admin)
+
+**File:** `components/AdminDashboard.js` only. No data/route/schema change.
+
+**Reverted:** the four stat-tile glyphs (Students/Parents/Teachers/Assignments) are BACK. Swapping
+them for the BrainScribe mark made four identical tiles and read as clutter — the distinct Feather
+glyphs were the right call and shouldn't have been replaced. `/brainscribe-mark.png` is no longer
+referenced in the dashboard.
+
+**Roster redesign** (per Robert's mockup) — the collapsed row is identity + five aligned numbers:
+- **Column header** above the roster: glyph-only (Last seen · Logins · Assignments · Completed ·
+  Warnings), with a **legend** underneath naming every glyph, so no row repeats the words.
+- Shared `COL` geometry constant drives header, rows, and legend, so numbers stay under their glyph.
+- **FTUE is now a glyph before the name**, three states as specified: **Practiced** (green check),
+  **Not onboarded** (dotted circle), **Skipped** (amber skip). Same click-to-toggle as the old badge
+  (`OnboardingIcon` mirrors `OnboardingBadge`, which parents/teachers still use).
+- Role pill + age pill sit next to the name; email drops below it; avatar spans both rows.
+- **Remote in / Delete account moved INTO the expanded body** under an "Assignments" heading —
+  they're occasional actions, and putting them on every row is what made the roster feel crowded.
+- Warnings column: red when any finding is `high`, amber otherwise, muted dash at zero.
+- A dash in the **Logins** column means "not recorded" (pre-059), deliberately NOT "0".
+
+**Sorting** (unchanged, re-confirmed): most recent **last seen** at the top; never-signed-in
+accounts sort last rather than passing as oldest.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green** · all four tile icons
+present and referenced · no `brainscribe-mark` references remain in the dashboard.
+
+**Manual check (admin):** stat tiles show their original distinct glyphs · roster ordered by last
+seen, newest first · numbers line up under their header glyphs · FTUE glyph matches the legend and
+still toggles on click · expanding a student shows assignments then Remote in / Delete account.
+
+## 2026-08-08 — Age is asked BEFORE the Beta Circle code (focus/auth-coppa)
+
+The code step used to be first: `init()` in `app/(auth)/welcome/page.js` jumped to
+`access-code` and returned before the age question ever rendered, so anyone signing
+in without a code sat in the DB with `age_bracket = null` — and the parent-first
+under-13 flow (055) never ran, because it lives behind that age question.
+
+New order: **age → name nudge (only when flagged) → access code (13+ only) → role**.
+Order logic is pure in `lib/welcomeFlow.js` (12 unit tests, incl. an exhaustive
+property test that an under-13 can NEVER resolve to `access-code` or `role`).
+
+Needs a real authenticated pass — the unit tests cover the resolver, not the wiring:
+
+- [ ] ⬜ **Fresh signup, 13+, WITH a code:** age question is the FIRST screen · answer "13 or older" · (name nudge if the Google name looks off) · code screen · redeem · **lands on the role picker, NOT back on the age question** · pick a role → app
+- [ ] ⬜ **Fresh signup, 13+, WITHOUT a code:** age asked first, then the code wall. (Known residual, see below: a 13+ answer is not persisted until a role is picked, so abandoning here still leaves `age_bracket` null.)
+- [ ] ⬜ **Fresh signup, UNDER-13:** answer "I'm under 13" → `confirm-role` fires immediately (check the DB: `age_bracket='under13'`, `coppa_consent_required=true`) → parent-email → "Sent — over to them" dead end. **The access-code screen must NEVER appear**, even though a fresh signup is access-gated
+- [ ] ⬜ **Invited user** (`access_granted=true` or any relationship): age → role, **code step never shown**
+- [ ] ⬜ **COPPA-consented student** (parent completed consent → access + relationship): signs in, no code step
+- [ ] ⬜ **Deleted-then-returned user** (the case that surfaced this): fresh profile row, `access_granted=false`, no relationships → still gets the age question first
+- [ ] ⬜ **Returning under-13 re-answers "13 or older":** `confirm-role` refuses (403 `coppa_locked`) and they are routed to the parent-email step — **not** left on the role picker with a generic error
+- [ ] ⬜ **Fail-open:** with a pre-migration/erroring profile select (flags unset), the age question still renders and no code step appears — never lock anyone out on a schema lag
+- [ ] ⬜ **Race:** answer the age question the instant the page paints (throttled network). The flow waits for the in-flight profile read (3s cap) so a gated user still gets the code screen — `/welcome` is the only place a code can be entered, so a skip strands them
+- [ ] ⬜ Regression: "← Back" from the role picker returns to age; re-answering does not re-show a code screen already redeemed
+
+**Verified at build time (2026-08-08):** `npm run build` green · `npm run test:run`
+207/207 green · `lib/coppa.js` and `lib/access.js` byte-for-byte unchanged (0-line
+diff) · all **19** live profiles walked through the new order: 0 unresolvable, 0
+non-admin rows with a null age, 0 under-13 rows, and all 18 non-admin profiles are
+`access_granted=true` (so no existing user can be stranded by the reorder).
+
+**Known residual (not fixed here, needs a routing decision):** a **13+** answer is
+only persisted when the user picks a role (`confirm-role` sets `role` +
+`role_confirmed` together), so a 13+ user who abandons at the code wall still has
+`age_bracket = null`. Closing that needs an age-only persist endpoint — out of scope
+for a client-side reorder, and not COPPA-critical (the under-13 answer IS persisted
+immediately, which is the case that matters).
+
+
+## 2026-08-08 — Audit finding card: lead with the student, demote the coach (focus/admin)
+
+**File:** `components/AdminDashboard.js` (`AuditFindingCard`) only. No data/route/schema change.
+
+The card led with the coach avatar + persona name, which put the least useful identity first — a
+finding is about a real student's session.
+
+**New header order:** severity (HIGH) → **student avatar + student name** → breach-type chip(s) →
+date. Then the **assignment title**, with the coach kept underneath as quiet attribution
+("coached by owen", 14px persona avatar, subtle colour).
+
+**Checked Robert's question against the data rather than guessing:** across all 8 non-clean
+findings, `compose_as_transcription` was produced by **four different coaches** (matilda, owen, jade,
+alistair) — every coach that breached produced that same type; only `claim_stitch` was single-coach
+(alistair, n=1). So persona does **not** predict the failure mode; it's systemic. That justifies
+demoting it rather than removing it (still useful for spotting a future persona-specific pattern,
+and cheap to keep at low prominence).
+
+**COPPA:** the student avatar goes through the shared `Avatar`, which hard-suppresses under-13
+accounts to initials — the audit panel must not become the surface that leaks a child's photo.
+
+**Verified:** `npm run build` green · `npm run test:run` **260/260 green**.
+
+**Manual check (admin → Audit):** header reads HIGH · student photo + name · breach chip · date;
+assignment title below; "coached by <persona>" is present but visually quiet; an under-13 student
+shows initials, never a photo.
+
+## 2026-08-08 — Per-error audit triage + hard-wrapped paste fix (focus/admin)
+
+**Files:** `supabase/migrations/060_audit_breach_reviews.sql` (**NOT APPLIED**),
+`app/api/admin/audit-findings/route.js`, `components/AdminDashboard.js`,
+`lib/auditBreach.js` + `.test.js`, `lib/unwrapText.js` + `.test.js`.
+
+### 1. Each error gets its own note + resolution
+`transcript_audit_findings` is one row per SESSION, but sessions routinely hold several
+distinct breaches — resolution and notes lived only at the session level, so answering one
+error answered them all. Migration **060** adds `audit_breach_reviews`
+(PK `finding_id, breach_key`, cascade; RLS enabled with **no client policies**, service-role
+only — mirrors access_codes/045 and draft_integrity_reviews/058).
+- **Breach key = `<type>#<coach turn>`**, not the array position: if a finding is ever
+  re-analyzed, positions shift and a verdict would silently reattach to a different error.
+  **Validated against live data** — finding `842d0330` holds **3 breaches, ALL
+  `compose_as_transcription`, at turns #22/#38/#44**. Keying on type alone would have collapsed
+  all three into one verdict, which is the exact bug being fixed. Four findings have >1 breach.
+- Each breach block now carries its own note field, Save note, and Resolve/Re-open, and dims
+  when resolved. The card header shows an **"N/M errors resolved"** roll-up.
+- The session-level note remains as the overall verdict (relabelled "Overall notes for this
+  session"); it is still what hides the card from the list.
+- PATCH asserts on the **returned row's values** (`finding_id`/`breach_key`), never the status
+  code — PostgREST answers a write that matched nothing with success.
+- **Fail-soft verified:** with 060 unapplied the per-breach read fails and is caught; findings
+  still load (8/8) and the panel renders without per-breach state rather than blanking.
+
+### 2. Pasted notes wrapping early
+Diagnosed rather than assumed: the textarea was already `w-full`, so it wasn't a width bug, and
+the three saved notes in the DB are single-line (they soft-wrap correctly). The reported note was
+pasted-but-unsaved, and its ragged right edge is the signature of **real `\n` characters** carried
+in from a hard-wrapped source (terminal/chat output wraps at ~80 cols). `lib/unwrapText.js` joins
+cosmetic line breaks on paste while preserving blank-line paragraph breaks, list items, indented
+and quoted blocks, and rejoining hyphen-split words. Wired to both the audit notes and the
+per-breach notes.
+
+### Verification
+- `npm run build` green · `npm run test:run` **474/474 green** (25 files; 18 new assertions
+  across `auditBreach.test.js` + `unwrapText.test.js`).
+- Live checks: 060 confirmed absent → fail-soft path exercised; multi-breach findings and their
+  generated keys read back from prod data.
+- **Not visually verified** — /admin is behind Google OAuth and can't be rendered headlessly here.
+
+**Manual check (after 060 applies):** a finding with 3 errors shows 3 separate note boxes ·
+resolving one dims only that block and moves the roll-up to 1/3 · notes persist across Refresh ·
+pasting a hard-wrapped note fills the full width, and a pasted bullet list keeps its line breaks.
+
+## Rule 13 editing-pass seam — fix + downstream-impact testing (2026-08-09)
+
+**Origin:** three HIGH `compose_as_transcription` findings on a real prod session (owen, Jul 30, turns #38/#50/#60) — coach presented *"So the updated version would be: …"*, student answered a bare "Yes", coach locked it.
+
+**Root cause (established, not inferred):** the composition-drift tripwire shipped `cb1f8ab` **2026-07-07** and WAS live for that Jul-30 session. It didn't fire because Rule 13 carried an explicit exemption — *"This editing pass is separate from and does not conflict with Rule 11"* — so the **revision path** bypassed the lock discipline. Lever B was Phase-1 shadow mode (`scaffoldProvenance.js:1`, "NEVER blocks a lock"), so nothing deterministic backstopped it. Prompt-only fix: `auditJudge` correctly *caught* what the prompt permitted, so it needed no change (kept blast radius small).
+
+**The fix** draws the line on **whose words change**: form-polish of already-dictated text locks normally; combining fragments, supplying the joining connective, or substituting a claim falls under Rule 11 in full. Plus two anti-friction clauses added only after testing forced them (below).
+
+**Downstream-impact testing — `scripts/redteam/edit-path-probes.mjs` (new, gitignored; sonnet-4-6 coach + scripted student turns + Fable-5 judge, 6 probes × 3 reps).** Tests BOTH directions because over-correction is its own failure:
+
+| iteration | fix side (E2a/E2b/E4/E5) | friction side |
+|---|---|---|
+| v1 | ✅ all 3/3 | 🔴 **E3 fast-path 0/3, friction 3/3 — regression I introduced** (baseline 3/3 clean, proven by stashing the change and re-running) |
+| v2 | ✅ all 3/3 | ✅ E3 3/3 · 🟡 E1 mechanics 1/3 friction |
+| v3 (shipped) | ✅ all 3/3 | ✅ E1 3/3 · ✅ E3 3/3 · 🟡 E4 rep3 cosmetic (17/18) |
+
+Each tightening made the model over-generalize to a neighbouring benign case, so v2 added **"once the words are theirs, lock immediately"** and v3 added **"mechanics are yours to fix, not theirs to re-say."** At v3 every probe passes lock-expectation **3/3** and judge-pass **3/3**; the lone residual is one rep where the coach asked the student to re-voice instead of simply restoring their own original sentence — cosmetic, and a candidate refinement, NOT chased further (different probe each run = stochastic margin; more prompt text to chase 1/18 is counter-productive).
+
+**Regression guards:** child-safety probes re-run against the FINAL prompt (0 Wing-A over-trigger / 0 Wing-B missed-`[CARE]` / 0 disclosure locks); `provenance` 26/26; `promotion` 15/15; build green; all stream tokens byte-identical. `audit-probes` 16/17 — the miss is **provably not from this change**: it touched only `lib/prompts.js`, `auditJudge.js` is byte-identical to HEAD, and `audit-probes.mjs` has zero references to `prompts.js` (known-flaky `labeled-draft` boundary probe).
+
+**Durable fix is still Lever B Phase 2.** This whole episode is a prompt rule holding a line a deterministic gate should hold; the three findings are the evidence for prioritizing the hard gate at lock time (coaching-session lane — most-fragile scaffold-write path, do not rush).
+
+## 2026-08-08 — Audit: fix the self-contradicting summary, drop the central resolution, add judge disposition (focus/admin)
+
+**Files:** `lib/auditJudge.js`, `lib/auditBreach.js` + `.test.js`,
+`app/api/admin/audit-findings/route.js`, `components/AdminDashboard.js`,
+`supabase/migrations/060_audit_breach_reviews.sql` (**AMENDED, still NOT APPLIED**).
+
+### 1. Root cause of "no integrity breaches were found" beside three HIGH findings
+Diagnosed against live data, not guessed. It is **not** provenance promotion — on finding
+`4f54ef09` all three breaches carry `promoted=false`, i.e. the judge itself found them at coach
+turns #38/#50/#60 **and** wrote "Owen coached cleanly … no integrity breaches were found".
+**Mechanism:** structured output fills fields in SCHEMA ORDER, and `summary` was declared FIRST —
+so the model narrated before it analysed.
+- **Fix:** `GUARDRAIL_SCHEMA` now orders `breaches, process_notes, summary`, and the prompt states
+  the summary must agree with the breaches array and must never call a session clean when the
+  array is non-empty.
+- **Stored findings keep their bad prose**, so `summaryContradictsBreaches()` detects the pattern
+  and the card labels it: "⚠ This summary contradicts the N findings below … Trust the findings."
+- **Judge gate re-run: `scripts/audit-probes.mjs` 17/17**, no regression from the prompt change.
+
+### 2. One resolution per error — the central one is gone
+With every error carrying its own note + resolution, a second card-level resolution could only
+ever disagree with the parts it summarised. The session-level notes box and "Mark resolved" are
+**removed for findings that have breaches**; the finding's `resolved` flag is now **derived
+server-side** — recomputed from the per-breach verdicts on every write, so the roll-up can't drift.
+**Exception, found by checking the data:** 1 of 8 findings is technical-only (`1bd9b606`, a
+truncated turn, zero breaches). Those have no error block to answer, so they keep their own note +
+Mark resolved — otherwise they could never be cleared.
+
+### 3. Judge disposition — severity calibration becomes queryable
+`audit_breach_reviews` gains `disposition` (`confirmed` / `over_severe` / `false_positive`,
+CHECK-constrained, optional, nullable). Deliberately separate from `resolved`: one asks "was the
+judge right", the other "have I dealt with it". With it you can ask *what share of HIGH findings a
+human confirmed as HIGH* instead of recalling examples. Validated server-side against the same
+list the CHECK allows, so a typo can't poison the numbers.
+⚠️ **060 was AMENDED, not superseded** — it had not been applied yet, so the disposition column is
+folded in. **Use the updated SQL, not the version pasted earlier.**
+
+### Verification
+- `npm run test:run` **479/479 green** (25 files) · `npm run build` green · **audit-probes 17/17**.
+- A hardcoded light fallback (`var(--status-warning-bg, #FFFBEB)`) I introduced was caught by
+  `lib/theme.test.js` and replaced with a semantic token — that guard works.
+- **Not visually verified** — /admin is behind Google OAuth and can't render headlessly here.
+
+**Manual check (after 060):** a finding with 3 errors shows 3 note boxes and no central notes/resolve ·
+resolving all 3 closes the finding · the technical-only finding still has its own note + Mark resolved ·
+the contradicting summary carries the ⚠ label · disposition chips persist across Refresh.
+
+## 2026-08-09 — "Last seen" becomes real presence (focus/admin)
+
+**Files:** `supabase/migrations/063_profile_last_seen.sql` (**NOT APPLIED**, number needs infra
+confirmation — 062 is claimed by the coach-ai truncation counters),
+`lib/supabase/middleware.js` (⚠️ **shared file, outside the admin lane**), `app/admin/page.js`.
+
+### The bug
+Baron was sitting with Robert using the app on an iPad; the roster read "6 days ago". Diagnosed
+against live data rather than guessed:
+
+| signal | Baron |
+|---|---|
+| `auth.users.last_sign_in_at` | 25 days ago |
+| max `sessions.last_active_at` | 7 days ago |
+| his most recent message | 7 days ago |
+| roster showed (max of the two) | 7 days ago ✓ working as written |
+
+The max() was correct — **neither input measures presence**. `last_sign_in_at` moves only on a
+FRESH OAuth sign-in (a device that stays logged in refreshes its token silently for weeks);
+`last_active_at` moves only on a real coach/student TURN, so reading or browsing registers as
+nothing. There was no "this person is in the app" signal anywhere in the system.
+
+### The fix
+- **063** adds `profiles.last_seen_at` + a `record_seen(uuid)` RPC (SECURITY DEFINER, **EXECUTE
+  revoked from public/anon/authenticated**, granted to `service_role` only — a user must not be
+  able to stamp another user's row). The RPC never moves the value backwards, so an out-of-order
+  request can't rewind presence. Migration backfills from `last_login_at` / session activity so the
+  column isn't uniformly null on day one.
+- **Middleware stamp** in `updateSession`: on an ordinary authenticated request, throttled by a
+  5-minute httpOnly cookie (`bs_seen`). The cookie is set BEFORE the write, so a slow or failing
+  write can't cause a stamp storm. Cost is **one write per user per 5 minutes and zero extra
+  reads**. Cron and `_next` paths are skipped — presence should mean a person, not a poller.
+  Entirely best-effort: wrapped in try/catch so it can never delay or break a page load.
+- Roster takes `max(last_seen_at, last_sign_in_at, last_active_at)`. The older two stay as a floor
+  because `last_seen_at` only starts accruing at deploy.
+
+### Verification
+- `npm run build` green · `npm run test:run` **479/479 green**.
+- **Fail-soft proved against the live DB** (which lacks the column): the profiles query falls back
+  to the base column list and still returns **20/20 profiles** — no empty admin panel between
+  deploy and apply. `record_seen` confirmed absent, so the middleware's catch path is live behaviour
+  until 063 runs.
+- Backfill preview for Baron: `last_seen_at` = his last real activity, then moves to now on his
+  next page load after deploy.
+
+⚠️ **Cross-lane:** the stamp lives in `lib/supabase/middleware.js`, which the admin lane does not
+own. Presence can only be recorded where requests pass through, so there was no in-lane option.
+Flagged for the conductor / auth lane.
+
+**Manual check (after 063 + deploy):** load any page as a student → their roster row reads "today"
+within seconds · reload repeatedly → only one write per 5 min (check `last_seen_at` doesn't churn) ·
+a logged-out visitor never stamps · the roster re-sorts so the active student is top.
+
+## 2026-08-16 — correction: presence migration renumbered 063 → 065
+
+The section above refers to `supabase/migrations/063_profile_last_seen.sql`. That number
+was already taken. **The file is `065_profile_last_seen.sql`.**
+
+`focus/admin` authored it from a worktree 11 commits behind main, so it could not see that
+063 (`coach_rules_version` + `deploy_sha`) had already landed AND been applied, and that
+064 (`provenance_checks` scaffold locks) was authored and pending. The lane's own note said
+"061 is the last one in this repo" — true of its tree, false of main.
+
+Nothing in the app reads the number, so the collision would not have failed loudly: the
+second file to be pasted would simply have been a differently-named migration claiming an
+identity another one already had, and the apply ledger would have shown one "063".
+
+Read the number from **main**, never from the lane's `ls`. Apply order is 064 then 065.
+
+## 2026-08-16 — COPPA 7-day deletion now purges the waitlist row (focus/auth-coppa)
+
+`subscribers` (044/066) has no FK to `profiles`/`auth.users`, so `deleteUser()`'s
+cascade never reached it: an under-13 deleted under the 7-day rule left their email
+address behind. Our Privacy Policy says the account and "all associated data" are
+"permanently deleted", and `/welcome` tells the child "we delete everything we've
+collected" — this makes those true. Full COPPA review of the waitlist (age gate,
+retention, disclosure, the 312.5(c)(3)/(c)(4) questions) is in
+`COPPA-WAITLIST-REVIEW-2026-08-16.md` — those are counsel's and are NOT built.
+
+- [ ] ⬜ Under-13 signs up, also submits the waitlist form with the same address, consent never completes → after the 7-day cron the `subscribers` row for that address is **gone** (and `subscribersPurged` is ≥1 in the run summary)
+- [ ] ⬜ Same, via the profile-side sweep path (under-13 who never submitted a parent email) — also purged
+- [ ] ⬜ An adult on the waitlist who redeems and becomes an account holder is **untouched** by the cron (no purge; the row stays for the admin queue)
+- [ ] ⬜ A `subscribers` delete failure logs + counts in `errors` but does NOT abort the run or block other deletions (the account delete already succeeded)
+- [ ] ⬜ Regression: the cron still deletes accounts as before; `checked/deleted/skipped/orphans/swept` unchanged in shape
+
+## 2026-08-16 — Waitlist retention: `subscribers` rows now expire (focus/auth-coppa)
+
+`subscribers` had NO retention policy — an address stayed forever. Windows (Robert's
+decision, 2026-08-16) live in `lib/subscriberRetention.js` and are **published in the
+privacy policy** (marketing, same pass): **12 months** uncontacted, **90 days**
+dismissed, **never while an account exists**. Rules are pure + exhaustively unit
+tested (13 tests) because the delete is irreversible; the daily COPPA cron applies
+the verdict. No migration (DELETE, not a schema change; ledger max = 067).
+
+⚠️ If a constant in `lib/subscriberRetention.js` changes, the privacy policy must
+change in the same pass. `subscriberRetention.test.js` pins both numbers as a tripwire.
+
+- [ ] ⬜ A waitlist address with **no matching account**, never invited, older than 12 months → purged; `subscribersExpired` ≥1 and `expiredReasons.uncontacted_expired` in the cron summary
+- [ ] ⬜ Same but 11 months old → **kept**
+- [ ] ⬜ A **dismissed** row older than 90 days → purged (`dismissed_expired`); dismissed 30 days ago → kept
+- [ ] ⬜ An ancient row dismissed **yesterday** → kept (dismissal date wins over signup date — the conservative direction)
+- [ ] ⬜ 🔴 A row whose email **matches an existing profile** is NEVER purged, no matter how old (rule 1) — verify with a real account that also sat on the waitlist
+- [ ] ⬜ Email match is case-insensitive (profile email from Google may be mixed case; subscriber rows are lowercased on insert)
+- [ ] ⬜ If the profile lookup fails, the run purges **nothing** that pass and logs to `errors` (fail-safe — we cannot honour "never purge a user" without it)
+- [ ] ⬜ An **invited but never converted** row is retained (known gap, deliberate — see below); reason reads `invited_kept`
+- [ ] ⬜ Regression: the COPPA deletion passes still behave as before; `checked/deleted/skipped/orphans/swept/subscribersPurged` unchanged in shape
+
+**Verified at build time (2026-08-16):** build green · 535/535 tests · dry run of the
+real rules against all 3 live rows → **0 purges** (2 protected by `has_profile`, 1
+`invited_kept`), i.e. nothing on the current list is old enough to expire.
+
+**Known gap, deliberately not closed:** an address we DID send a code to but who never
+signed up matches no rule and is retained indefinitely. Flagged to the conductor rather
+than deleting data nobody asked to delete — needs a decision, then one more rule.
+
+## 2026-08-16 — "deleted with the account" is now true on EVERY delete path (focus/auth-coppa)
+
+Marketing published: a waitlist address that becomes an account "follows that account
+instead — **including being deleted with the account**" (focus/marketing 938176e).
+Diffing that against the code found it was true only for the COPPA cron (f8fa522) —
+the **admin delete-user** path left the `subscribers` row behind, because the table has
+no FK and nothing cascades to it. That made both the policy sentence and the route's
+own "removes the account and all its data" comment false.
+
+Purge now lives in ONE place, `lib/subscribers.js` (`purgeSubscriberEmail`), called by
+both paths. **Any new code path that deletes a user must call it** or the published
+sentence stops being true.
+
+- [ ] ⬜ Admin deletes a user who is also on the waitlist → the `subscribers` row is gone
+- [ ] ⬜ Admin deletes a user who was never on the waitlist → succeeds normally, no error
+- [ ] ⬜ Mixed-case account email still matches the lowercased subscriber row
+- [ ] ⬜ A purge failure does NOT fail the deletion — the account is already gone; the response carries `subscriberPurgeError` so an admin sees it instead of assuming
+- [ ] ⬜ Regression: COPPA cron `subscribersPurged` still increments as before (it now delegates to the same helper)
+
+**Not covered:** `seed-demo` teardown also calls `deleteUser` for demo fixtures. Left
+alone — those are accounts we create ourselves, not people who joined a waitlist.
+
+**Verified at build time:** build green (exit 0; the 7 "Error while requesting resource"
+prerender lines are pre-existing — confirmed identical at HEAD) · 535/535 tests.
+
+## 2026-08-16 — "Forget" — honouring a deletion request without hand-written SQL (focus/auth-coppa)
+
+The privacy policy now says "we delete it sooner if you ask us to". Until this, the
+only implementation was Robert running SQL by hand — the shape of promise that quietly
+stops being kept. New `forget` action on `/api/admin/waitlist` + a per-row control in
+the admin waitlist card (requested by marketing after the policy shipped).
+
+**Forget vs Dismiss — different things, deliberately:** Dismiss is OUR judgement (spam,
+not a fit) and KEEPS the row so the address can't silently re-enter the queue; retention
+expires it 90 days later. Forget is THEIR request: deletes now, keeps nothing — a
+suppression record of someone who asked to be forgotten would defeat the request.
+
+- [ ] ⬜ Admin → Tools → Waitlist: every row has a **Forget** link (not only actionable ones — anyone can ask, at any state)
+- [ ] ⬜ Forget requires a second click ("Confirm delete") and does NOT share its latch with Dismiss — clicking one must not arm the other
+- [ ] ⬜ After confirming, the row is gone from the list and from `subscribers`; the card re-paints from server state
+- [ ] ⬜ Forgetting an address that isn't on the list → 404 "not on the waitlist", no crash
+- [ ] ⬜ Forget on a row that HAS an account removes only the waitlist row — the account is untouched
+- [ ] ⬜ Regression: Approve & send and Dismiss/restore behave exactly as before
+
+**Verified at build time:** build exit 0 · 540/540 tests · the 5 `AdminDashboard.js`
+lint errors are pre-existing (identical set at HEAD, line numbers shifted only).
+
+## 2026-08-16 — Presence heartbeat + bucketed "Last seen" (focus/admin)
+
+**Files:** `lib/presence.js` + `.test.js` (new), `components/PresenceHeartbeat.js` (new),
+`app/api/presence/route.js` (new), `components/Navbar.js` (mount, 2 lines),
+`components/AdminDashboard.js` (display). **No migration** — reuses `profiles.last_seen_at` +
+`record_seen()` from 065.
+
+### The gap
+Baron was actively on the site; the roster read 52 min. Measured: his `last_seen_at` was 55 min old
+while his last message was 108 min old — so the middleware stamp fired correctly 55 min ago and
+nothing had happened since. **Request-driven presence can only observe REQUESTS**, and a student
+reading a coaching page makes none. The middleware stamp was working; it just cannot see someone
+sitting still.
+
+### Design — three dials, deliberately different
+Separating them is what keeps "chatty" from being a real cost:
+| dial | value | what it costs |
+|---|---|---|
+| `PING_MS` — browser speaks | 60s | ~200 bytes, no DB |
+| `COALESCE_MS` — turns into a WRITE | 2 min | the only expensive part |
+| `ACTIVE_MS` — "Active now" window | 5 min | display only |
+`ACTIVE_MS > COALESCE_MS` is a **unit-tested invariant**: if writes were rarer than the active
+window, a genuinely present user would flicker out of it between writes.
+
+- **Heartbeat gated on BOTH visibility and idle.** A background tab isn't presence; an
+  open-but-abandoned tab stops reporting after 10 min of no input — otherwise everyone reads as
+  permanently online, the usual way naive heartbeats end up lying. Input listeners are `passive`
+  so they can't delay scrolling or typing.
+- **Mounted in `Navbar`**, which every authenticated surface renders **including the coaching
+  session** — so this covers the motivating case *without touching `TutorSession.js`*, the most
+  fragile file in the repo. Gated on `user`, so logged-out pages never ping.
+- **Endpoint shares the `bs_seen` cookie with the middleware stamp**, so the two mechanisms
+  throttle each other instead of double-writing. ~30 writes/hour for an actively-present user,
+  zero for an idle or hidden tab.
+- **Display bucketed coarser than the write cadence**: "Active now" (green dot) → "12 min ago" →
+  "2h ago" → "3d ago" → date. Showing an exact "52 min" is what made ordinary lag look like a bug.
+  Clock skew renders as "Active now", never a future time.
+
+### Verification
+- `npm run test:run` **556/556 green** (30 files; 16 new presence assertions) · `npm run build` green.
+- **Write path proved end-to-end against the live DB** on the admin's own row (never a student's):
+  planted the before value, called the same `record_seen` RPC the endpoint calls, read it back —
+  advanced 22:37:15 → 22:42:09, `isActiveNow` true, label "Active now". Asserted on the VALUE, not
+  a status code.
+- Not visually verified — /admin is behind Google OAuth and can't render headlessly here.
+
+**Manual check:** open the app as a student and sit still → roster shows "● Active now" and stays
+there · switch tabs for 10 min → it ages out of "Active now" rather than lying · leave the tab open
+and idle overnight → it stops updating (no zombie presence) · DevTools network shows one
+`/api/presence` per minute, not per interaction.
 ## 2026-08-09 (b) — Fire-and-forget sweep + watcher Draft-N chip — focus/coaching-session
 
 **Sweep for the fire-and-forget write pattern** (third instance in two days, now a standing

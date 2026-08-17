@@ -1,9 +1,10 @@
+import LogoLockup from '@/components/LogoLockup'
 // Branded 404 for unmatched routes.
 export default function NotFound() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center"
       style={{ backgroundColor: 'var(--bg-page)', minHeight: '100vh' }}>
-      <img src="/brainscribe-logo.png" alt="BrainScribe"
+      <LogoLockup alt="BrainScribe"
         style={{ width: 220, maxWidth: '70%', height: 'auto', marginBottom: '2rem' }} />
 
       <div className="w-full p-8 space-y-4" style={{

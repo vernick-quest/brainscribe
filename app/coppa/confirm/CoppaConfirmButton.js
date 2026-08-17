@@ -24,7 +24,7 @@ export default function CoppaConfirmButton({ token }) {
       disabled={loading}
       style={{
         width: '100%', padding: '1rem', borderRadius: 14, fontWeight: 700, fontSize: '1rem',
-        color: '#fff', backgroundColor: loading ? 'var(--border-strong)' : 'var(--brand-orange)',
+        color: 'var(--text-on-accent)', backgroundColor: loading ? 'var(--border-strong)' : 'var(--accent)',
         border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
       }}

@@ -1,13 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
-import { createServiceClient } from '@/lib/supabase/service'
 import { parseCommitments } from '@/lib/coachCommitments'
+import { hasLandedLockToken, stripCoachTokens } from '@/lib/coachTokens'
 
 const anthropic = new Anthropic()
 
@@ -117,7 +118,23 @@ export async function POST(request) {
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
+    // 4000, raised from 1000 on 2026-08-16 after it cut a real student's work.
+    //
+    // A [DONE:id:…] payload carries the student's EXACT words, so the ceiling is not
+    // "how much should the coach say" — it is "how long can a section of their writing
+    // be". Sierra wrote a ~700-word scene: ~950 tokens of payload before the coach said
+    // anything. The turn cut mid-payload, the token never closed, and the client's
+    // tokenRE (which requires the closing bracket) parsed ZERO locks. The lock failed
+    // silently, twice, and ~30k characters of her story never reached `paragraphs`.
+    //
+    // Billed on ACTUAL output, so an ordinary turn costs exactly what it did before;
+    // this only buys headroom for the turns that need it. 4000 covers roughly 2,500
+    // words of payload. Beyond that the scaffold is the wrong shape, which is what the
+    // scene-scaffolding rule now prevents at turn 1.
+    //
+    // This is a ceiling, not a fix. A long enough section exceeds any number — the real
+    // repair is not putting the whole paragraph in a token payload.
+    max_tokens: 4000,
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicTail },
@@ -136,7 +153,7 @@ export async function POST(request) {
   // [SOURCE:…] is the research/citations capture token (coaching-session lane): it
   // opens the source-confirm card client-side and must be stripped from the persisted
   // coach turn like every other control token.
-  const TOKEN_RE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE|SOURCE):[^\]]*\]|\[COMPLETE\]|\[CARE\]/g
+  // Token stripping lives in lib/coachTokens.js — see the note there on the fourth copy.
 
   // The stream's text tokens are enqueued to the client as they arrive, then the
   // stream closes immediately. The usage log + message insert run in after(), so the
@@ -150,10 +167,16 @@ export async function POST(request) {
       let fullText = ''
       let inputTokens = 0
       let outputTokens = 0
+      let stopReason = null
       try {
         for await (const chunk of stream) {
           if (chunk.type === 'message_start') inputTokens = chunk.message.usage?.input_tokens ?? 0
-          if (chunk.type === 'message_delta')  outputTokens = chunk.usage?.output_tokens ?? 0
+          if (chunk.type === 'message_delta') {
+            outputTokens = chunk.usage?.output_tokens ?? 0
+            // stop_reason arrives on message_delta. 'max_tokens' means the model was
+            // CUT OFF mid-turn — see the truncation note below.
+            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason
+          }
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             fullText += chunk.delta.text
             controller.enqueue(encoder.encode(chunk.delta.text))
@@ -163,15 +186,49 @@ export async function POST(request) {
       } catch (err) {
         controller.error(err)
       } finally {
-        const savedText = fullText.replace(TOKEN_RE, '').replace(/\[DICTATE\]/g, '').trim()
-        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText })
+        const savedText = stripCoachTokens(fullText)
+        // ── Truncation detection (audit finding 2026-08-09) ────────────────────
+        // EVERY control token is emitted at the END of a coach turn ([DONE:id:words],
+        // [PARA_DONE], [THESIS], [COMPLETE], [CARE]). A turn cut off at max_tokens can
+        // therefore silently drop a LOCK — the student's confirmed text never reaches
+        // the Draft, the scaffold-data-loss signature — or a [CARE], so the crisis card
+        // never renders. 6 of 18 audited sessions reported truncated turns and nothing
+        // could distinguish "dropped a lock" from "merely cut prose": that blindness IS
+        // the defect, so detect and record the DISCRIMINATOR before touching the ceiling.
+        // We still deliver + persist the text (the student already saw it); what we
+        // refuse to do is treat a truncated turn as a clean, complete turn.
+        const truncated = stopReason === 'max_tokens'
+        // A lock only counts if it CLOSED — an opening bracket is what a cut turn leaves
+        // behind, so matching it made no_lock read 0 on the dropped-lock case. See
+        // lib/coachTokens.js.
+        const hadLockToken = hasLandedLockToken(fullText)
+        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText, truncated, hadLockToken, stopReason })
       }
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText, rawText } = await resultReady
+    const { inputTokens, outputTokens, savedText, rawText, truncated, hadLockToken, stopReason } = await resultReady
     await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+
+    // A truncated coach turn is never "just a long answer" — log loudly and record it
+    // so the audit can tell a dropped lock from cut prose. no_lock is the discriminator:
+    // truncated WITHOUT any control token is the case that may have destroyed a lock.
+    if (truncated) {
+      console.error(
+        `[tutor] TRUNCATED coach turn (stop_reason=${stopReason}) session=${sessionId} ` +
+        `lock_token_present=${hadLockToken} — ${hadLockToken ? 'tokens emitted before the cut' : 'NO control token: a [DONE]/[CARE] may have been dropped'}`
+      )
+      // SERVICE client, not the user-scoped one: the counter is a SAFETY SIGNAL — the
+      // number we use to decide whether truncation is eating locks — so it must not be
+      // callable (and therefore forgeable) by a signed-in user against an arbitrary
+      // session. Server-side writer only; the fn is granted to service_role alone.
+      const { error: truncErr } = await createServiceClient().rpc('record_coach_turn_truncation', {
+        p_session_id: sessionId,
+        p_had_lock_token: hadLockToken,
+      })
+      if (truncErr) console.error('[tutor] truncation record failed:', truncErr.message)
+    }
 
     // Record what the coach PROMISED it saved, from the raw stream before the tokens are
     // stripped. Deliberately a different path from the client-side scaffold write it will
@@ -224,8 +281,7 @@ export async function POST(request) {
         }
       }
     } catch (err) {
-      console.error('[tutor] commitment record threw:', err?.message)
-    }
+      console.error('[tutor] commitment record threw:', err?.message)    }
     if (savedText) {
       const { error } = await supabase.from('messages').insert({
         session_id: sessionId,

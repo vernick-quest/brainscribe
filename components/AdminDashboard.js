@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useCallback } from 'react'
+import { useState, useTransition, useEffect, useCallback, useContext, createContext, useRef } from 'react'
 import DraftIntegrityAlert from '@/components/DraftIntegrityAlert'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -9,6 +9,30 @@ import Icon from '@/components/Icon'
 import Avatar from '@/components/Avatar'
 import { PersonaAvatar } from '@/lib/personas'
 import { DEMO_EMAILS } from '@/lib/demoAccounts'
+import { unwrapPastedText } from '@/lib/unwrapText'
+import { breachKey, breachProgress, summaryContradictsBreaches } from '@/lib/auditBreach'
+import { presenceLabel, isActiveNow } from '@/lib/presence'
+
+// Paste handler for the admin note fields. Text copied from a terminal, chat pane, or
+// email is hard-wrapped at ~80 columns, and those newlines are real — pasted in, a note
+// stops a third of the way across a wide box with a ragged right edge and reads as a
+// broken input. Unwrap the cosmetic breaks on the way in (paragraph breaks and list
+// items are preserved) and keep the caret where the user expects it.
+function handleUnwrapPaste(e, setValue) {
+  const raw = e.clipboardData?.getData('text/plain')
+  if (!raw || !raw.includes('\n')) return // nothing to unwrap — let the browser do it
+  e.preventDefault()
+  const el = e.target
+  const clean = unwrapPastedText(raw)
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? el.value.length
+  const next = el.value.slice(0, start) + clean + el.value.slice(end)
+  setValue(next)
+  requestAnimationFrame(() => {
+    const caret = start + clean.length
+    try { el.setSelectionRange(caret, caret) } catch {}
+  })
+}
 
 // Line-art icons matching the login landing page (Feather/Lucide style). The
 // Students/Parents/Teachers glyphs are the same paths used there, so the admin
@@ -18,14 +42,35 @@ const IconStudents = () => (<svg {...ICON_PROPS}><path d="M17 3a2.85 2.83 0 1 1 
 const IconParents  = () => (<svg {...ICON_PROPS}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>)
 const IconTeachers = () => (<svg {...ICON_PROPS}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M7 13h4"/><path d="M7 10h10"/><path d="M9 20h6"/><path d="M12 17v3"/></svg>)
 const IconAssignments = () => (<svg {...ICON_PROPS}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>)
+
+// Column/status glyphs for the student roster — same Feather family, sized small.
+const SM = { ...ICON_PROPS, width: 15, height: 15 }
+const IconLogins    = () => (<svg {...SM}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>)
+const IconDoc       = () => (<svg {...SM}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>)
+const IconCheck     = () => (<svg {...SM}><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>)
+const IconWarnTri   = () => (<svg {...SM}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>)
+const IconEyeSm     = () => (<svg {...SM}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
+// FTUE states — three, and visually distinct at a glance.
+const IconSkipped   = () => (<svg {...SM}><circle cx="12" cy="12" r="9"/><path d="M9 8.5l4 3.5-4 3.5"/><path d="M15.5 8.5v7"/></svg>)
+const IconNotOnb    = () => (<svg {...SM}><circle cx="12" cy="12" r="9" strokeDasharray="3 3"/></svg>)
+
+// Shared column geometry — the header, every row, and the legend all read from this,
+// so the numbers stay under their glyph instead of drifting apart.
+const COL = 'w-14 shrink-0 text-center tabular-nums'
+// Header cells centre a GLYPH, not text. `text-center` centres inline content but an
+// svg does not reliably fill the cell, so the icon drifted off the column's centre
+// line while the numbers below it were centred. A flex cell centres the glyph on the
+// same axis as the numbers — and gives the tooltip the FULL column as its hit area
+// instead of just the few pixels of the glyph itself.
+const COL_HEAD = 'w-14 shrink-0 flex items-center justify-center'
 const IconEye = () => (<svg {...ICON_PROPS} width="13" height="13"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>)
 const IconChevron = () => (<svg {...ICON_PROPS} width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>)
 
 const ROLE_COLOR = {
   student: { bg: 'var(--accent-soft)', text: 'var(--accent)' },
   parent:  { bg: 'var(--status-success-bg)', text: 'var(--status-success)' },
-  teacher: { bg: '#EEF2FF', text: '#4338CA' },
-  admin:   { bg: '#FEF3C7', text: '#92400E' },
+  teacher: { bg: 'var(--primary-soft)', text: 'var(--text-link)' },
+  admin:   { bg: 'var(--status-thin-bg)', text: 'var(--text-body)' },
 }
 
 function formatDate(str) {
@@ -171,7 +216,7 @@ function DeleteUserButton({ userId, name }) {
         </span>
         <button onClick={handleDelete} disabled={deleting}
           className="text-[11px] font-bold rounded-full px-2.5 py-1 disabled:opacity-60"
-          style={{ backgroundColor: 'var(--status-error)', color: '#fff' }}>
+          style={{ backgroundColor: 'var(--status-error)', color: 'var(--text-on-accent)' }}>
           {deleting ? '…' : 'Delete'}
         </button>
         <button onClick={() => { setConfirming(false); setError('') }} disabled={deleting}
@@ -231,7 +276,7 @@ function OnboardingBadge({ userId, complete, practiced }) {
     practiced: { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' },
     // Amber, not green: nothing is wrong, but it is not the same thing and the panel
     // should never imply it is.
-    skipped: { backgroundColor: 'var(--status-warning-bg, #FFFBEB)', color: 'var(--status-warning, #D97706)' },
+    skipped: { backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' },
     none: { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' },
   }[state]
 
@@ -244,6 +289,42 @@ function OnboardingBadge({ userId, complete, practiced }) {
       style={tone}
     >
       {saving ? '…' : label}
+    </button>
+  )
+}
+
+// Icon-only FTUE state for the student roster — same three states and the same
+// click-to-toggle as OnboardingBadge, but a glyph instead of a word so the row can
+// lead with the name. The legend under the roster names the three glyphs.
+function OnboardingIcon({ userId, complete, practiced }) {
+  const [done, setDone] = useState(complete)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    const next = !done
+    setSaving(true)
+    const res = await fetch('/api/admin/set-onboarding', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, complete: next }),
+    })
+    if (res.ok) setDone(next)
+    setSaving(false)
+  }
+
+  const state = !done ? 'none' : practiced ? 'practiced' : 'skipped'
+  const { Glyph, color, title } = {
+    practiced: { Glyph: IconCheck, color: 'var(--status-success)', title: 'Practiced — finished a practice assignment. Click to reset (they’ll onboard again next sign-in)' },
+    // Amber, not green: nothing is wrong, but it is not the same thing.
+    skipped: { Glyph: IconSkipped, color: 'var(--status-thin)', title: 'Skipped — marked onboarded WITHOUT finishing a practice assignment. Click to reset' },
+    none: { Glyph: IconNotOnb, color: 'var(--text-subtle)', title: 'Not onboarded — click to mark complete' },
+  }[state]
+
+  return (
+    <button onClick={toggle} disabled={saving} title={title} aria-label={title}
+      className="shrink-0 flex items-center transition cursor-pointer disabled:opacity-50"
+      style={{ color }}>
+      {saving ? <span className="text-[11px]">…</span> : <Glyph />}
     </button>
   )
 }
@@ -262,7 +343,7 @@ function AuthoredBadge({ count }) {
         : 'Has not authored any assignments of their own'}
       className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
       style={has
-        ? { backgroundColor: '#EEF2FF', color: '#4338CA' }
+        ? { backgroundColor: 'var(--primary-soft)', color: 'var(--text-link)' }
         : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
       {has ? `${count} authored` : 'None authored'}
     </span>
@@ -283,7 +364,7 @@ function AgeBadge({ ageBracket, consentGiven }) {
       style = { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
     } else {
       label = 'Under 13 ⏳'; title = 'Under 13 — parental consent pending (blocked from coaches)'
-      style = { backgroundColor: '#FEF3C7', color: '#92400E' }
+      style = { backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' }
     }
   } else {
     label = 'Age?'; title = 'Age not recorded yet'
@@ -451,8 +532,8 @@ function BackfillGreetings() {
 // Opening a finding remotes in as the student first (same fail-closed path as
 // SessionRow), then lands on the finished-work transcript.
 const SEVERITY_STYLE = {
-  high:   { label: 'High',   bg: '#FEE2E2', color: 'var(--status-error)' },
-  medium: { label: 'Medium', bg: '#FEF3C7', color: '#92400E' },
+  high:   { label: 'High',   bg: 'var(--status-error-bg)', color: 'var(--status-error)' },
+  medium: { label: 'Medium', bg: 'var(--status-thin-bg)', color: 'var(--text-body)' },
   low:    { label: 'Low',    bg: 'var(--surface-muted)', color: 'var(--text-muted)' },
 }
 const SEVERITY_ORDER = { high: 3, medium: 2, low: 1, none: 0 }
@@ -479,7 +560,126 @@ function SeverityBadge({ severity }) {
   )
 }
 
-function AuditFindingCard({ finding, session, student, onChanged }) {
+// Judge-accuracy dispositions. Kept in sync with the CHECK constraint in migration 060
+// and the DISPOSITIONS list in the audit-findings route.
+const DISPOSITION_OPTIONS = [
+  { key: 'confirmed',      label: 'Confirmed',      title: 'Real breach, severity fits',                bg: 'var(--status-success-bg)', fg: 'var(--status-success)' },
+  { key: 'over_severe',    label: 'Over-severe',    title: 'Real breach, but graded harsher than it deserved', bg: 'var(--status-thin-bg)', fg: 'var(--status-thin)' },
+  { key: 'false_positive', label: 'False positive', title: 'Not a breach — the judge was wrong',        bg: 'var(--status-error-bg)',   fg: 'var(--status-error)' },
+]
+
+// One breach inside a finding, with its OWN note and resolution. A session routinely
+// holds several distinct errors (one real assignment has three); answering them as a
+// single unit meant a fixed error and an open one shared a verdict.
+function BreachBlock({ breach: b, findingId, review, onChanged }) {
+  const key = breachKey(b)
+  const [resolved, setResolved] = useState(review?.resolved === true)
+  const [note, setNote] = useState(review?.note ?? '')
+  const [disposition, setDisposition] = useState(review?.disposition ?? null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+
+  // Re-sync if a refetch brings a newer verdict for this breach.
+  const srvResolved = review?.resolved === true
+  const srvNote = review?.note ?? ''
+  const srvDisp = review?.disposition ?? null
+  useEffect(() => { setResolved(srvResolved); setNote(srvNote); setDisposition(srvDisp) }, [srvResolved, srvNote, srvDisp])
+
+  async function save(patch) {
+    setSaving(true); setErr(''); setSaved(false)
+    try {
+      const res = await fetch('/api/admin/audit-findings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: findingId, breachKey: key, ...patch }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) { setErr(json.error ?? 'Save failed.'); return false }
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      onChanged?.()
+      return true
+    } catch { setErr('Network error.'); return false }
+    finally { setSaving(false) }
+  }
+
+  async function toggleResolved() {
+    const next = !resolved
+    setResolved(next)
+    const ok = await save({ resolved: next, admin_notes: note })
+    if (!ok) setResolved(!next)
+  }
+
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs space-y-1.5"
+      style={{
+        backgroundColor: 'var(--surface-muted)',
+        border: '1px solid var(--border-default)',
+        opacity: resolved ? 0.65 : 1,
+      }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{AUDIT_BREACH_LABEL[b.type] ?? b.type}</span>
+        <SeverityBadge severity={b.severity} />
+        <span style={{ color: 'var(--text-subtle)' }}>coach turn #{b.message_index}</span>
+        {resolved && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+            style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+            Resolved
+          </span>
+        )}
+      </div>
+      <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
+      {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
+
+      {/* Was the judge right? Optional, and separate from "have I dealt with it" —
+          this is what turns severity calibration into a query ("what share of HIGH
+          findings did a human confirm?") instead of a recollection. */}
+      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+        <span style={{ color: 'var(--text-subtle)' }}>Judge was:</span>
+        {DISPOSITION_OPTIONS.map(d => {
+          const active = disposition === d.key
+          return (
+            <button key={d.key} type="button" disabled={saving} title={d.title}
+              onClick={() => { const next = active ? null : d.key; setDisposition(next); save({ disposition: next }) }}
+              aria-pressed={active}
+              className="text-[10px] font-semibold rounded-full px-2 py-0.5 transition cursor-pointer disabled:opacity-60"
+              style={active
+                ? { backgroundColor: d.bg, color: d.fg }
+                : { backgroundColor: 'var(--surface-card)', color: 'var(--text-subtle)', border: '1px solid var(--border-default)' }}>
+              {d.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* This error's own note + verdict */}
+      <div className="flex items-start gap-2 pt-1">
+        <textarea value={note}
+          onChange={e => setNote(e.target.value)}
+          onPaste={e => handleUnwrapPaste(e, setNote)}
+          placeholder="Note for this error…" rows={2}
+          className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 resize-y"
+          style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', color: 'var(--text-default)' }} />
+        <div className="flex flex-col gap-1 shrink-0">
+          <button onClick={() => save({ admin_notes: note })} disabled={saving}
+            className="text-[10px] font-semibold px-2 py-1 rounded-full transition disabled:opacity-60 cursor-pointer"
+            style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
+            {saving ? '…' : saved ? 'Saved' : 'Save note'}
+          </button>
+          <button onClick={toggleResolved} disabled={saving}
+            className="text-[10px] font-bold px-2 py-1 rounded-full transition disabled:opacity-60 cursor-pointer"
+            style={resolved
+              ? { backgroundColor: 'var(--surface-card)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+              : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+            {resolved ? 'Re-open' : 'Resolve'}
+          </button>
+        </div>
+      </div>
+      {err && <p style={{ color: 'var(--status-error)' }}>{err}</p>}
+    </div>
+  )
+}
+
+function AuditFindingCard({ finding, session, student, breachReviews, onChanged }) {
   const [opening, setOpening] = useState(false)
   const [resolved, setResolved] = useState(finding.resolved === true)
   const [notes, setNotes] = useState(finding.admin_notes ?? '')
@@ -488,6 +688,9 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
   const a = finding.auditor_analysis ?? {}
   const label = session?.title || session?.assignment_text?.slice(0, 70) || 'Untitled session'
   const tech = a.technical ?? {}
+  const progress = breachProgress(a.breaches, breachReviews)
+  const hasBreaches = progress.total > 0
+  const summaryContradicts = summaryContradictsBreaches(a.summary, a.breaches)
 
   // Remote in as the student (fail closed), then open the finished-work transcript.
   async function openTranscript() {
@@ -532,12 +735,18 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
     <div className="rounded-2xl p-5 space-y-3"
       style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)', opacity: resolved ? 0.6 : 1 }}>
 
-      {/* Header: severity, coach, breach chips, student */}
+      {/* Header: severity, STUDENT, breach chips, date.
+          The STUDENT leads, not the coach — a finding is about a real kid's session,
+          and the persona turns out not to predict the failure: compose-as-transcription
+          has been produced by four different coaches, so it's a systemic mode, not a
+          persona trait. The coach is kept as a de-emphasized attribution below. */}
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={finding.severity} />
-        <PersonaAvatar personaId={finding.persona ?? 'owen'} size={18} className="shrink-0" />
+        {/* COPPA: Avatar hard-suppresses under-13 to initials */}
+        <Avatar name={student?.full_name} avatarUrl={student?.avatar_url}
+          ageBracket={student?.age_bracket} size={20} />
         <span className="text-xs font-semibold" style={{ color: 'var(--text-strong)' }}>
-          {finding.persona ?? 'coach'}
+          {student?.full_name ?? 'Unknown student'}
         </span>
         {(finding.breach_types ?? []).map(t => (
           <span key={t} className="text-[10px] font-semibold rounded-full px-2 py-0.5"
@@ -545,38 +754,52 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
             {AUDIT_BREACH_LABEL[t] ?? t}
           </span>
         ))}
+        {progress.total > 0 && (
+          <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+            title="Errors in this session that have their own verdict"
+            style={progress.allResolved
+              ? { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }
+              : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+            {progress.resolved}/{progress.total} errors resolved
+          </span>
+        )}
         <span className="text-xs ml-auto" style={{ color: 'var(--text-subtle)' }}>
           {formatDate(finding.created_at)}
         </span>
       </div>
 
-      {/* Session + student line */}
+      {/* Assignment, then the coach as quiet attribution */}
       <div>
         <p className="text-sm font-medium truncate" style={{ color: 'var(--text-strong)' }}>{label}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {student?.full_name ?? 'Unknown student'}
+        <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-subtle)' }}>
+          <PersonaAvatar personaId={finding.persona ?? 'owen'} size={14} className="shrink-0" />
+          coached by {finding.persona ?? 'coach'}
         </p>
       </div>
 
-      {/* Auditor summary */}
+      {/* Auditor summary. A summary generated BEFORE the breaches (old schema order)
+          could claim the session was clean and then list three HIGH breaches beneath
+          it. New findings can't do that, but ones already stored keep their prose —
+          so label it rather than presenting a contradiction as fact. */}
       {a.summary && (
-        <p className="text-sm" style={{ color: 'var(--text-default)' }}>{a.summary}</p>
+        <div>
+          {summaryContradicts && (
+            <p className="text-[11px] font-bold mb-1" style={{ color: 'var(--status-error)' }}>
+              ⚠ This summary contradicts the {(a.breaches ?? []).length} finding{(a.breaches ?? []).length === 1 ? '' : 's'} below — it was written before the breach analysis. Trust the findings.
+            </p>
+          )}
+          <p className="text-sm" style={{ color: summaryContradicts ? 'var(--text-subtle)' : 'var(--text-default)' }}>
+            {a.summary}
+          </p>
+        </div>
       )}
 
       {/* Breaches with verbatim quotes */}
       {(a.breaches ?? []).length > 0 && (
         <div className="space-y-2">
           {a.breaches.map((b, i) => (
-            <div key={i} className="rounded-xl px-3 py-2 text-xs space-y-1"
-              style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-              <div className="flex items-center gap-2">
-                <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{AUDIT_BREACH_LABEL[b.type] ?? b.type}</span>
-                <SeverityBadge severity={b.severity} />
-                <span style={{ color: 'var(--text-subtle)' }}>coach turn #{b.message_index}</span>
-              </div>
-              <p className="italic" style={{ color: 'var(--text-default)' }}>“{b.quote}”</p>
-              {b.rationale && <p style={{ color: 'var(--text-muted)' }}>{b.rationale}</p>}
-            </div>
+            <BreachBlock key={breachKey(b, i)} breach={b} findingId={finding.id}
+              review={breachReviews?.[breachKey(b, i)]} onChanged={onChanged} />
           ))}
         </div>
       )}
@@ -585,12 +808,12 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
       {(tech.token_leakage || (tech.truncated_turns ?? []).length > 0 || (a.process_notes ?? []).length > 0) && (
         <div className="flex flex-wrap gap-2">
           {tech.token_leakage && (
-            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEE2E2', color: 'var(--status-error)' }}>
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
               control-token leakage
             </span>
           )}
           {(tech.truncated_turns ?? []).length > 0 && (
-            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--status-thin-bg)', color: 'var(--text-body)' }}>
               truncated turn(s): {tech.truncated_turns.join(', ')}
             </span>
           )}
@@ -603,11 +826,18 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
         </div>
       )}
 
-      {/* Notes */}
-      <textarea value={notes} onChange={e => setNotes(e.target.value)}
-        placeholder="Admin notes…" rows={2}
-        className="w-full text-xs rounded-xl px-3 py-2 resize-y"
-        style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
+      {/* A technical-only finding (no breaches — e.g. a truncated turn) has no error
+          block to answer, so it keeps its own note + resolve. When breaches DO exist,
+          each one carries its own verdict and the finding's resolved state is derived
+          from them server-side: a second central control could only ever disagree with
+          the parts it summarises. */}
+      {!hasBreaches && (
+        <textarea value={notes} onChange={e => setNotes(e.target.value)}
+          onPaste={e => handleUnwrapPaste(e, setNotes)}
+          placeholder="Notes on this technical finding…" rows={2}
+          className="w-full text-xs rounded-xl px-3 py-2 resize-y"
+          style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-page, var(--bg-page))', color: 'var(--text-default)' }} />
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
@@ -616,35 +846,55 @@ function AuditFindingCard({ finding, session, student, onChanged }) {
           style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
           {opening ? '…' : <span className="flex items-center gap-1.5"><IconEye /> Review transcript</span>}
         </button>
-        <button onClick={saveNotes} disabled={savingNotes}
-          className="text-[11px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
-          style={{ color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
-          {savingNotes ? '…' : notesSaved ? 'Saved ✓' : 'Save notes'}
-        </button>
-        <button onClick={toggleResolved}
-          className="text-[11px] font-semibold px-3 py-1.5 rounded-full ml-auto"
-          style={resolved
-            ? { color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
-            : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
-          {resolved ? 'Reopen' : 'Mark resolved'}
-        </button>
+        {!hasBreaches && (
+          <>
+            <button onClick={saveNotes} disabled={savingNotes}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
+              style={{ color: 'var(--text-muted)', border: '1px solid var(--border-default)' }}>
+              {savingNotes ? '…' : notesSaved ? 'Saved ✓' : 'Save notes'}
+            </button>
+            <button onClick={toggleResolved}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-full ml-auto"
+              style={resolved
+                ? { color: 'var(--text-muted)', border: '1px solid var(--border-default)' }
+                : { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
+              {resolved ? 'Reopen' : 'Mark resolved'}
+            </button>
+          </>
+        )}
+        {hasBreaches && (
+          <span className="text-[11px] ml-auto" style={{ color: 'var(--text-subtle)' }}>
+            {progress.allResolved
+              ? 'All errors resolved — this finding is closed'
+              : `Resolve each error above (${progress.resolved}/${progress.total} done)`}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
-function AuditTab({ sessionById, profileById }) {
-  const [state, setState] = useState({ loading: true, findings: [], runs: [], error: '' })
+function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) {
+  const [state, setState] = useState({ loading: true, findings: [], runs: [], breachReviews: {}, error: '' })
   const [running, setRunning] = useState(false)
   const [count, setCount] = useState(10)
   const [showResolved, setShowResolved] = useState(false)
+  // The jump arrives from another tab, but findings load by fetch — so the target
+  // row does not exist at click time. Scroll AFTER the list renders, and only once.
+  const focusRef = useRef(null)
+  useEffect(() => {
+    if (!focusSessionId || state.loading || !focusRef.current) return
+    focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => onFocusHandled?.(), 2500)
+    return () => clearTimeout(t)
+  }, [focusSessionId, state.loading, onFocusHandled])
 
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/audit-findings')
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) { setState({ loading: false, findings: [], runs: [], error: json.error ?? 'Failed to load findings.' }); return }
-      setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], error: '' })
+      if (!res.ok) { setState({ loading: false, findings: [], runs: [], breachReviews: {}, error: json.error ?? 'Failed to load findings.' }); return }
+      setState({ loading: false, findings: json.findings ?? [], runs: json.runs ?? [], breachReviews: json.breachReviews ?? {}, error: '' })
     } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
   }, [])
 
@@ -742,16 +992,27 @@ function AuditTab({ sessionById, profileById }) {
       ) : (
         <div className="space-y-3">
           {visible.map(f => (
-            <AuditFindingCard key={f.id} finding={f}
-              session={sessionById[f.session_id]}
-              student={profileById[f.student_id]}
-              onChanged={load} />
+            <div key={f.id} ref={f.session_id === focusSessionId ? focusRef : null}
+              className="rounded-2xl transition-shadow"
+              style={f.session_id === focusSessionId
+                ? { boxShadow: '0 0 0 2px var(--accent)' }
+                : undefined}>
+              <AuditFindingCard finding={f}
+                session={sessionById[f.session_id]}
+                student={profileById[f.student_id]}
+                breachReviews={state.breachReviews?.[f.id]}
+                onChanged={load} />
+            </div>
           ))}
         </div>
       )}
     </div>
   )
 }
+
+// Per-assignment warnings + the jump-to-audit action, via context so SessionRow
+// doesn't need them threaded through five different call sites.
+const AuditJumpContext = createContext({ warnings: {}, jumpToAudit: null })
 
 // ── Tab bar ────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }) {
@@ -776,6 +1037,10 @@ function TabBar({ tabs, active, onChange }) {
 // ── Session row ────────────────────────────────────────────────
 function SessionRow({ session, studentName, compact = false, ownerRole }) {
   const [loading, setLoading] = useState(false)
+  // Warnings for THIS assignment. The roster's student-level count says someone has
+  // a finding; this says which piece of work it is on, and clicking it goes there.
+  const { warnings, jumpToAudit } = useContext(AuditJumpContext)
+  const warn = warnings?.[session.id] ?? null
   const label = session.title || session.assignment_text?.slice(0, 60) + (session.assignment_text?.length > 60 ? '…' : '')
   // Mark assignments authored by a parent/teacher (owner is not a student) — the
   // writer experience is ownership-based, so a non-student owner authored it.
@@ -802,14 +1067,28 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
   }
 
   return (
-    <button onClick={open} disabled={loading}
-      className="w-full text-left flex items-center gap-3 rounded-xl px-4 py-3 transition group disabled:opacity-60"
-      style={{
-        border: '1px solid var(--border-default)',
-        backgroundColor: 'var(--surface-card)',
-      }}
+    // The row is a flex WRAPPER, not one big button: the warnings chip is its own
+    // control, and an interactive element cannot legally nest inside a <button>.
+    <div className="w-full flex items-center gap-2 rounded-xl transition group"
+      style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--surface-spark)' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.backgroundColor = 'var(--surface-card)' }}>
+
+    {warn?.total > 0 && (
+      <button
+        onClick={() => jumpToAudit?.(session.id)}
+        title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'} on this assignment${warn.high ? ` · ${warn.high} high` : ''} — open it in the Audit tab`}
+        aria-label={`${warn.total} audit finding${warn.total === 1 ? '' : 's'} — show in Audit tab`}
+        className="ml-3 shrink-0 text-[11px] font-bold tabular-nums rounded-full px-2 py-0.5 hover:opacity-80 transition"
+        style={warn.high > 0
+          ? { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }
+          : { backgroundColor: 'var(--status-thin-bg)', color: 'var(--status-thin)' }}>
+        {warn.total}
+      </button>
+    )}
+
+    <button onClick={open} disabled={loading}
+      className="flex-1 min-w-0 text-left flex items-center gap-3 px-4 py-3 disabled:opacity-60 bg-transparent">
 
       <PersonaAvatar personaId={session.persona ?? 'owen'} size={22} className="shrink-0" />
 
@@ -823,7 +1102,7 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       {nonStudentOwner && (
         <span title={`Authored by a ${ownerRole} as a writer (not created for a student)`}
           className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
-          style={{ backgroundColor: '#EEF2FF', color: '#4338CA' }}>
+          style={{ backgroundColor: 'var(--primary-soft)', color: 'var(--text-link)' }}>
           by {ownerRole}
         </span>
       )}
@@ -845,6 +1124,7 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       <span className="text-xs opacity-0 group-hover:opacity-100 transition shrink-0"
         style={{ color: 'var(--accent)' }}>→</span>
     </button>
+    </div>
   )
 }
 
@@ -912,17 +1192,183 @@ function PersonCard({ person, meta, stat, hasBody = false, onRoleChanged, childr
   )
 }
 
-// Completed-sessions stat pill (student "N ✓") — matches the AuthoredBadge pill
-// dimensions so the stat slot reads identically across roles.
-function CompletedStat({ count }) {
-  if (count <= 0) return null
+// Column header for the student roster — glyphs only, sitting directly above the
+// numbers they label. The legend under the roster spells them out, so the rows
+// themselves stay free of repeated words ("3 assignments · 2 completed · …").
+// One glyph column header, with a hover label that actually appears.
+// The native `title` attribute was doing this job and doing it badly: the browser
+// waits about a second, renders it in OS chrome, and gives no hint it exists — so a
+// glyph-only header read as unlabelled. This is a CSS-only tooltip (no JS, no state)
+// that shows immediately on hover AND on keyboard focus, with `title` kept as the
+// fallback for anything that can't hover.
+function ColHeader({ Icon, label, hint }) {
   return (
-    <span className="text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 shrink-0"
-      style={{ backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)' }}>
-      {count} ✓
+    <span className={`${COL_HEAD} relative group`} tabIndex={0} title={hint} aria-label={label}>
+      <Icon />
+      <span role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus:opacity-100 motion-reduce:transition-none"
+        // The header is uppercase + widely tracked; the tooltip must NOT inherit that
+        // or it reads as another heading rather than an explanation.
+        style={{ backgroundColor: 'var(--surface-ink)', color: 'var(--text-on-dark)',
+                 font: 'var(--type-meta)', textTransform: 'none', letterSpacing: 'normal', fontWeight: 400 }}>
+        {hint}
+      </span>
     </span>
   )
 }
+
+function StudentRosterHeader() {
+  return (
+    <div className="flex items-center gap-4 px-5 pb-2 text-[10px] font-bold uppercase tracking-widest"
+      style={{ color: 'var(--text-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+      <span className="flex-1 min-w-0">Student info</span>
+      <ColHeader Icon={IconEyeSm}   label="Last seen"   hint="Last seen — most recent sign-in" />
+      <ColHeader Icon={IconLogins}  label="Logins"      hint="Logins — counted from 2026-08-08 onward" />
+      <ColHeader Icon={IconDoc}     label="Assignments" hint="Assignments — real work, excluding the practice warm-up" />
+      <ColHeader Icon={IconCheck}   label="Completed"   hint="Completed — assignments the student finished" />
+      <ColHeader Icon={IconWarnTri} label="Warnings"    hint="Warnings — open guardrail-audit findings" />
+      <span className="w-4 shrink-0" aria-hidden />
+    </div>
+  )
+}
+
+// Legend — names every glyph used above, so nothing in the roster relies on the
+// reader already knowing what a dotted circle means.
+function StudentRosterLegend() {
+  const item = (Glyph, label, color) => (
+    <span className="flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+      <span style={{ color }}><Glyph /></span>{label}
+    </span>
+  )
+  return (
+    <div className="flex items-center gap-5 flex-wrap px-5 pt-3 text-xs"
+      style={{ borderTop: '1px solid var(--border-default)' }}>
+      {item(IconCheck, 'Practiced', 'var(--status-success)')}
+      {item(IconNotOnb, 'Not onboarded', 'var(--text-subtle)')}
+      {item(IconSkipped, 'Skipped', 'var(--status-thin)')}
+      <span className="flex-1" />
+      {item(IconEyeSm, 'Last seen', 'var(--text-subtle)')}
+      {item(IconLogins, 'Logins', 'var(--text-subtle)')}
+      {item(IconDoc, 'Assignments', 'var(--text-subtle)')}
+      {item(IconCheck, 'Completed', 'var(--text-subtle)')}
+      {item(IconWarnTri, 'Warnings', 'var(--text-subtle)')}
+    </div>
+  )
+}
+
+// Student card. The collapsed row is identity + five aligned numbers, nothing else:
+// the FTUE state is a glyph before the name, and Remote in / Delete live INSIDE the
+// expanded body rather than crowding every row with buttons that are rarely used.
+function StudentCard({ student, sessions, onRoleChanged, children }) {
+  const [open, setOpen] = useState(false)
+  // ALWAYS expandable. This was `sessions.length > 0`, which hid the chevron on a
+  // student with no work — and since Remote in / Delete account moved into the body,
+  // that made those accounts unreachable from the UI. The accounts most likely to need
+  // deleting (a stranded signup, a demo left behind, a test account) are exactly the
+  // ones with nothing in them, so gating admin actions on having work is backwards.
+  const hasBody = true
+  const toggle = () => setOpen(o => !o)
+
+  // An "assignment" is real work (the FTUE warm-up is excluded), so a student who has
+  // only done the warm-up correctly reads as 0 assignments.
+  const assignments = sessions.filter(s => !s.is_onboarding)
+  const completed = assignments.filter(s => s.status === 'complete').length
+  const warn = student.audit_warnings
+  // Logins are counted from migration 059 onward — Supabase keeps no lifetime count
+  // and the auth schema can't be read back, so pre-059 history is genuinely unknown.
+  // Show "—" rather than "0 logins", which would assert something we don't know.
+  const logins = Number.isFinite(student.login_count) ? student.login_count : null
+  const active = isActiveNow(student.last_seen_at)
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-xs)' }}>
+
+      <div className="px-5 py-3 flex items-center gap-4">
+
+        {/* Avatar — spans both rows (COPPA: Avatar hard-suppresses under-13 to initials) */}
+        <div className="shrink-0">
+          <Avatar name={student.full_name} avatarUrl={student.avatar_url} ageBracket={student.age_bracket} size={52} />
+        </div>
+
+        {/* Identity — name row over email */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Name first, flush left — the FTUE glyph trails the pills so the email on the
+                row below lines up with the name instead of needing an indent to match it. */}
+            <button className="min-w-0 text-left disabled:cursor-default" onClick={toggle} disabled={!hasBody}>
+              <span className="text-sm font-semibold truncate block" style={{ color: 'var(--text-strong)' }}>
+                {student.full_name ?? '—'}
+              </span>
+            </button>
+            <RoleEditor userId={student.id} currentRole={student.role} onChanged={onRoleChanged} />
+            <AgeBadge ageBracket={student.age_bracket} consentGiven={student.coppa_consent_given} />
+            <OnboardingIcon userId={student.id} complete={student.onboarding_complete === true}
+              practiced={student.practiced === true} />
+          </div>
+          <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}
+            title={`Joined ${formatDate(student.created_at)}`}>
+            {student.email}
+          </p>
+        </div>
+
+        {/* Aligned numbers — one per header glyph. A dash means "none", and for logins
+            specifically it means "not recorded", which is not the same as zero. */}
+        <span className={`${COL} text-xs`}
+          style={{ color: active ? 'var(--status-success)' : 'var(--text-muted)', fontWeight: active ? 600 : 400 }}
+          title={student.last_seen_at
+            ? `Last seen ${formatDate(student.last_seen_at)}${student.last_sign_in_at && student.last_sign_in_at !== student.last_seen_at ? ` · last signed in ${formatDate(student.last_sign_in_at)}` : ''}`
+            : 'Never seen'}>
+          {active && <span aria-hidden style={{ marginRight: 4 }}>●</span>}
+          {presenceLabel(student.last_seen_at)}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: logins ? 'var(--text-muted)' : 'var(--text-subtle)' }}
+          title={logins ? 'Sign-ins recorded since 2026-08-08' : 'Logins are counted from 2026-08-08 onward — earlier sign-ins were never recorded'}>
+          {logins ?? '—'}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: assignments.length ? 'var(--text-muted)' : 'var(--text-subtle)' }} title="Assignments">
+          {assignments.length}
+        </span>
+        <span className={`${COL} text-xs`} style={{ color: completed > 0 ? 'var(--status-success)' : 'var(--text-subtle)' }} title="Completed">
+          {completed}
+        </span>
+        <span className={`${COL} text-xs font-semibold`}
+          title={warn?.total ? `${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'}${warn.high ? ` · ${warn.high} high` : ''}` : 'No open warnings'}
+          style={{ color: !warn?.total ? 'var(--text-subtle)' : warn.high > 0 ? 'var(--status-error)' : 'var(--status-thin)' }}>
+          {warn?.total || '—'}
+        </span>
+
+        {/* Expand — one control at the right edge, no label */}
+        <button onClick={toggle} disabled={!hasBody}
+          className="w-4 shrink-0 flex items-center justify-center transition-transform disabled:opacity-25 cursor-pointer disabled:cursor-default"
+          style={{ color: 'var(--text-subtle)', transform: open ? 'rotate(90deg)' : 'none' }}
+          aria-expanded={open}
+          aria-label={open ? 'Collapse account details' : 'Expand account details'}>
+          <IconChevron />
+        </button>
+      </div>
+
+      {hasBody && open && (
+        <div className="px-5 pb-4 pt-3 space-y-2" style={{ borderTop: '1px solid var(--border-default)' }}>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-subtle)' }}>
+            Assignments
+          </p>
+          {assignments.length === 0
+            ? <p className="text-xs italic" style={{ color: 'var(--text-subtle)' }}>No assignments yet.</p>
+            : children}
+          {/* Account actions live here, not on the collapsed row — they're occasional,
+              and putting them on every row is what made the roster feel crowded. */}
+          <div className="flex items-center justify-between gap-3 pt-3"
+            style={{ borderTop: '1px solid var(--border-default)' }}>
+            <RemoteInButton userId={student.id} />
+            <DeleteUserButton userId={student.id} name={student.full_name} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 // ── Search bar ─────────────────────────────────────────────────
 function SearchBar({ value, onChange, placeholder }) {
@@ -963,7 +1409,7 @@ function UsageTab() {
     <p className="text-sm italic text-center py-12" style={{ color: 'var(--text-subtle)' }}>Loading usage data…</p>
   )
   if (error) return (
-    <p className="text-sm text-center py-12" style={{ color: 'var(--status-error, #dc2626)' }}>Failed to load: {error}</p>
+    <p className="text-sm text-center py-12" style={{ color: 'var(--status-error)' }}>Failed to load: {error}</p>
   )
 
   const { anthropic, elevenlabs, byCategory, byUser, unattributed } = data ?? {}
@@ -1023,20 +1469,20 @@ function UsageTab() {
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${elPct}%`,
-                    backgroundColor: elDanger ? '#dc2626' : elPct > 60 ? '#f59e0b' : 'var(--status-success)',
+                    backgroundColor: elDanger ? 'var(--status-error)' : elPct > 60 ? 'var(--status-thin)' : 'var(--status-success)',
                   }}
                 />
               </div>
               <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
                 <span>{elevenlabs.characterCount.toLocaleString()} used</span>
-                <span style={{ color: elDanger ? '#dc2626' : undefined, fontWeight: elDanger ? 700 : undefined }}>
+                <span style={{ color: elDanger ? 'var(--status-error)' : undefined, fontWeight: elDanger ? 700 : undefined }}>
                   {elRemaining.toLocaleString()} remaining of {elevenlabs.characterLimit.toLocaleString()}
                 </span>
               </div>
             </div>
             {elDanger && (
               <p className="text-xs font-semibold rounded-lg px-3 py-2 inline-flex items-center gap-1.5"
-                style={{ backgroundColor: '#FEF2F2', color: '#dc2626' }}>
+                style={{ backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }}>
                 <Icon name="alert" size={14} style={{ color: 'var(--status-error)' }} /> Over 80% of your monthly character limit used — consider upgrading your plan.
               </p>
             )}
@@ -1396,7 +1842,7 @@ function BetaCircleManager({ initialCount = 0 }) {
                       <div className="flex items-center" style={{ gap: 'var(--space-2)', flexShrink: 0 }}>
                         <button onClick={() => removeMember(m.id)} disabled={busyKey === `remove:${m.id}`}
                           className="disabled:opacity-60"
-                          style={{ font: 'var(--type-meta)', fontWeight: 700, color: '#fff', background: 'var(--status-error)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer' }}>
+                          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-on-accent)', background: 'var(--status-error)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 14px', minHeight: 44, cursor: 'pointer' }}>
                           {busyKey === `remove:${m.id}` ? '…' : 'Confirm remove'}
                         </button>
                         <button onClick={() => setConfirmId('')} disabled={busyKey === `remove:${m.id}`}
@@ -1437,7 +1883,7 @@ function BetaCircleManager({ initialCount = 0 }) {
                 </select>
                 <button onClick={addMember} disabled={!pick || busyKey === 'add'}
                   className="disabled:opacity-60"
-                  style={{ font: 'var(--type-body)', fontWeight: 700, color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                  style={{ font: 'var(--type-body)', fontWeight: 700, color: 'var(--text-on-accent)', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '0 var(--space-4)', minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
                   {busyKey === 'add' ? 'Adding…' : 'Add'}
                 </button>
               </div>
@@ -1552,9 +1998,321 @@ function BetaCircleManager({ initialCount = 0 }) {
 // ── Tools tab — admin utilities kept out of the main flow ──────
 // Demo persona seeder + idempotent maintenance backfills. Lives behind the Tools
 // tab so it doesn't consume prime real estate above the roster.
+// ── Waitlist ────────────────────────────────────────────────────────────────────
+// Who asked for access, and what actually happened to them.
+//
+// The badge counts people who have heard NOTHING — not rows. `subscribers` is a list
+// of addresses typed into a form, and on 2026-08-16 two of its three rows belonged to
+// people who had already signed up and redeemed a code. A card that counted rows would
+// have shown 3 and sent invites to people who were already inside, so every row here is
+// resolved against its real account server-side (lib/waitlist.js).
+//
+// "Stalled" is the other half: someone who got in and then wrote nothing is invisible
+// everywhere else in the admin panel, because they no longer look like a queue.
+function WaitlistManager() {
+  const [state, setState] = useState({ items: [], counts: null, needsAction: 0, codes: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busyKey, setBusyKey] = useState('')
+  const [code, setCode] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState('')
+  // Separate from confirmEmail: "Forget" is a different, irreversible action and must
+  // not share a confirm latch with Dismiss, or one click could arm the other.
+  const [confirmForget, setConfirmForget] = useState('')
+  const [showAll, setShowAll] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/admin/waitlist')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Could not load the waitlist.'); setLoading(false); return }
+      setState(json)
+      setCode(c => c || json.codes?.[0]?.code || '')
+    } catch { setError('Network error loading the waitlist.') }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function mutate(key, payload, successMsg) {
+    setBusyKey(key); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/admin/waitlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); return }
+      setState(json)
+      if (successMsg) setNotice(successMsg)
+    } catch { setError('Network error.') }
+    finally { setBusyKey('') }
+  }
+
+  const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
+  const rowStyle = { display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-sunken)', flexWrap: 'wrap' }
+  const pill = (bg, fg) => ({ font: 'var(--type-meta)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: bg, color: fg, whiteSpace: 'nowrap' })
+
+  const STATE_PILL = {
+    waiting:   pill('var(--accent-tint)', 'var(--accent-text)'),
+    invited:   pill('var(--surface-sunken)', 'var(--text-muted)'),
+    signed_up: pill('var(--surface-sunken)', 'var(--text-default)'),
+    writing:   pill('var(--status-ok-tint, var(--surface-sunken))', 'var(--text-default)'),
+    subscriber:pill('var(--surface-sunken)', 'var(--text-muted)'),
+    dismissed: pill('var(--surface-sunken)', 'var(--text-muted)'),
+  }
+  const STATE_LABEL = { waiting: 'Waiting', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed', subscriber: 'Blog' }
+
+  const { items, counts, needsAction, codes } = state
+  const visible = showAll ? items : items.filter(i => i.needsAction)
+  const noCodes = !loading && (codes?.length ?? 0) === 0
+
+  return (
+    <div style={cardStyle}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)', gap: 'var(--space-3)' }}>
+        <div>
+          <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>
+            Waitlist
+            {needsAction > 0 && (
+              <span style={{ ...pill('var(--accent)', 'var(--text-on-accent)'), marginLeft: 8 }}>{needsAction}</span>
+            )}
+          </h3>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+            {counts
+              ? `${counts.waiting} waiting · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up${counts.subscriber ? ` · ${counts.subscriber} blog` : ''}`
+              : 'Access requests from the site'}
+          </p>
+        </div>
+        <button type="button" onClick={load} disabled={loading}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && <p role="alert" style={{ font: 'var(--type-meta)', color: 'var(--status-error)', margin: '0 0 var(--space-2)' }}>{error}</p>}
+      {notice && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-2)' }}>{notice}</p>}
+
+      {/* Which code the Send button will mail. Only ACTIVE, non-exhausted codes are
+          offered — an exhausted code would be worse than sending nothing. */}
+      <div className="flex items-center" style={{ gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <label htmlFor="wl-code" style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>Send code:</label>
+        <select id="wl-code" value={code} onChange={e => setCode(e.target.value)} disabled={noCodes}
+          style={{ font: 'var(--type-body)', padding: '6px 10px', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-card)', color: 'var(--text-default)' }}>
+          {codes?.map(c => (
+            <option key={c.code} value={c.code}>
+              {c.code}{c.max_uses != null ? ` (${c.uses ?? 0}/${c.max_uses})` : ''}
+            </option>
+          ))}
+        </select>
+        {noCodes && (
+          <span style={{ font: 'var(--type-meta)', color: 'var(--status-error)' }}>
+            No active code with room — create or raise one in Beta Circle first.
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 0 }}>Loading…</p>
+      ) : visible.length === 0 ? (
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
+          {items.length === 0 ? 'Nobody has requested access yet.' : 'Nobody is waiting — everyone has been answered.'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {visible.map(i => (
+            <div key={i.email} style={rowStyle}>
+              <span style={STATE_PILL[i.state]}>{STATE_LABEL[i.state]}</span>
+              <span style={{ font: 'var(--type-body)', color: 'var(--text-default)', flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                {i.email}
+                {i.account?.fullName && (
+                  <span style={{ color: 'var(--text-muted)' }}> · {i.account.fullName} ({i.account.role})</span>
+                )}
+                {i.source && i.source !== 'waitlist' && (
+                  <span style={{ color: 'var(--text-muted)' }}> · via {i.source}</span>
+                )}
+              </span>
+              <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {i.state === 'waiting'
+                  ? `${i.daysWaiting}d waiting`
+                  : i.account?.stalled
+                    ? 'signed up · nothing written'
+                    : i.account
+                      ? `${i.account.sessionCount} assignment${i.account.sessionCount === 1 ? '' : 's'}`
+                      : i.invited_code ? `sent “${i.invited_code}”` : ''}
+              </span>
+
+              {i.needsAction && (
+                <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                  <button type="button" disabled={!code || busyKey === `send:${i.email}`}
+                    onClick={() => mutate(`send:${i.email}`, { action: 'send_code', email: i.email, code }, `Code sent to ${i.email}.`)}
+                    style={{ font: 'var(--type-meta)', fontWeight: 700, background: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)', padding: '0 14px', minHeight: 44 }}>
+                    {busyKey === `send:${i.email}` ? 'Sending…' : 'Approve & send'}
+                  </button>
+                  {confirmEmail === i.email ? (
+                    <button type="button"
+                      onClick={() => { setConfirmEmail(''); mutate(`dismiss:${i.email}`, { action: 'dismiss', email: i.email }, 'Removed from the queue.') }}
+                      style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--status-error)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                      Confirm
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmEmail(i.email)}
+                      style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                      Dismiss
+                    </button>
+                  )}
+                </span>
+              )}
+
+              {/* Forget — for when the PERSON asks to be removed. The privacy policy
+                  says "we delete it sooner if you ask us to", and until this existed
+                  the only implementation was running SQL by hand. Shown on every row,
+                  not just actionable ones: anyone can ask, at any state. Distinct from
+                  Dismiss, which is our judgement and keeps the row 90 days. */}
+              <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                {confirmForget === i.email ? (
+                  <button type="button" disabled={busyKey === `forget:${i.email}`}
+                    onClick={() => { setConfirmForget(''); mutate(`forget:${i.email}`, { action: 'forget', email: i.email }, 'Deleted — they asked to be removed.') }}
+                    style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--status-error)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                    {busyKey === `forget:${i.email}` ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setConfirmForget(i.email)}
+                    title="They asked to be removed — deletes the address now, keeping nothing"
+                    style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+                    Forget
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <button type="button" onClick={() => setShowAll(v => !v)}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', marginTop: 'var(--space-3)', minHeight: 44 }}>
+          {showAll ? 'Show only people waiting' : `Show everyone (${items.length})`}
+        </button>
+      )}
+
+      {counts?.stalled > 0 && (
+        <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: 'var(--space-3) 0 0', lineHeight: 1.6 }}>
+          {counts.stalled} {counts.stalled === 1 ? 'person' : 'people'} got in and {counts.stalled === 1 ? 'has' : 'have'} written nothing.
+          They need a nudge, not an invite — sending a code would tell someone already inside to come inside.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Blog mailing ────────────────────────────────────────────────────────────────
+// The blog form promised "we'll send new posts as they go up" from the day it shipped,
+// and nothing sent one until 2026-08-16. Deliberately manual: pick a published post,
+// see the real recipient count, send. Dry-run first because bulk mail is irreversible.
+function BlogMailer() {
+  const [state, setState] = useState({ posts: [], recipientCount: 0, skipped: {}, sends: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [slug, setSlug] = useState('')
+  const [pending, setPending] = useState(null)   // dry-run result awaiting confirmation
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/admin/blog-send')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Could not load the mailing state.'); setLoading(false); return }
+      setState(json)
+      setSlug(sl => sl || json.posts?.find(p => !p.sent)?.slug || '')
+    } catch { setError('Network error.') }
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function post(confirm) {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/admin/blog-send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, confirm }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Request failed.'); setPending(null); return }
+      if (json.dryRun) { setPending(json); return }
+      setNotice(`Sent "${json.title}" to ${json.sent} subscriber${json.sent === 1 ? '' : 's'}.${json.failed ? ` ${json.failed} failed.` : ''}`)
+      setPending(null)
+      load()
+    } catch { setError('Network error.') }
+    finally { setBusy(false) }
+  }
+
+  const cardStyle = { background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }
+  const unsent = state.posts?.filter(p => !p.sent) ?? []
+
+  return (
+    <div style={cardStyle}>
+      <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>Blog mailing</h3>
+      <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 var(--space-3)' }}>
+        {loading ? 'Loading…' : `${state.recipientCount} blog subscriber${state.recipientCount === 1 ? '' : 's'} · ${unsent.length} post${unsent.length === 1 ? '' : 's'} never mailed`}
+      </p>
+
+      {error && <p role="alert" style={{ font: 'var(--type-meta)', color: 'var(--status-error)', margin: '0 0 var(--space-2)' }}>{error}</p>}
+      {notice && <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-2)' }}>{notice}</p>}
+
+      {state.recipientCount === 0 && !loading && (
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 0 var(--space-3)' }}>
+          Nobody has signed up for posts yet. The form collects them at the bottom of /blog.
+        </p>
+      )}
+
+      <div className="flex items-center" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <select value={slug} onChange={e => { setSlug(e.target.value); setPending(null) }}
+          aria-label="Post to mail"
+          style={{ font: 'var(--type-body)', padding: '6px 10px', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-card)', color: 'var(--text-default)', maxWidth: '100%' }}>
+          {state.posts?.map(p => (
+            <option key={p.slug} value={p.slug} disabled={p.sent}>
+              {p.sent ? '✓ ' : ''}{p.title}
+            </option>
+          ))}
+        </select>
+        <button type="button" disabled={!slug || busy || !state.recipientCount} onClick={() => post(false)}
+          style={{ font: 'var(--type-meta)', fontWeight: 700, color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 8px' }}>
+          {busy && !pending ? 'Checking…' : 'Preview send'}
+        </button>
+      </div>
+
+      {pending && (
+        <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-sunken)' }}>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-default)', margin: '0 0 var(--space-2)' }}>
+            Send <strong>{pending.title}</strong> to <strong>{pending.recipientCount}</strong> subscriber{pending.recipientCount === 1 ? '' : 's'}?
+          </p>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '0 0 var(--space-3)' }}>
+            This cannot be undone. Each email carries a one-click unsubscribe.
+            {Object.keys(pending.skipped ?? {}).length > 0 &&
+              ` Skipped: ${Object.entries(pending.skipped).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ')}.`}
+          </p>
+          <button type="button" disabled={busy} onClick={() => post(true)}
+            style={{ font: 'var(--type-meta)', fontWeight: 700, background: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)', padding: '0 14px', minHeight: 44 }}>
+            {busy ? 'Sending…' : 'Send it'}
+          </button>
+          <button type="button" onClick={() => setPending(null)}
+            style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', textDecoration: 'underline', minHeight: 44, padding: '0 12px' }}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ToolsTab({ demoSeeded, betaCircleCount }) {
   return (
     <div className="space-y-4">
+      <WaitlistManager />
+      <BlogMailer />
       <BetaCircleManager initialCount={betaCircleCount} />
       <DemoDataControl seeded={demoSeeded} />
       <BackfillWritingProfiles />
@@ -1568,12 +2326,17 @@ function ToolsTab({ demoSeeded, betaCircleCount }) {
 // the tiles' tabId and the search-box visibility.
 const LIST_TABS = ['students', 'parents', 'teachers', 'sessions']
 
-export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers }) {
+export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers, sessionWarnings = {} }) {
   // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
   // several signed-in tabs are tellable apart. During a remote-in this profile is
   // already the impersonated user's, so the tab names whoever you're viewing.
   useTabTitle(currentProfile?.full_name, currentProfile?.role)
   const [tab, setTab] = useState('students')
+  // Set when a per-assignment warning chip is clicked: switch to Audit and scroll to
+  // that assignment's finding. Cleared once the Audit tab has acted on it, so
+  // returning to the tab later doesn't re-scroll.
+  const [auditFocus, setAuditFocus] = useState(null)
+  const jumpToAudit = useCallback(sessionId => { setAuditFocus(sessionId); setTab('audit'); setSearch('') }, [])
   const [search, setSearch] = useState('')
 
   // Did this person actually FINISH a practice assignment? Derived from sessions because
@@ -1617,9 +2380,17 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
 
   const q = search.toLowerCase()
 
-  const filteredStudents = students.filter(s =>
-    !q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)
-  )
+  // Most recently active first — the students worth looking at are the ones who just
+  // used it. Never-signed-in accounts sort last rather than pretending to be oldest.
+  const filteredStudents = students
+    .filter(s => !q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q))
+    .sort((a, b) => {
+      // last_seen_at, not last_sign_in_at: a user who never signs out keeps a stale
+      // sign-in timestamp and would sort as inactive while actively writing.
+      const at = a.last_seen_at ? new Date(a.last_seen_at).getTime() : -Infinity
+      const bt = b.last_seen_at ? new Date(b.last_seen_at).getTime() : -Infinity
+      return bt - at
+    })
   const filteredParents = parents.filter(p =>
     !q || p.full_name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q)
   )
@@ -1651,7 +2422,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
     { label: 'Students',    tabId: 'students', value: students.length, Icon: IconStudents,    iconBg: 'var(--navy-100)',          iconColor: 'var(--navy-700)' },
     { label: 'Parents',     tabId: 'parents',  value: parents.length,  Icon: IconParents,     iconBg: 'var(--status-success-bg)', iconColor: 'var(--status-success)' },
     { label: 'Teachers',    tabId: 'teachers', value: teachers.length, Icon: IconTeachers,    iconBg: 'var(--surface-spark)',     iconColor: 'var(--accent)' },
-    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: '#EEF2FF',                  iconColor: '#4338CA' },
+    { label: 'Assignments', tabId: 'sessions', value: sessions.length, Icon: IconAssignments, iconBg: 'var(--primary-soft)',      iconColor: 'var(--text-link)' },
   ]
 
   const selectTab = t => { setTab(t); setSearch('') }
@@ -1659,6 +2430,7 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
   const sessionById = Object.fromEntries(sessions.map(s => [s.id, s]))
 
   return (
+    <AuditJumpContext.Provider value={{ warnings: sessionWarnings, jumpToAudit }}>
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-page)' }}>
 
       <Navbar user={currentUser} profile={currentProfile} />
@@ -1721,21 +2493,16 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
               {filteredStudents.length === 0 && (
                 <p className="text-sm italic text-center py-10" style={{ color: 'var(--text-subtle)' }}>No students found</p>
               )}
+              {filteredStudents.length > 0 && <StudentRosterHeader />}
               {filteredStudents.map(student => {
                 const sessions = sessionsByStudent[student.id] ?? []
-                const completedCount = sessions.filter(s => s.status === 'complete').length
                 return (
-                  <PersonCard
-                    key={student.id}
-                    person={student}
-                    meta={`${sessions.length} session${sessions.length !== 1 ? 's' : ''}`}
-                    stat={<CompletedStat count={completedCount} />}
-                    hasBody={sessions.length > 0}
-                  >
+                  <StudentCard key={student.id} student={student} sessions={sessions}>
                     {sessions.map(s => <SessionRow key={s.id} session={s} compact />)}
-                  </PersonCard>
+                  </StudentCard>
                 )
               })}
+              {filteredStudents.length > 0 && <StudentRosterLegend />}
             </div>
           )}
 
@@ -1817,7 +2584,10 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
           )}
 
           {/* ── Transcript guardrail audit ── */}
-          {tab === 'audit' && <AuditTab sessionById={sessionById} profileById={profileById} />}
+          {tab === 'audit' && (
+            <AuditTab sessionById={sessionById} profileById={profileById}
+              focusSessionId={auditFocus} onFocusHandled={() => setAuditFocus(null)} />
+          )}
 
           {/* ── Usage & Cost ── */}
           {tab === 'usage' && <UsageTab />}
@@ -1845,5 +2615,6 @@ export default function AdminDashboard({ currentUser, currentProfile, profiles, 
         </div>
       </main>
     </div>
+    </AuditJumpContext.Provider>
   )
 }
