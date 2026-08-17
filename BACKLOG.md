@@ -340,6 +340,42 @@ the app can do, and it drifts silently because nothing type-checks prose. Any ch
 adds or removes a token or a structural affordance must grep `lib/prompts.js` for the
 now-false claim in the same change.
 
+## P0 — Growth gives a STORY essay-shaped sections  🔴 added 2026-08-17 · BLOCKS SIERRA
+**Owner:** `focus/coaching-session` (`lib/scaffoldGrowth.js:96`).
+
+```js
+const type = opts.type ?? (last?.type === 'custom' ? 'custom' : 'body')
+```
+
+Anything that is not `custom` normalises to `body`, so a `narrative` section grows into
+`['topic_sentence','evidence','analysis','transition']`. Verified by running
+`growComponents` against Sierra's real stored shape:
+
+```
+section 0  type=narrative  items: hook, context, body, closing
+section 1  type=body       items: topic_sentence, evidence, analysis, transition
+```
+
+**Growth was built for Sierra and does the wrong thing for Sierra's own scaffold.** She taps
+"+ Add another section" for scene two and gets an essay body paragraph.
+
+The existing reasoning is right for the essay ladder and only for it: inheriting the last
+type on a finished essay would append a SECOND conclusion, so introduction/body/conclusion
+must normalise to `body`. **`narrative` and `personal_statement` are not part of that
+ladder** — their sections are all one type by design, so they should inherit themselves.
+
+Fix: normalise only the essay ladder; inherit `narrative`/`personal_statement`. Consider
+`custom` with "Scene N" labels for narrative, which is what the file's own comment says a
+scene-per-section story wants ("each scene locks and assembles on its own instead of every
+scene piling into one container until it hits the ceiling") — that is a product call, but
+essay slots in a story is a bug either way. Needs a test asserting a grown narrative section
+is scene-shaped, using Sierra's shape as the fixture.
+
+⚠️ Also re-examine the `closing` position question with this in mind. I said the
+conclusion-lands-after-the-new-paragraph problem "hits the essay case more than the story
+case." That was wrong: her narrative section carries a `closing` slot with 152 confirmed
+words, so append-only growth puts an ending mid-story for her too.
+
 ## P1 — The UI calls every assignment an "essay", including a short story  🔴 added 2026-08-17
 **Found by Robert, 2026-08-17**, asking what "Assemble paragraph" means on a narrative.
 
