@@ -317,7 +317,10 @@ the full echo was cut.
 provenance scorer stops carrying signal for them. Correct, but the threshold work must not be
 calibrated on a mixed corpus.
 
-## P0 — The prompt still says a scaffold cannot grow  🔴 added 2026-08-17 · BLOCKS SIERRA
+## P0 — The prompt still says a scaffold cannot grow  ✅ DONE 2026-08-16 SF (d0e6382)
+It was SIX false claims, not the three the conductor found — 312, 313, 444, 455 and
+1010/1044 in the continuation block. Verified independently: 7 denial-phrase hits before the
+merge, 0 after, and `test:prompts` green on the integrated tree.
 **Owner:** `focus/coach-ai` (needs the `coach-prompt` skill + `npm run test:prompts`).
 
 Scaffold growth shipped and **the coach does not know it exists.** `lib/prompts.js` states in
@@ -449,6 +452,38 @@ Sierra would have produced one 1,200-word paragraph AND self-cleared her critica
 `no_draft_despite_locks` finding, turning the panel green with the real problem untouched.
 The tool was not the blocker; the prompt was. Weigh that before building it.
 
+## P0 — The coach cannot tell which scene is which  🔴 added 2026-08-16 SF
+**Owner:** `focus/coach-ai`. Pairs with the grown-story probe below — fix them together.
+
+`lib/prompts.js:927` renders CURRENT SCAFFOLD STATE from the bare item id:
+
+```js
+currentItems.map(c => `  ${c.id}: ${c.status === 'locked' ? 'queued (not started)' : c.status}…`)
+```
+
+A grown story's scenes are `custom` sections holding ONE positional item each, so the coach
+sees `c0: queued (not started)` with nothing anywhere saying that is **Scene 2**. The item
+already carries a `label` (`emptyItem(id, label)`), and the section carries its own label —
+they are simply not printed.
+
+This is the direct cause of the mis-naming risk in the probe item below: asked to lock scene
+two, a coach that can only see `c0` will reach for a prose name it recognises
+(`body`, `closing`). That used to be a silent cross-section drop; since `6273efc` it resolves
+locally instead — so the failure is now "right scene, odd id" rather than lost writing. Still
+worth closing, because the id is what every downstream reconciler matches on.
+
+## P0 — `test:prompts` has never run against a GROWN story  🔴 added 2026-08-16 SF
+**Owner:** `focus/coach-ai`. The last unverified surface in the growth work.
+
+Every probe runs against a single-type scaffold. Sierra's shape after she grows is MIXED —
+`narrative` section 0 (`hook/context/body/closing`, all confirmed) plus N `custom` scenes
+(`c0`) — and no probe has ever built it. How often the coach mis-names an id on that shape
+is unmeasured, and the lane said so rather than letting a green suite imply coverage.
+
+Build the mixed fixture and measure: does it lock scene two into the scene, name the section
+correctly, avoid re-emitting `[SCAFFOLD]`, and route a revision of section 0 to Edit? Then
+re-measure after the label fix above, since that is the intervention most likely to move it.
+
 ## P1 — A prompt probe still enforces the DELETED "count is fixed" rule  🔴 2026-08-17
 **Owner:** `focus/coach-ai` (owns the harness probes). Found by the conductor while running
 `test:prompts` on the integrated tree.
@@ -511,7 +546,11 @@ The crossSection no-overwrite guard stamps `revisionRefused` on the row when it 
 fact is durable and nothing reads it, so a refused write is invisible on every dashboard —
 the exact half-finished shape ("recorded, never surfaced") that lets a signal look healthy.
 
-## P1 — The coach gets no feedback when a write is refused  🔴 added 2026-08-17
+## P1 — The coach gets no feedback when a write is refused  ✅ DONE 2026-08-16 SF
+Rule 20 teaches the coach to detect it off CURRENT SCAFFOLD STATE (a component still
+unconfirmed one turn after a `[DONE:]`), and coaching-session added a student-visible
+`writeRefused` marker on the component. Fires a turn late by design — a client signal would
+still be better, and is queued separately.
 **Owner:** `focus/coach-ai`. Surfaced by `focus/coaching-session`.
 
 The described recovery — "retry with the cursor on that section" — **cannot happen**: there is
