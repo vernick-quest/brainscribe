@@ -340,6 +340,41 @@ the app can do, and it drifts silently because nothing type-checks prose. Any ch
 adds or removes a token or a structural affordance must grep `lib/prompts.js` for the
 now-false claim in the same change.
 
+## P1 — The UI calls every assignment an "essay", including a short story  🔴 added 2026-08-17
+**Found by Robert, 2026-08-17**, asking what "Assemble paragraph" means on a narrative.
+
+`components/TutorSession.js` hardcodes essay vocabulary regardless of assignment type:
+"add it to **my essay**", "Assemble **full essay** →", "ready to assemble the full essay".
+Sierra is writing *a short story about a squirrel litter*. The coach prompt already knows
+narrative from argument (`[SCAFFOLD:narrative:N]`); the UI does not.
+
+This is not cosmetic. A student writing a story is being told, by the interface, that the
+thing she is making is an essay — and "paragraph" carries essay structure (topic sentence,
+evidence) that a scene does not. **The vocabulary should follow `scaffold.type`**: story →
+scene / story, essay → paragraph / essay. Do it with one resolver, not scattered ternaries.
+
+## P2 — Remote-in is read-only; support cannot unstick a student  🔵 added 2026-08-17
+**Robert, 2026-08-17:** *"should I remote in and click assemble paragraph for her? I know
+remote in doesn't allow that yet, but this is potentially a reason to have that ability."*
+
+The need is real: a student blocked by OUR bug currently has no path but to wait for a
+deploy. But a write-capable impersonation is a serious surface — it makes an adult's action
+indistinguishable from the student's own work, in a product whose central promise is that
+the student wrote it. Non-negotiable constraints if it is ever built:
+
+- **Attributed.** Every impersonated write stamped with the acting admin, stored on the row,
+  not just logged. `[[revisionRefused]]`-style "recorded but never surfaced" is not enough.
+- **Visible to the family.** A parent/teacher reading the transcript must see that an admin
+  acted, and when. Silent staff edits to a child's writing is the wrong default forever.
+- **Reversible.** Never the only copy. The action must be undoable from the record.
+- **Narrow allowlist.** Structural repairs (grow a scaffold, re-run an assembly) — never
+  authoring, never `[DONE:]`, never anything that puts words in a student's mouth.
+
+⚠️ Note what it would NOT have solved on the day it was requested: pressing Assemble for
+Sierra would have produced one 1,200-word paragraph AND self-cleared her critical
+`no_draft_despite_locks` finding, turning the panel green with the real problem untouched.
+The tool was not the blocker; the prompt was. Weigh that before building it.
+
 ## P1 — `revisionRefused` is recorded but nothing alerts on it  🔴 added 2026-08-17
 **Owner:** the `draftIntegrity` file's owner. Surfaced by `focus/coaching-session`.
 
