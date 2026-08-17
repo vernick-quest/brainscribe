@@ -3913,12 +3913,20 @@ shape that lets a signal look healthy.
 or refusal accrued underneath — a fresh, recorded loss buried behind an old shrug. Two tests pin
 the resurfacing property.
 
-### Honest limit on validation
-Live prevalence today is **0 and 0**: no session carries `lock_over_claims > 0`, and no scaffold
-item carries `revisionRefused`. Both mechanisms only just shipped and accrue going forward, so
-unlike the Sierra case there is **no real-data confirmation available yet** — this is unit-tested
-against synthetic fixtures only. First real occurrence is the true test; worth an eye on the panel
-the first time either fires.
+### NOT VALIDATED — and "0 occurrences" here is not a measurement
+Both queries return zero, but the DENOMINATOR IS ALSO ZERO: **0 coach turns have run since
+migration 070 was applied** (2026-08-17 05:13 UTC; 895 assistant turns exist all-time). So
+`lock_over_claims = 0` and `revisionRefused = 0` are **0-out-of-0 — no measurement at all**, not
+evidence the paths are quiet.
+
+Recording it as "live prevalence 0" (the original wording here) reads as a clean bill of health and
+is exactly the reassuring-direction error this file exists to prevent: an empty denominator
+reported as a result. Corrected after the conductor caught it.
+
+**Status: surfacing is wired and unit-tested against synthetic fixtures ONLY.** The first real
+coach turn that trips either path is the actual test. If the chip does not appear then, the wiring
+is wrong and no test here would have said so — worth watching the panel deliberately the first time
+either fires rather than waiting to notice.
 
 **Verification:** `npm run test:run` **702/702 green** (37 files) · build green.
 
