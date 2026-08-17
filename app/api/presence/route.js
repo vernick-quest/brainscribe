@@ -17,11 +17,23 @@ import { COALESCE_MS } from '@/lib/presence'
 // mechanisms throttle each other instead of double-writing.
 const PRESENCE_COOKIE = 'bs_seen'
 
-export async function POST() {
+export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   // Not an error: a logged-out tab pinging is simply nobody to record.
   if (!user) return NextResponse.json({ ok: true, recorded: false })
+
+  // THE COALESCE GATE. This was described in the comment above but not implemented —
+  // the cookie was set and never read, so every 60s ping wrote (60/hour, not ~30).
+  // Read it BEFORE deciding to write.
+  //
+  // And do NOT refresh the cookie on a skipped ping: refreshing on every request would
+  // keep it permanently fresh, the write would never come due again, and presence would
+  // freeze at the first stamp — a worse failure than writing too often, and a silent
+  // one. The cookie's lifetime IS the write interval, so only a real write renews it.
+  if (request.cookies.get(PRESENCE_COOKIE)) {
+    return NextResponse.json({ ok: true, recorded: false, reason: 'coalesced' })
+  }
 
   const res = NextResponse.json({ ok: true, recorded: true })
   res.cookies.set(PRESENCE_COOKIE, '1', {

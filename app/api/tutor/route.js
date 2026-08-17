@@ -117,7 +117,23 @@ export async function POST(request) {
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
+    // 4000, raised from 1000 on 2026-08-16 after it cut a real student's work.
+    //
+    // A [DONE:id:…] payload carries the student's EXACT words, so the ceiling is not
+    // "how much should the coach say" — it is "how long can a section of their writing
+    // be". Sierra wrote a ~700-word scene: ~950 tokens of payload before the coach said
+    // anything. The turn cut mid-payload, the token never closed, and the client's
+    // tokenRE (which requires the closing bracket) parsed ZERO locks. The lock failed
+    // silently, twice, and ~30k characters of her story never reached `paragraphs`.
+    //
+    // Billed on ACTUAL output, so an ordinary turn costs exactly what it did before;
+    // this only buys headroom for the turns that need it. 4000 covers roughly 2,500
+    // words of payload. Beyond that the scaffold is the wrong shape, which is what the
+    // scene-scaffolding rule now prevents at turn 1.
+    //
+    // This is a ceiling, not a fix. A long enough section exceeds any number — the real
+    // repair is not putting the whole paragraph in a token payload.
+    max_tokens: 4000,
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicTail },
