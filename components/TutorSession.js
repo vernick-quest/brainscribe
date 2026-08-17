@@ -3247,7 +3247,7 @@ export default function TutorSession({
                                         </div>
                                       </div>
                                     ) : (
-                                      <p className="text-sm leading-relaxed mt-1" style={{ color: sc.text }}>
+                                      <p className="text-sm leading-relaxed mt-1 whitespace-pre-line" style={{ color: sc.text }}>
                                         "{itemText}"
                                       </p>
                                     )
