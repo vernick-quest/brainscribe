@@ -449,6 +449,38 @@ Sierra would have produced one 1,200-word paragraph AND self-cleared her critica
 `no_draft_despite_locks` finding, turning the panel green with the real problem untouched.
 The tool was not the blocker; the prompt was. Weigh that before building it.
 
+## P1 — A prompt probe still enforces the DELETED "count is fixed" rule  🔴 2026-08-17
+**Owner:** `focus/coach-ai` (owns the harness probes). Found by the conductor while running
+`test:prompts` on the integrated tree.
+
+`scripts/prompt-harness/oversized-lock.mjs:199`:
+
+```js
+check('P4: does not promise to add a new section (Rule 2: the count is fixed)',
+  !/\b(?:add|create|make|open|set up) (?:a |an |one )?(?:new |extra |another |...)(?:paragraph|section|scene|slot)\b/i.test(p3))
+```
+
+Rule 2 no longer says the count is fixed — it now carries ADDING A SECTION LATER, and two
+probes in `scaffold-growth.mjs` assert the coach DOES offer it and names the button. This
+assertion encodes the superseded contract.
+
+**It passes today**, so nothing is broken right now — in that scenario the coach happens not
+to offer growth. The hazard is future and it is the bad direction: **a correct prompt change
+that made the coach offer a section here would be REJECTED by a green-looking safety probe.**
+A test that fails on right behaviour is worse than no test, because the natural response is
+to weaken the prompt until the suite goes green.
+
+Not fixed in place, deliberately: deciding what it should assert instead is a coach-behaviour
+call, not a rename. The probe's real purpose is "never split one passage across two locks";
+"don't promise a new section" was a proxy for "don't invent structure you cannot create,"
+which is no longer true. Likely replacement: *if* it mentions adding a section, it must name
+the button — matching `scaffold-growth.mjs` P1/P4 — and the split-lock assertions stay
+untouched.
+
+⚠️ Same family as the drift coach-ai already fixed once today (the probe's private
+over-claim regex had diverged from the shipped guard). Worth one sweep of every probe
+assertion against the CURRENT prompt rather than waiting to trip over the next one.
+
 ## P1 — The Warnings column must be THE call-to-action  🔴 added 2026-08-17
 **Robert, 2026-08-17:** *"any warnings that need my attention should get flagged here, this
 is a CTA for me."* Owner: `focus/admin`.
