@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createNotificationsForSession } from '@/lib/notifications'
 import { analyzeWriting } from '@/lib/analyzeWriting'
-import { assembleParagraphText } from '@/lib/assembleParagraph'
+import { assembleParagraphText, AssemblyTruncatedError } from '@/lib/assembleParagraph'
 import { persistRequirementsActual } from '@/lib/requirements'
 import { recomputeSuggestion } from '@/lib/gymSuggest'
 import { upsertScaffoldSnapshot } from '@/lib/scaffoldSnapshot'
@@ -37,9 +37,22 @@ async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
     const components = (para.items ?? [])
       .filter(c => c.status === 'confirmed' && (c.text || c.nuggetText))
       .map(c => ({ id: c.id, label: c.label ?? c.id, text: c.text || c.nuggetText }))
-    const { assembled, componentText } = await assembleParagraphText({
-      components, paragraphType: para.type, sessionId, userId,
-    })
+    // Promise.all: one paragraph throwing would reject the whole batch and abandon the
+    // others mid-completion. Catch per paragraph so a single over-long section cannot
+    // cost a student the paragraphs that WOULD have assembled — and log loudly, because
+    // the alternative to a fragment is a missing row, which is quiet in a different way.
+    let assembled, componentText
+    try {
+      ({ assembled, componentText } = await assembleParagraphText({
+        components, paragraphType: para.type, sessionId, userId,
+      }))
+    } catch (e) {
+      if (e instanceof AssemblyTruncatedError) {
+        console.error(`[complete auto-assemble] section ${idx} too long to assemble for session ${sessionId} — NO paragraphs row written; the student's words remain in the scaffold`)
+        return
+      }
+      throw e
+    }
     if (!assembled) return
     const { error } = await supabase.from('paragraphs').insert({
       session_id: sessionId,

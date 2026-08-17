@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { assembleParagraphText } from '@/lib/assembleParagraph'
+import { assembleParagraphText, AssemblyTruncatedError } from '@/lib/assembleParagraph'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
 export async function POST(request) {
@@ -31,9 +31,23 @@ export async function POST(request) {
     return Response.json({ error: 'Not found.' }, { status: 404 })
   }
 
-  const { assembled, componentText } = await assembleParagraphText({
-    components, paragraphType, sessionId, userId: user.id,
-  })
+  // A truncated assembly throws rather than returning a fragment — see
+  // lib/assembleParagraph.js. Nothing is written, and the student is told plainly,
+  // because the alternative is a Final Draft that is silently a third of their story.
+  let assembled, componentText
+  try {
+    ({ assembled, componentText } = await assembleParagraphText({
+      components, paragraphType, sessionId, userId: user.id,
+    }))
+  } catch (e) {
+    if (e instanceof AssemblyTruncatedError) {
+      return Response.json({
+        error: "This section is too long to assemble in one piece. Nothing was changed — your writing is safe. Split it across more sections and try again.",
+        code: e.code,
+      }, { status: 413 })
+    }
+    throw e
+  }
 
   // Save the assembled paragraph to the paragraphs table
   const { data: para, error } = await supabase
