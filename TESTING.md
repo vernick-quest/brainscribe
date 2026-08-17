@@ -4013,3 +4013,46 @@ marker. It also restores a distinction that had been lost: Amir and Serenity ren
 (never completed the warm-up) where Amitris renders `0 +1p`, where previously both read `0`.
 
 `npm run test:run` **702/702 green** · build green.
+
+## 2026-08-17 — P0: growth gave a STORY essay slots · P1: writeRefused client marker — focus/coaching-session
+
+**P0 — the over-correction.** `growthTypeFor` replaces
+`last === 'custom' ? 'custom' : 'body'`, which normalised EVERY non-custom type to `body`.
+`narrative` and `personal_statement` are not on the essay ladder — their sections are all
+one type by design — so Sierra's narrative scaffold grew into
+topic_sentence/evidence/analysis/transition. Growth was built for her and handed her own
+scaffold essay slots. Now: the essay ladder (introduction/body/conclusion) normalises to
+`body` (inheriting a finished essay's conclusion would append a SECOND conclusion — the
+original, still-correct reasoning); everything else inherits itself; unknown → `body`.
+Tested with **her real stored shape as the fixture** (`type=narrative`,
+hook/context/body/closing), asserting the grown section is narrative-shaped and explicitly
+NOT containing `topic_sentence`/`evidence`.
+
+**The closing-position question, re-examined — and it does apply to narrative.** Her
+`closing` holds 152 CONFIRMED words: her ending. Appending any section puts that ending
+mid-story, and inheriting `narrative` also gives the new scene a `closing` of its own — two
+endings. Growth **cannot** fix the first half: reordering sections would desync
+`paragraph_index` from the `paragraphs` rows keyed on it, which is a data-loss shape, so
+append-only is load-bearing. Both facts are now documented in `growthTypeFor` and pinned by
+tests (one asserts the second `closing` exists — documenting the consequence rather than
+hiding it).
+
+🔵 **Product call, NOT made unilaterally.** `opts.type: 'custom'` + "Scene N" labels appends a
+continuation section with no ending of its own — what this file's own comment argues a
+scene-per-section story wants. It is exposed and tested (ids stay globally unique against
+her hook/context/body/closing), so flipping the default is one line. Left as a decision
+because it changes which completion path a narrative's new sections take
+(`assembleUnbuiltParagraphs` vs `persistCustomFinals`) — a product choice, not a bug fix.
+Essay slots in a story was a bug either way, and that is what this closes.
+Her existing mid-story ending is a DATA move (those 152 words need to end up in the final
+scene), not something growth can or should do silently.
+
+**P1 — `revisionRefused` client marker.** When a `[DONE:]` resolves to an inferred target
+that already holds the student's words, `preserveExistingItem` keeps them and stamps the
+row — but the only other signals were a console line and the coach's own Rule 20 check,
+which fires a turn late and only if it reads carefully. The draft panel now shows a calm,
+accurate line on that component: *"A change didn't apply here — these are still your words
+as you locked them. Use Revise if you meant to change it."* Display-only; the stamp and its
+`draftIntegrity` consumption (admin lane) are unchanged.
+
+Gate: build green · `test:run` **730 passed** (31 in scaffoldGrowth).
