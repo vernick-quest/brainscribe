@@ -103,6 +103,12 @@ function paraTypeLabel(type) {
 // single prose section shows just its type; a single non-prose section returns
 // '' (its line items + the "Your Draft" panel title already say everything).
 function sectionHeading(para, paraIdx, total) {
+  // A grown story's scenes are custom sections carrying their own label ("Scene 2"), and
+  // calling one "Paragraph 2: Section" is both wrong and less informative than what the
+  // student already named it. Use the label when the section holds exactly one part.
+  if (para.type === 'custom' && para.items?.length === 1 && para.items[0].label) {
+    return para.items[0].label
+  }
   if (total > 1) return `Paragraph ${paraIdx + 1}: ${paraTypeLabel(para.type)}`
   if (para.type === 'custom') return ''
   return paraTypeLabel(para.type)
@@ -823,6 +829,7 @@ export default function TutorSession({
   const [editSaveError, setEditSaveError]           = useState(null)
   const [growing, setGrowing]                       = useState(false)
   const [growError, setGrowError]                   = useState(null)
+  const [advancingSection, setAdvancingSection]     = useState(false)
   const [editingComponent, setEditingComponent]     = useState(null) // { paraIdx, componentId }
   const [componentEditDraft, setComponentEditDraft] = useState('')
   const [lockingComponent, setLockingComponent]     = useState(null) // { paraIdx, componentId } — manual lock-in fallback
@@ -1527,9 +1534,17 @@ export default function TutorSession({
     // treated as finished solely when every one of its components is already
     // status:'confirmed' (i.e. the student individually approved each), never from
     // fuzzy text/lock-language matching — so it cannot false-fire on a paragraph the
-    // student is still building. Scoped to multi-paragraph essays (the sim's failure
-    // surface); single-paragraph, onboarding/practice, and custom (haiku/list) flows
-    // keep their existing behavior untouched. When the net fires it logs to console
+    // student is still building. Scoped to MULTI-SECTION scaffolds (the sim's failure
+    // surface); single-paragraph and onboarding/practice flows keep their existing
+    // behavior untouched.
+    //
+    // ⚠️ This comment used to say "and custom (haiku/list) flows" as well. That was only
+    // true because a custom scaffold was single-section by construction — [SCAFFOLD:custom:…]
+    // builds exactly one. Narrative growth now mints MULTI-section custom scaffolds, so this
+    // net does fire on them, and that is what we want: locking a scene's single part marks
+    // the scene complete and advances the cursor, which is the same thing
+    // completeCustomSection does deliberately. Named here because the premise it rested on
+    // is gone. When the net fires it logs to console
     // (prefix [token-safety-net]) so the fire-rate can be measured against the
     // parallel coach-ai prompt fix.
     if (sc && (sc.components?.length ?? 0) > 1) {
@@ -1885,6 +1900,93 @@ export default function TutorSession({
         })))
       }
     } catch (e) { console.error(e) }
+  }
+
+  // Finish ONE custom section on a multi-section scaffold. A SECTION advance, not the end
+  // of the assignment.
+  //
+  // ── The blocker this closes (conductor, 2026-08-17) ─────────────────────────────────
+  // "Lock in all parts" called markSessionComplete for ANY custom section whose items were
+  // all confirmed. That was sound while every custom scaffold was a single-section form —
+  // a haiku, a poem, the FTUE hook — because finishing the only section IS finishing the
+  // assignment. Growth now turns a narrative into a MULTI-section custom scaffold, and on
+  // that shape the same button ends the whole assignment from scene 2: the session goes
+  // status='complete', /api/scaffold/[id]/grow starts returning 409 session_complete so
+  // scene 3 can never be added, and the student is routed to a v2 for what should have
+  // been a section advance. Losing the rest of a ten-scene story to a button labelled
+  // "lock in" is exactly the reassuring-direction failure this write path keeps producing.
+  //
+  // So on a multi-section scaffold this does what the prose path's saveParagraph does after
+  // an assembly: mark THIS section complete, advance the cursor, persist, tell the coach.
+  //
+  // It deliberately does NOT write a `paragraphs` row. Custom sections have always been
+  // persisted verbatim at completion by persistCustomFinals, which sweeps every unbuilt
+  // confirmed custom section — including this one — so there is nothing to gain here, and a
+  // new write into the path that carries six historical drop paths to lose.
+  async function completeCustomSection(paraIdx) {
+    // The button is disabled outside `listening`, but askTutor (which leaves that phase)
+    // only runs AFTER the patch round-trip below — so a second tap inside that window
+    // would fire a second coach turn on the same section.
+    if (advancingSection) return
+    setAdvancingSection(true)
+    try {
+      await advanceCustomSection(paraIdx)
+    } finally {
+      setAdvancingSection(false)
+    }
+  }
+
+  async function advanceCustomSection(paraIdx) {
+    const live = scaffoldRef.current ?? scaffold
+    const section = live?.components?.[paraIdx]
+    if (!live || !section) {
+      console.error(
+        `[custom-section] refusing to advance session ${session.id}: no section at index ${paraIdx} ` +
+        `(${live?.components?.length ?? 0} stored). Nothing changed.`
+      )
+      return
+    }
+    // Never regress the cursor: a section finished out of order must not pull the coach
+    // back onto work already banked (a regressed cursor is how a dictation upsert landed
+    // on top of an already-saved paragraph).
+    const nextIdx = Math.min(paraIdx + 1, live.components.length)
+    const newScaffold = {
+      ...live,
+      current_paragraph_index: Math.max(live.current_paragraph_index ?? 0, nextIdx),
+      components: live.components.map((p, i) => (i === paraIdx ? { ...p, status: 'complete' } : p)),
+    }
+    applyScaffold(newScaffold)
+    const saved = await patchScaffold(newScaffold.components, {
+      current_paragraph_index: newScaffold.current_paragraph_index,
+    })
+    if (!saved) {
+      // patchScaffold has already shown the student a keep-this-tab-open warning; this is
+      // the greppable half. Their locked lines are unharmed — only the advance didn't land.
+      console.error(
+        `[custom-section] advance for section ${paraIdx} NOT persisted on session ${session.id} — ` +
+        `the locked lines are intact in the scaffold, but the cursor may reload stale`
+      )
+    }
+
+    const label = section.items?.length === 1 ? section.items[0].label : `Part ${paraIdx + 1}`
+    setSectionJustCompleted({ title: label, number: paraIdx + 1, total: live.components.length })
+    setActiveTab('essay')
+    setTimeout(() => setSectionJustCompleted(null), 4000)
+
+    // ⚠️ The last-section note must NOT invite new material (red-team, 2026-08-17). Past
+    // the last section the cursor sits on the "all done" sentinel, and resolveWriteIndex
+    // redirects an out-of-range write to the LAST section — which, on one-item scenes with
+    // everything confirmed, is ALWAYS an exact hit on the previous scene and overwrites it.
+    // "Yes, one more scene" plus a coach that starts capturing before the student taps
+    // "+ Add another section" destroys the scene they just finished. So the note says
+    // plainly that there is nowhere to write yet, and points at the button.
+    const isLast = paraIdx + 1 >= live.components.length
+    const note = isLast
+      ? `[Coaching note: The student locked in "${label}", and it was the LAST section in the scaffold — there is nowhere to put new writing right now. Acknowledge it in one brief sentence in your persona's voice, then tell them that if they want to keep going they should tap "+ Add another section" in their Draft, and that you'll pick up there. Do NOT start coaching or capturing new content until a new section exists, and do NOT assume the piece is finished.]`
+      : `[Coaching note: "${label}" is locked in and done. Acknowledge it in one brief sentence in your persona's voice, then start coaching the next section.]`
+    const displayUserMsg = { role: 'user', content: `I'm done with ${label}.` }
+    const apiUserMsg     = { role: 'user', content: `I'm done with ${label}. ${note}` }
+    askTutor([...messages, apiUserMsg], persona, [...messages, displayUserMsg])
   }
 
   // Leaving the practice run early — mark onboarding done (so the dashboard won't
@@ -2446,6 +2548,25 @@ export default function TutorSession({
     if (midParagraph) return null
     return { done }
   })()
+  // ── Multi-section custom scaffolds ──────────────────────────────────────────
+  // Until narrative growth flipped to `custom`, EVERY custom scaffold was a single section
+  // (a haiku, a poem, the FTUE hook), so "all parts confirmed" and "assignment finished"
+  // were the same event. On a grown story they are not, and the two endings have to be
+  // told apart — see completeCustomSection for what tapping the old button did.
+  //
+  // `finishAffordance` is the whole-assignment ending for this shape. A story made of
+  // custom sections never reaches "Assemble full essay" (custom sections write no
+  // `paragraphs` rows until completion, by design — they persist verbatim), so without it
+  // a student whose cursor has run past the last scene has NO way to finish. That state
+  // arrives on its own: the token safety-net marks a fully-confirmed section complete and
+  // advances the cursor when the coach drops [PARA_DONE].
+  const sectionList = scaffold?.components ?? []
+  const isMultiSection = sectionList.length > 1
+  const cursorPastEnd  = (scaffold?.current_paragraph_index ?? 0) >= sectionList.length
+  const finishAffordance = !sessionComplete && !onboarding && isMultiSection
+    && sectionList[sectionList.length - 1]?.type === 'custom' && cursorPastEnd
+    && sectionList.some(p => (p.items ?? []).some(it => it.status === 'confirmed'))
+
   // Student's most recent reply — prefilled into the manual lock-in fallback.
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
   const assignmentKeyterms = []
@@ -3438,14 +3559,44 @@ export default function TutorSession({
                               so we hide this off-brand manual finish button entirely. */}
                           {isCurrentPara && allConfirmed && !onboarding && (
                             para.type === 'custom' ? (
-                              <button
-                                onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
-                                disabled={phase !== 'listening' || sessionComplete}
-                                className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
-                                style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
-                              >
-                                {sessionComplete ? '✓ Finished' : 'Lock in all parts'}
-                              </button>
+                              isMultiSection ? (
+                                /* A grown story: this finishes the SECTION. The old button
+                                   ended the whole assignment from here, which locked the
+                                   student out of adding the next scene (409 session_complete
+                                   on grow). Finishing everything is still one tap away, but
+                                   it has to be the tap they meant. */
+                                <div className="mt-3 space-y-1.5">
+                                  <button
+                                    onClick={() => completeCustomSection(paraIdx)}
+                                    disabled={phase !== 'listening' || sessionComplete || advancingSection}
+                                    className="w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
+                                    style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
+                                  >
+                                    {/* Name the part ONLY when the section holds exactly
+                                        one — a custom section 0 can hold c0..c9 (Sierra's
+                                        ten scenes in one container), and "Lock in Scene 1"
+                                        would be naming one tenth of what the tap does. */}
+                                    Lock in {para.items?.length === 1 ? para.items[0].label : 'this section'} ✓
+                                  </button>
+                                  <button
+                                    onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
+                                    disabled={phase !== 'listening' || sessionComplete}
+                                    className="w-full text-xs font-semibold rounded-lg py-2 transition disabled:opacity-40 hover:underline"
+                                    style={{ color: 'var(--text-muted)', minHeight: 44 }}
+                                  >
+                                    …or finish the whole assignment
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
+                                  disabled={phase !== 'listening' || sessionComplete}
+                                  className="mt-3 w-full text-sm font-semibold rounded-xl py-2.5 transition disabled:opacity-40"
+                                  style={{ backgroundColor: 'var(--status-success)', color: 'white' }}
+                                >
+                                  {sessionComplete ? '✓ Finished' : 'Lock in all parts'}
+                                </button>
+                              )
                             ) : (
                               <button
                                 onClick={() => assembleCurrentParagraph(paraIdx, para)}
@@ -3497,6 +3648,31 @@ export default function TutorSession({
                 <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
                   Need more room? This adds an empty section — nothing you've written changes.
                 </p>
+              </div>
+            )}
+
+            {/* Finishing a story built from custom sections. It never reaches "Assemble
+                full essay" (custom sections stay verbatim and write no paragraphs rows
+                until completion), and the cursor runs past the last section on its own
+                once every part is locked — so this is the only remaining way to end the
+                assignment. Shown ONLY past the last section, so it can't be mistaken for
+                the per-scene lock-in. */}
+            {finishAffordance && phase === 'listening' && (
+              <div className="rounded-xl px-4 py-3 text-center"
+                style={{ border: '1.5px dashed var(--status-success)', backgroundColor: 'var(--status-success-bg)' }}>
+                <p className="text-xs mb-2.5" style={{ color: 'var(--text-body)' }}>
+                  {/* Deliberately not "every section is locked in" — a [PARA_DONE] on an
+                      empty last section reaches this state too, and that claim would be
+                      false. What IS always true here: nothing is queued to write. */}
+                  There&rsquo;s nothing more queued to write. Add another section above, or hand this in.
+                </p>
+                <button
+                  onClick={() => markSessionComplete(scaffoldRef.current ?? scaffold)}
+                  className="text-sm font-semibold rounded-xl px-5 py-2.5 transition"
+                  style={{ backgroundColor: 'var(--status-success)', color: 'white', minHeight: 44 }}
+                >
+                  I&rsquo;m finished — hand it in
+                </button>
               </div>
             )}
 

@@ -615,3 +615,52 @@ mailing, **not** a substitute for a real opt-out once mailing starts.
 - "New assignment" while remoted-in (create *as* the student) — create currently attributes to the logged-in admin.
 - Teacher feedback-count bubble + teacher roster picker / remove-teacher — no backend yet.
 - Free-sessions usage meter — built behind `SHOW_USAGE_METER=false`.
+
+---
+
+## P1 — `resolveComponentWrite` returning `null` stamps nothing, so the integrity layer is blind
+**Found 2026-08-17, adversarial pass on the narrative-growth flip.**
+
+When a cross-section write targets a section that is already assembled,
+`lib/scaffoldWrite.js` refuses and returns `null`. That refusal is correct — writing the
+scaffold alone would show the student a revision the Final Draft never receives. But the
+`[DONE:]` handler's `if (doneTarget)` then skips the whole update, so **nothing is recorded
+anywhere**:
+
+- `writeDropped` — never set (the token carried inline text, so `resolveDoneText` never ran).
+- `revisionRefused` — never stamped; `preserveExistingItem` is on the other branch.
+- `reconcileCommitments` — matches on **id alone**, so a promise whose id is filled in the
+  *other* section reads **KEPT**. The one signal documented as "a FACT rather than an
+  inference" reports success.
+- `checkDraftIntegrity` — `severity: none`.
+
+Verified by running the detectors on the post-loss state. The narrative-growth shape no
+longer reaches this path (a prose name on a custom section now resolves locally), but the
+class is real for any scaffold where a cross-section id lands on an assembled section.
+
+**What it needs:** a refusal record that does not require knowing where the words belong —
+somewhere the audit layer can read "a `[DONE:]` was refused and its payload is not in the
+scaffold". Deliberately not bolted onto the growth change: this repo's history is that a
+safety net added at the end of someone else's change is where the next loss comes from.
+
+## P2 — The coach sees `c1: queued` with no hint it is "Scene 2"
+`lib/prompts.js` `componentSummary` (~:928) prints bare item ids. Prose ids are
+self-describing (`hook`, `thesis`); a grown story's are positional. Include `label` for
+custom sections. Low risk, and it is the cheap half of keeping the coach aimed at the right
+component on a scene-per-section story. `npm run test:prompts` has NOT been run against the
+grown-story shape — how often the coach mis-names on it is **UNVERIFIED**. (coach-ai lane.)
+
+## P2 — Two tabs that each grow once clobber each other
+`reconcileComponentsWrite` carries the stored tail across only when the incoming array is
+**shorter**. Two tabs that each grew by one produce **equal**-length arrays, so the guard
+passes them through untouched and the second write wins, discarding the first tab's section
+and anything in it. Pre-existing; out of scope for the flip but the same family as the
+stale-shrink guard it sits next to.
+
+## P3 — `needsProvenancePass` never settles for a completed custom section
+A custom section marked `complete` has no `paragraphs` row until session completion, so
+`lib/scaffoldProvenance.js` scores it `unscorable` and stores no record — meaning
+`needsProvenancePass` returns true on **every** subsequent scaffold PATCH for the life of the
+session (3 extra queries + a full provenance pass per lock, plus a `NOT SCORED (no scribed
+text)` warn per scene). Shadow mode, so it costs latency and log noise rather than
+correctness. (Lever B's file.)
