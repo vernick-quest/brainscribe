@@ -3930,7 +3930,6 @@ the first time either fires.
   needs a migration. Not urgent: nothing is clean enough to hit it yet.
 - **Threshold re-check** a week after scaffold growth sees real use: re-run the
   sections-per-scaffold comparison; Sierra remains the per-signal self-clearing test.
-<<<<<<< HEAD
 ## 2026-08-17 — Lock-by-reference: the pure resolution rules — focus/coaching-session
 
 Step 2 of `SPEC-lock-by-reference.md` ("tests first — the resolution rules are pure
@@ -3988,7 +3987,6 @@ of echoed and referenced locks** — the two have completely different distribut
 Referenced locks need to be identifiable in the record. Flagged to the Lever B owner.
 
 Gate: build green · `test:run` **715 passed** (20 new).
-=======
 
 ## 2026-08-17 — Completed practice was invisible on the roster (focus/admin)
 
@@ -4015,4 +4013,3 @@ marker. It also restores a distinction that had been lost: Amir and Serenity ren
 (never completed the warm-up) where Amitris renders `0 +1p`, where previously both read `0`.
 
 `npm run test:run` **702/702 green** · build green.
->>>>>>> focus/admin
