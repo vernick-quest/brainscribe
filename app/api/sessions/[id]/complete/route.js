@@ -48,7 +48,36 @@ async function assembleUnbuiltParagraphs(supabase, sessionId, userId) {
       }))
     } catch (e) {
       if (e instanceof AssemblyTruncatedError) {
-        console.error(`[complete auto-assemble] section ${idx} too long to assemble for session ${sessionId} — NO paragraphs row written; the student's words remain in the scaffold`)
+        // ── Was: write NOTHING and leave the words in the scaffold ────────────────────
+        // That reasoning depended on the transcript's scaffold fallback, which is
+        // all-or-nothing (`!paragraphs?.length && scaffoldLines.length > 0`): the moment
+        // ANY other section produces a row, the fallback is suppressed and this section
+        // vanishes from the transcript, the Essay tab, "Copy essay" and the analysis. It
+        // was already reachable; narrative growth makes it the NORMAL case, because custom
+        // scenes never call the assembly model and so ALWAYS produce rows — so the one
+        // section that can truncate is the one guaranteed to be hidden. Sierra's ~992-word
+        // opening section is exactly that section.
+        //
+        // So write the student's own confirmed components through VERBATIM instead, the
+        // same way persistCustomFinals does. Unflowed prose in the deliverable beats her
+        // words missing from it — this repo has never once found the reverse.
+        const verbatim = components.map(c => c.text.trim()).filter(Boolean).join('\n')
+        if (!verbatim) return
+        console.error(
+          `[complete auto-assemble] section ${idx} too long to assemble for session ${sessionId} — ` +
+          `writing the student's ${components.length} confirmed component(s) VERBATIM (unflowed) so the ` +
+          `deliverable still contains their words`
+        )
+        const { error: vErr } = await supabase.from('paragraphs').insert({
+          session_id: sessionId,
+          scribed_text: verbatim,
+          raw_spoken_text: verbatim,
+          position: idx,
+          paragraph_index: idx,
+          paragraph_type: para.type,
+          is_thin: false,
+        })
+        if (vErr) console.error(`[complete auto-assemble] VERBATIM FALLBACK ALSO FAILED for section ${idx}: ${vErr.message}`)
         return
       }
       throw e

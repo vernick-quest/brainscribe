@@ -4083,3 +4083,140 @@ as you locked them. Use Revise if you meant to change it."* Display-only; the st
 `draftIntegrity` consumption (admin lane) are unchanged.
 
 Gate: build green · `test:run` **730 passed** (31 in scaffoldGrowth).
+
+---
+
+## 2026-08-17 — Narrative growth flips to custom "Scene N", and the section/session ending is split
+
+**Part 1 — `growthTypeFor('narrative')` → `'custom'`** (`lib/scaffoldGrowth.js`). Robert's
+call on the product question flagged in the previous section. A `narrative` section carries
+a `closing`, so inheriting it gave every appended scene its own ending, compounding with
+each growth. A `custom` section holds ONE labelled part and has no ending. New
+`growthLabelFor(originType, index)` supplies the default label, derived from the **FIRST**
+section's type, not the last — after one growth the last section is already `custom`, so a
+last-derived label would read "Scene 2" then "Part 3". Explicit `opts.labels` still win.
+
+Bonus, and the point of the ceiling work: custom sections persist **verbatim** at completion
+(`persistCustomFinals`) and never call the assembly model, so nine of ten scenes become
+immune to `AssemblyTruncatedError` — the failure that started this whole batch.
+
+**Part 2 — the blocker, and why Part 1 could not ship alone.**
+`components/TutorSession.js` rendered "Lock in all parts" for any custom section whose items
+were all confirmed, and it called `markSessionComplete` — ending the **session**, not the
+section. Sound while every custom scaffold was single-section by construction
+(`[SCAFFOLD:custom:…]` builds exactly one: haiku, poem, FTUE hook). With Part 1 a ten-scene
+story shows that button on scene 2; tapping it marks the whole assignment complete,
+`/api/scaffold/[id]/grow` then returns `409 session_complete` so scene 3 can never be added,
+and the student is routed to a v2 for what should have been a section advance.
+
+- New `completeCustomSection` / `advanceCustomSection`: marks THAT section complete, advances
+  the cursor (via `Math.max`, so it can never regress — a regressed cursor is how a dictation
+  upsert once landed on an already-saved paragraph), persists via `patchScaffold` and **checks
+  the result**, toasts, and tells the coach to move on. In-flight guard against a double tap
+  during the patch round-trip.
+- It deliberately writes **no `paragraphs` row**. `persistCustomFinals` already sweeps every
+  unbuilt confirmed custom section at completion, so there is nothing to gain and a new write
+  into the six-drop-path surface to lose.
+- Multi-section custom now renders "Lock in \<label\> ✓" plus a quieter "…or finish the whole
+  assignment". Single-section custom is byte-for-byte unchanged.
+- New `finishAffordance` card ("I'm finished — hand it in"), shown only when the scaffold is
+  multi-section, its last section is custom, the cursor has run past the end, and something is
+  confirmed. **This is not decoration.** A story built from custom sections never reaches
+  "Assemble full essay" (that requires `paragraphs.length >= total_paragraphs`, and custom
+  sections write no rows until completion), and the cursor runs past the last section on its
+  own — so without this card the student has no way to finish at all.
+
+**A premise that died, named rather than left standing.** The token safety-net's comment
+claimed "custom (haiku/list) flows keep their existing behavior untouched". That was true only
+because a custom scaffold was always single-section; the net is gated on
+`components.length > 1`. Multi-section custom scaffolds now exist, so the net DOES fire on
+them — marking a scene complete and advancing the cursor the moment its single part is
+confirmed. That is the behaviour we want, and it is now what the comment says.
+
+**Owed to focus/coach-ai — one small gap, not the three I first claimed.** ⚠️ I asserted that
+`lib/prompts.js` still tells the coach the paragraph count "CANNOT be increased later". That is
+**false for this tree** — I repeated it from a stale memory note without grepping. `:316` is a
+full ADDING A SECTION LATER block that already covers growth, names the button, states that a
+new section lands at the END with nothing moving, and — directly relevant to the P0 below —
+tells the coach "Its components have their OWN ids: read them off CURRENT SCAFFOLD STATE when
+you arrive rather than assuming they match the section you just left."
+
+What IS still missing: the scaffold-state block (`~:928`) prints bare item ids with no
+`label`, so on a grown story the coach sees `c1: queued` and has nothing telling it that this
+is "Scene 2". Include the label for custom sections. `npm run test:prompts` on the grown-story
+shape has NOT been run — how often the coach actually mis-names on it is **UNVERIFIED**.
+
+Manual pass still owed (Robert): grow a narrative twice, confirm the scenes read "Scene 2"/
+"Scene 3", lock one, and confirm the assignment does **not** end.
+
+Gate: build green · `test:run` **735 passed** (36 in scaffoldGrowth).
+
+### Adversarial pass on the above — it found a data-loss path in the fix itself
+
+Run against the full diff, told to assume the author is wrong. It reproduced its findings by
+running the pure functions, and so did I before acting on them.
+
+🔴 **P0 — the flip turned Baron's rescue into a silent drop.** A grown story holds BOTH id
+spaces at once: `hook/context/body/closing` in the narrative section 0, positional `c0`/`c1`
+in the scenes. They are **disjoint**, so every prose name the coach emits while the cursor is
+on a scene became an *unambiguous* cross-section hit into section 0 — where the no-overwrite
+guard added on 2026-08-17 then correctly refused it. Three individually-correct guards, and
+the scene's words landed **nowhere**. Reproduced on Sierra's real stored shape:
+
+```
+BEFORE the flip  [DONE:closing:<scene 2>] -> {paraIdx:1, exact:true,  crossSection:false} -> WROTE locally
+AFTER  the flip  [DONE:closing:<scene 2>] -> {paraIdx:0, exact:true,  crossSection:true }  -> REFUSED, c0 empty
+```
+
+Worse with section 0 already assembled: `resolveComponentWrite` returns `null`, so nothing is
+stamped at all and `reconcileCommitments` reports the `closing` promise **KEPT** (it matches
+on id alone, and section 0's `closing` is filled). `checkDraftIntegrity` → `severity: none`.
+The one signal documented as "a FACT rather than an inference" reports success on a lost scene.
+
+This is the third confirmed instance of CLAUDE.md's "does this net weaken a different net"
+rule, and the first where the weakened net was one I had added the day before.
+
+**Fix** (`lib/scaffoldWrite.js`): on a **custom** section, a NON-positional id is Baron's case,
+not a cross-section revision, and resolves locally. Positional ids (`c3` aimed at an earlier
+scene) keep the cross-section path, so a real cross-scene revision still works, and prose
+sections are untouched so the thesis revisit — the reason cross-section resolution exists —
+is unchanged. `exact:false` is honest, so the no-overwrite guard still protects a scene that
+already has words. Six new tests build the mixed narrative+custom shape that no fixture had.
+
+🔴 **P1 — the finished record hid the one section that matters.** `assembleUnbuiltParagraphs`
+caught `AssemblyTruncatedError` and wrote **no row**, relying on the transcript's scaffold
+fallback — which is all-or-nothing (`!paragraphs?.length && scaffoldLines.length > 0`). Custom
+scenes never call the assembly model, so they *always* produce rows; the flip therefore
+guarantees the fallback is suppressed for the one section that can truncate. That section is
+Sierra's ~992-word opening. **Fixed at the source, not in the transcript**: on truncation the
+route now writes her confirmed components through **verbatim**, the way `persistCustomFinals`
+already does — which fixes it for the Essay tab, "Copy essay" and `analyzeWriting` too.
+
+🔴 **P1 — the last-section coaching note invited the overwrite.** Past the last section the
+cursor sits on the "all done" sentinel and `resolveWriteIndex` redirects an out-of-range write
+to the LAST section. With one-item scenes all confirmed, `firstUnfinished` is *always* `-1`, so
+that redirect is *always* an exact hit on the previous scene. My note asked the coach to "ask
+whether they want to add another section or finish here" — so "yes, one more" and a coach that
+starts capturing before the tap destroys the scene just finished. The note now says plainly
+that there is nowhere to write, names the button, and forbids capturing until a section exists.
+
+🟡 Also fixed: the finish card no longer claims "every section is locked in" (a `[PARA_DONE]`
+on an empty last section reaches that state too); `sectionHeading` no longer calls a scene
+"Paragraph 2: Section".
+
+**Accepted, flagged, NOT fixed here:**
+- The new "Lock in \<label\> ✓" button is reachable on a narrower path than its comment
+  implied — Net A runs inside the same `parseAndApplyScaffoldTokens` call as the `[DONE:]`, so
+  by render time the cursor has usually advanced. It is reachable via the manual lock-in path
+  and whenever a coach turn errors out. So was the `markSessionComplete` button it replaces:
+  the fix is real, just narrower.
+- `resolveComponentWrite` returning `null` stamps nothing anywhere, so the integrity layer is
+  blind to that class generally. The narrative-growth shape no longer reaches it, but the
+  general hole is real and wants its own change — not a net bolted on at the end of this one.
+- `needsProvenancePass` never settles for a completed custom section (no `paragraphs` row →
+  `unscorable` → no record stored), costing 3 extra queries and a `NOT SCORED` warn per lock
+  for the life of the session. Lever B's file — routed, not touched.
+- Pre-existing, out of this diff: an *equal*-length stale components array passes
+  `reconcileComponentsWrite` untouched, so two tabs that each grew once clobber each other.
+
+Gate after fixes: build green · `test:run` **741 passed**.
