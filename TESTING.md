@@ -3930,3 +3930,29 @@ the first time either fires.
   needs a migration. Not urgent: nothing is clean enough to hit it yet.
 - **Threshold re-check** a week after scaffold growth sees real use: re-run the
   sections-per-scaffold comparison; Sierra remains the per-signal self-clearing test.
+
+## 2026-08-17 — Completed practice was invisible on the roster (focus/admin)
+
+**File:** `components/AdminDashboard.js` only. No migration, no route change.
+
+**Reported:** remoting in showed Amitris had completed a practice assignment; her row read
+`assignments 0 · completed 0`. Verified in live data — her ONLY session is
+`"Practice — Any job for a day"`, `is_onboarding=true`, `status=complete`, 0 paragraphs.
+
+**Cause, and it was mine.** The warm-up is deliberately excluded from `assignments` (warm-up ≠ real
+work, and conflating them would inflate every count). That was fine while the first column counted
+SESSIONS — the row read "1 session / 0 assignments" and the practice was visible. Changing that
+column to LOGINS (2026-08-08, at Robert's request) left the warm-up with no numeric home at all, so
+a student who had only done the warm-up rendered as a flat `0 / 0`. The single remaining trace was
+the FTUE glyph beside the name — which is why a completed practice became something you had to
+remote in to find.
+
+**Fix:** the Assignments cell shows the real count plus a green `+Np` marker when the student has
+completed warm-ups. Shown BESIDE the number, never added to it — warm-up and real work stay
+separate. Tooltip spells it out; the legend now reads "Assignments (+Np = practice warm-ups)".
+
+**Verified against the live roster** — Amitris now renders `0 +1p`; 10 of 13 students show the
+marker. It also restores a distinction that had been lost: Amir and Serenity render a bare `0`
+(never completed the warm-up) where Amitris renders `0 +1p`, where previously both read `0`.
+
+`npm run test:run` **702/702 green** · build green.
