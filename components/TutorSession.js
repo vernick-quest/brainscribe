@@ -3345,6 +3345,21 @@ export default function TutorSession({
                                     </p>
                                   )}
 
+                                  {/* A change the coach announced did NOT land here — the
+                                      write resolved to an inferred target holding these
+                                      words, so they were kept (lib/scaffoldWrite.js
+                                      preserveExistingItem). Surfaced HERE because the only
+                                      other signals are a console line and the coach's own
+                                      Rule 20 check, which fires a turn late and only if it
+                                      reads carefully. The student's words are safe; what
+                                      failed is the edit, so say exactly that. */}
+                                  {item.revisionRefused && itemText && (
+                                    <p className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
+                                      style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+                                      A change didn’t apply here — these are still your words as you locked them. Use Revise if you meant to change it.
+                                    </p>
+                                  )}
+
                                   {/* Nugget action buttons — only for current paragraph in listening phase */}
                                   {!isComplete && item.status === 'candidate' && phase === 'listening' && (
                                     <div className="flex gap-1.5 mt-1.5">
