@@ -55,6 +55,49 @@ because the cleaned text is not in there. Two mechanisms, one per path.
 
 ---
 
+## Who cleans the text — the coach never did
+
+Asked by Robert, and worth settling before anyone builds: if the coach stops retyping, who
+strips the ums and ahs?
+
+**Nobody loses anything, because cleaning was never the coach's job.** Verified against the
+prompts:
+
+| Stage | Component | Removes |
+|---|---|---|
+| 1 | ElevenLabs STT | filler words — *"Filler words have already been removed at the transcription layer"* (`lib/prompts.js`, scribe prompt) |
+| 2 | `/api/scribe` (Haiku) | grammar, sentence structure, spelling, obvious typos, duplicate words |
+| 3 | assembly | remaining spelling, plus transitions between components |
+
+The coach's `[DONE:]` payload is meant to be the **already-cleaned** text — "exact final
+words". So a bare `[DONE:id]` locking the scribe's output is byte-identical to what the echo
+was carrying. The voice path is unchanged.
+
+🔴 **And the inverse is a finding.** If the coach is quietly tidying as it retypes — fixing
+a typo, smoothing a phrase — that is an untracked edit of the student's words by the one
+component in the pipeline whose job is explicitly *not* cleaning, and it would appear
+nowhere. Rule 23 exists for this. Referencing is **more** faithful than echoing, not less.
+
+### Open decision: typed text is not cleaned before the lock
+
+Dictation arrives cleaned (stage 2). Typed text does not — a student's raw message carries
+their typos, and anchoring resolves to exactly that. The scaffold panel would show the typos
+until assembly fixes spelling downstream.
+
+Two options, to decide before build:
+
+- **A — accept it.** Assembly already cleans into `paragraphs.scribed_text`, which is what
+  the student and a teacher read as the Final Draft. The scaffold showing what they actually
+  typed is arguably the honest rendering.
+- **B — route typed passages through `/api/scribe` as well.** It is a cleaning service that
+  happens to be named for speech, and its prompt already covers "spelling errors, obvious
+  typos, missing apostrophes". Both paths would then produce a cleaned artifact the client
+  holds.
+
+⚠️ Option B does **not** remove the need for anchors. Those do SEGMENTATION, not cleaning —
+when a student pastes 700 words, something still has to say which stretch is the hook and
+which is the body. B changes what the anchors resolve *into*, not whether they are needed.
+
 ## Mechanism 1 — bare `[DONE:id]`, for dictation
 
 The client already holds the scribed text when the coach decides to lock: `/api/scribe`
