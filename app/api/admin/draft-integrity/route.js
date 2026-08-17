@@ -48,7 +48,7 @@ export async function GET(request) {
 
   let query = service
     .from('sessions')
-    .select('id, student_id, status, is_onboarding, created_at, completed_at, assignment_text, requirements, profiles(full_name, email)')
+    .select('id, student_id, status, is_onboarding, created_at, completed_at, assignment_text, requirements, lock_over_claims, last_over_claim_at, profiles(full_name, email)')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (demoIds.length) query = query.not('student_id', 'in', `(${demoIds.join(',')})`)
@@ -214,6 +214,9 @@ export async function GET(request) {
         status: s.status,
         targetWords: target?.min ?? target?.target ?? target?.max ?? null,
         brokenCommitments,
+        // Recorded server-side by the lock guard (migration 070): a section the coach
+        // claimed was saved where the write did not land.
+        lockOverClaims: Number(s.lock_over_claims) || 0,
       }
     )
     // A student saying "something's missing" is ground truth, not a heuristic — it is
