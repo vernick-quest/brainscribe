@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkProvenance } from '@/lib/provenance'
 import { annotateScaffoldProvenance, needsProvenancePass } from '@/lib/scaffoldProvenance'
+import { reconcileComponentsWrite } from '@/lib/scaffoldGrowth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { after } from 'next/server'
 
@@ -204,6 +205,28 @@ export async function PATCH(request, { params }) {
   // the same values.
   if (body.assignmentType) update.assignment_type = body.assignmentType
   if (Number.isInteger(body.totalParagraphs)) update.total_paragraphs = body.totalParagraphs
+
+  // ── Stale-shrink guard (scaffold growth, 2026-08-16) ────────────────────────────────
+  // This route writes the client's WHOLE components array. That was safe while the
+  // structure was fixed for the life of the session; it is not safe now that a scaffold
+  // can GROW. A tab open from before a growth holds a shorter array, and its next lock
+  // would truncate the stored one — deleting the grown section and any work inside it.
+  // Sections are only ever appended, so a shorter incoming array means a stale sender:
+  // carry the stored tail across instead of losing it, and log loudly. Runs LAST so it
+  // also covers whatever the provenance pass above produced.
+  if (update.components !== undefined) {
+    const { data: liveRow } = await supabase
+      .from('paragraph_scaffolds').select('components').eq('session_id', sessionId).maybeSingle()
+    const rec = reconcileComponentsWrite(update.components, liveRow?.components)
+    if (rec.reason) {
+      console.error(`[scaffold-shrink-guard] session ${sessionId}: ${rec.reason}`)
+      update.components = rec.components
+      // total_paragraphs must not describe a shorter tree than we are storing.
+      if (Number.isInteger(update.total_paragraphs) && update.total_paragraphs < rec.components.length) {
+        update.total_paragraphs = rec.components.length
+      }
+    }
+  }
 
   const { data, error } = await supabase
     .from('paragraph_scaffolds')

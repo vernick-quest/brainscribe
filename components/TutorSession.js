@@ -821,6 +821,8 @@ export default function TutorSession({
   // Set when a paragraph edit fails to PERSIST — the editor stays open with the
   // student's words so they can retry (never a silent lost edit).
   const [editSaveError, setEditSaveError]           = useState(null)
+  const [growing, setGrowing]                       = useState(false)
+  const [growError, setGrowError]                   = useState(null)
   const [editingComponent, setEditingComponent]     = useState(null) // { paraIdx, componentId }
   const [componentEditDraft, setComponentEditDraft] = useState('')
   const [lockingComponent, setLockingComponent]     = useState(null) // { paraIdx, componentId } — manual lock-in fallback
@@ -1918,6 +1920,38 @@ export default function TutorSession({
   }
 
   // ── Direct paragraph edit ────────────────────────────────────────────────────
+
+  // Add an empty section to a live scaffold (the fixed-structure escape hatch).
+  //
+  // CRITICAL: adopt the components the SERVER returns via applyScaffold. The client holds
+  // its own scaffold and PATCHes the whole components array on every lock — so if we grew
+  // server-side and left this stale, the very next [DONE:] would write back the OLD,
+  // SHORTER array and silently delete the sections we just added (and any work already in
+  // them). The endpoint returns the stored components for exactly this reason.
+  async function growScaffold() {
+    if (growing) return
+    setGrowing(true); setGrowError(null)
+    try {
+      const res = await fetch(`/api/scaffold/${session.id}/grow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addCount: 1 }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !Array.isArray(data?.components)) {
+        console.error(`[scaffold-grow] failed for session ${session.id}: ${res.status} ${data?.error ?? ''}`)
+        setGrowError(data?.error ?? "Couldn't add a section just now — your writing is safe. Try again?")
+        return
+      }
+      const live = scaffoldRef.current ?? scaffold
+      applyScaffold({ ...live, components: data.components, total_paragraphs: data.components.length })
+    } catch (err) {
+      console.error('[scaffold-grow] network failure:', err)
+      setGrowError("Couldn't add a section just now — your writing is safe. Try again?")
+    } finally {
+      setGrowing(false)
+    }
+  }
 
   // Persist the student's own turn into `messages`. Deliberately NOT awaited by callers:
   // this is on the hot voice path and blocking it would add a round-trip to every turn.
@@ -3393,6 +3427,34 @@ export default function TutorSession({
                 </div>
               )
             })}
+
+            {/* "I need another section" — the escape hatch from a fixed structure.
+                [SCAFFOLD:] fires once, so a piece scaffolded with too few sections (a
+                ten-scene story in ONE container) had nowhere to put the next scene and
+                its assembly payload grew until it hit the model ceiling. Growth is
+                server-side and append-only; we adopt the components the server returns
+                so the client can't PATCH a stale, shorter array back over them. */}
+            {/* Gated on `listening`: mid-turn, parseAndApplyScaffoldTokens holds a
+                pre-grow deep copy and re-applies it after its PATCH, which would wipe a
+                growth that landed inside that window. Wait for the turn to settle. */}
+            {!sessionComplete && phase === 'listening' && scaffold?.components?.length > 0 && (
+              <div className="rounded-xl px-4 py-3"
+                style={{ border: '1px dashed var(--border-strong)', backgroundColor: 'var(--surface-muted)' }}>
+                {growError && (
+                  <p className="text-xs mb-2" style={{ color: 'var(--status-error)' }}>{growError}</p>
+                )}
+                <button
+                  onClick={growScaffold}
+                  disabled={growing}
+                  className="text-xs font-semibold rounded-lg px-3 py-2 disabled:opacity-50"
+                  style={{ color: 'var(--accent-text)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-accent)', minHeight: 44 }}>
+                  {growing ? 'Adding…' : '+ Add another section'}
+                </button>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                  Need more room? This adds an empty section — nothing you've written changes.
+                </p>
+              </div>
+            )}
 
             {/* Full essay assembly — when all paragraphs complete */}
             {scaffold?.components?.length > 1

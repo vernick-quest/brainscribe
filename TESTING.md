@@ -3668,3 +3668,68 @@ doing anything is not a call this lane should make unilaterally. Parent watchers
 (they see all their child's sessions, so both drafts and the chips appear).
 
 Gate: build green · `test:run` **345 passed** · `test:continuation` GREEN.
+
+## 2026-08-16 — Scaffold GROWTH: escape the fixed structure (Sierra) — focus/coaching-session
+
+**The trap.** `[SCAFFOLD:type:count]` fires once and the structure is fixed for the life of
+the session. A ten-scene story scaffolded as ONE section had to hold every scene in that one
+container, so its assembly payload grew until it hit the model ceiling: ~1,200 confirmed
+words, 30k characters in `messages`, and nowhere to put the next scene.
+
+**Verified before building (all three handed-over claims held).** The continuation guard
+ALREADY permits growth — re-confirmed against the real function, not taken on report:
+same-size v2 → `null` (refused), grown → points at the first new empty section. No guard
+weakening. `continue/route.js` does require `status='complete'`, so it genuinely cannot reach
+a live session. The read-back did assert `components.length === v1's`, which a grown scaffold
+would trip.
+
+- **`lib/scaffoldGrowth.js`** (pure): `growComponents` appends empty sections, carrying every
+  existing section by OBJECT IDENTITY — "grow AND edit" is unrepresentable through the API,
+  not merely guarded. Plus `verifyGrowth` (the post-write assertion, kept pure so it is itself
+  tested) and `reconcileComponentsWrite` (the stale-shrink guard). **23 tests.**
+- **`POST /api/scaffold/[sessionId]/grow`** — growth IN PLACE on a live session, which is what
+  reaches Sierra. Client sends only a COUNT; the server appends to what is STORED, so no wire
+  format can carry an altered section. Owner-only; 409 on a complete session; read error
+  checked (a swallowed read would append to `[]`); property proven before the write AND
+  against what landed; **compare-and-swap on `updated_at`** so a concurrent lock cannot be
+  silently reverted.
+- **Read-back FIXED, not deleted** — `v1.components.length + growBy`, with `growBy` a
+  validated (0..20) parameter running through the same pure append-only function.
+- **UI**: "+ Add another section", gated on `phase === 'listening'`, adopting the server's
+  returned components via `applyScaffold` (see the red-team notes below for why that matters).
+
+### Adversarial pass (Fable) — 2 ship-blockers found and FIXED, both real
+- **F1 HIGH — id collision destroying confirmed text.** New custom items were minted `c${sectionIndex}`,
+  but Sierra's ONE section holds `c0..c9`, so the first grown section got `c1` — Scene 2's id.
+  `[DONE:c1:…]` takes the local exact match and the exact path lets a revision win over
+  confirmed text, so a revision aimed at Scene 2 would have OVERWRITTEN the grown section's
+  words. This is exactly the "component ids are unique" premise CLAUDE.md records as FALSE —
+  and my own test asserted the colliding id as *correct*. Ids are now minted against every id
+  in the whole tree; regression tests cover the ten-scene shape and id gaps.
+- **F2 HIGH — no server-side shrink guard.** Growth silently invalidated the premise every
+  whole-array writer depends on ("the client array is always a superset"). A second tab opened
+  before a growth would, on its next lock — or on COMPLETION, which freezes it into the
+  watcher-facing record — write back a shorter array and delete the grown section and its work.
+  Sections are only ever appended, so a shorter incoming array means a stale sender: both the
+  scaffold PATCH and `upsertScaffoldSnapshot` now carry the stored tail across and log loudly.
+- **F4 MED** — grow's read-modify-write could revert a concurrent lock while its read-back
+  passed against its own stale baseline → fixed with the CAS above (409 + retry).
+- **F5 MED** — grow never updated `total_paragraphs`, so the coach prompt kept describing the
+  OLD size and never learned the new section existed → fixed.
+- **F6 MED** — appended type inherited the LAST section's type, so a finished essay grew a
+  SECOND CONCLUSION → prose now grows by a `body`; custom stays custom.
+- **F3 MED** — an in-flight coach turn re-applies a pre-grow copy → button gated on `listening`.
+- **Clean per the review:** authz, rate limiting, resolver behaviour on grown scaffolds (both
+  modes), append-only purity, and continue's rollback ordering.
+
+### Known / deliberately NOT fixed here
+- **F7** an unused grown section blocks the full-essay assembly card (no shrink/undo exists).
+- **F8** `lib/prompts.js:309` still tells the coach the paragraph count "CANNOT be increased
+  later", and nothing teaches it to advance onto a grown section — **coach-ai's lane**, needs
+  the coach-prompt skill + `test:prompts`. Until then the student drives growth via the button.
+- Empty grown sections are inert at completion (both `assembleUnbuiltParagraphs` and
+  `persistCustomFinals` require a confirmed item with text) — verified by reading the filters.
+
+Gate: build green · `test:run` **638 passed** · `test:continuation` GREEN.
+Manual check owed: grow Sierra's session (button or one POST), confirm her 1,200 words are
+untouched and the new section accepts a scene.
