@@ -21,8 +21,8 @@
 -- lib/coachCommitments.js detectLockOverClaim() compares the PROSE claim against the
 -- TOKEN count on every turn, server-side, in /api/tutor's after() hook.
 
-insert into public.schema_migrations (version, name)
-values (70, 'lock_over_claim');
+insert into public.schema_migrations (version, applied_at, note)
+values ('070', now(), 'lock over-claim counter');
 
 alter table sessions
   add column if not exists lock_over_claims     integer not null default 0,
