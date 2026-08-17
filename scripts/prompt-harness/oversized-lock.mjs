@@ -16,6 +16,7 @@
 // ~4 turns, roughly 5 cents.
 
 import { coachTurn, check, report } from './lib/harness.mjs'
+import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 
 // Reported, not gated. Same call the Rule 24 probe makes: a check that flips run to run
 // gets ignored when it blocks, so behaviours we have NOT fixed are printed loudly and the
@@ -135,25 +136,23 @@ check('P2: the FIRST half survives into a lock payload',
 // was never locked and the student had been told it was safe — the same loss as a split
 // lock, reached by a different route. So: if the reply CLAIMS more than one is in, more
 // than one lock must have fired.
-// Allow a noun between the quantifier and the verb — "Both SCENES are locked in". The
-// first version of this regex required them adjacent, so it did NOT match that sentence
-// and reported "no over-claim" on a reply that over-claimed. A false GREEN on the check
-// guarding the loss is worse than the red beside it, so this one is asserted below
-// against a known-bad string.
-const CLAIMS_MULTIPLE =
-  /\b(?:both|all (?:three|four))\b[^.!?\n]{0,30}\b(?:locked|saved|are in|in your draft)\b|locked (?:them )?both\b/i
-const claimsBoth = CLAIMS_MULTIPLE.test(pLock)
-// Self-test the detector against the exact sentence that slipped past its first version.
-// A checker for a data-loss claim has to be shown to fire.
-check('P2: [detector self-test] the over-claim regex catches the real sentence',
-  CLAIMS_MULTIPLE.test("Both scenes are locked in — they're in your Draft.")
-  && !CLAIMS_MULTIPLE.test("Scene one is in — say the word and I'll put scene two in next."))
-// GATED, because it is measured: 3/3 over-claim WITHOUT Rule 25, 0/4 WITH it, same
-// fixture. The coach used to emit one [DONE:] and write "Both scenes are locked in",
-// leaving the second section unsaved while telling the student it was safe.
+// Uses the SAME detector /api/tutor runs (lib/coachCommitments.js), not a second copy of
+// the idea. A probe with its own regex drifts from the shipped guard — the defect class
+// this whole day was about. It also means a green probe is evidence about the GUARD, not
+// just about the prompt.
+const overClaim = detectLockOverClaim(pLock)
+// Self-test: fire on the real sentence, stay quiet on the honest one. The probe's earlier
+// private regex required the quantifier adjacent to the verb, so it reported "no
+// over-claim" on a reply that over-claimed — a false GREEN on the check guarding the loss.
+check('P2: [detector self-test] fires on the real sentence, not the honest one',
+  detectLockOverClaim('Both scenes are locked in.\n[DONE:c0:one]').overClaimed
+  && !detectLockOverClaim("Scene one is in — say the word and I'll put scene two in next.\n[DONE:c0:one]").overClaimed)
+// GATED, because it is measured: 3/3 over-claim WITHOUT Rule 25, 0/4 WITH it, same fixture.
 check('P2: does not claim more sections are locked than tokens emitted',
-  !claimsBoth || lockDones.length >= 2,
-  claimsBoth ? `claims plural, emitted ${lockDones.length} — the unclaimed section is NOT saved` : `no over-claim (${lockDones.length} lock(s))`)
+  !overClaim.overClaimed,
+  overClaim.overClaimed
+    ? `claims ${overClaim.claimedAtLeast}, emitted ${overClaim.emitted} — "${overClaim.sentence.slice(0, 50)}"`
+    : `no over-claim (${lockDones.length} lock(s))`)
 check('P2: the SECOND half is locked, or honestly still pending',
   allLocked.includes('the field looked much wider')
   || allLocked.includes('by the third morning')

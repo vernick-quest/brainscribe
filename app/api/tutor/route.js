@@ -7,7 +7,7 @@ import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
-import { parseCommitments } from '@/lib/coachCommitments'
+import { parseCommitments, detectLockOverClaim } from '@/lib/coachCommitments'
 import { hasLandedLockToken, stripCoachTokens } from '@/lib/coachTokens'
 
 const anthropic = new Anthropic()
@@ -228,6 +228,33 @@ export async function POST(request) {
         p_had_lock_token: hadLockToken,
       })
       if (truncErr) console.error('[tutor] truncation record failed:', truncErr.message)
+    }
+
+    // Did the coach tell the student more was saved than it actually saved? Rule 25 holds
+    // this at 0/4 in the prompt harness, but that is a behavioural rate re-measured on
+    // every prompt change, not a guarantee — so check it deterministically here. The turn
+    // has already streamed, so this never blocks; it makes a silent loss LOUD and
+    // countable. Same service-client reasoning as the truncation counter: the signal must
+    // not be forgeable by a signed-in user against an arbitrary session.
+    try {
+      const overClaim = detectLockOverClaim(rawText)
+      if (overClaim.overClaimed) {
+        console.error(
+          `[tutor] LOCK OVER-CLAIM session=${sessionId} — the coach claimed ${overClaim.claimedAtLeast} ` +
+          `section(s) were locked but emitted ${overClaim.emitted} lock token(s). The unclaimed ` +
+          `section was NOT saved and the student has been told it was. Sentence: "${overClaim.sentence}"`
+        )
+        const { error: ocErr } = await createServiceClient().rpc('record_lock_over_claim', {
+          p_session_id: sessionId,
+          p_claimed: overClaim.claimedAtLeast,
+          p_emitted: overClaim.emitted,
+        })
+        // Migration 070 is applied BY HAND, so this deploy can land before the function
+        // exists. The console.error above is the part that must never depend on the DB.
+        if (ocErr) console.error('[tutor] over-claim record failed:', ocErr.message)
+      }
+    } catch (err) {
+      console.error('[tutor] over-claim check threw (non-fatal):', err?.message)
     }
 
     // Record what the coach PROMISED it saved, from the raw stream before the tokens are
