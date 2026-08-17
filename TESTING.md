@@ -3930,3 +3930,60 @@ the first time either fires.
   needs a migration. Not urgent: nothing is clean enough to hit it yet.
 - **Threshold re-check** a week after scaffold growth sees real use: re-run the
   sections-per-scaffold comparison; Sierra remains the per-signal self-clearing test.
+## 2026-08-17 — Lock-by-reference: the pure resolution rules — focus/coaching-session
+
+Step 2 of `SPEC-lock-by-reference.md` ("tests first — the resolution rules are pure
+functions and belong in `lib/` with a test file **before any prompt changes**"). This is the
+resolution half ONLY. The token contract and the prompt that emits these forms are
+`focus/coach-ai`'s and **must land with this** — a prompt emitting a form the client cannot
+resolve silently breaks every lock.
+
+**`lib/lockByReference.js` (pure, 20 tests).** Three exports:
+- `parseLockPayload(rest)` → `bare` | `anchored{start,end}` | `inline{text}`. Lenient at the
+  PARSE layer (curly quotes, `...` as well as `…`) because that is what a real model emits;
+  strict at the RESOLUTION layer. Leniency about how the form is written is not leniency
+  about which span gets picked. **`inline` is still read and always will be** — old sessions
+  keep old payloads forever (spec, Rollout 5).
+- `resolveAnchoredSpan(anchors, userMessages)` → the five spec rules, in order: start matches
+  exactly one position; end matches exactly one, after the start; both in the same message
+  (v1); the resolved text is asserted to be a contiguous substring; any failure refuses with
+  a machine-readable `reason` and never an approximate span.
+- `resolveLockPayload(rest, userMessages)` — one-shot convenience.
+
+**Judgement calls, flagged rather than buried:**
+- **Ambiguity is GLOBAL, not per-message.** A phrase the student used in two different turns
+  refuses. Picking the first is exactly the "wrong span that looks finished" the spec forbids.
+- **Whitespace-tolerant matching, byte-exact extraction.** A model quoting a passage
+  reliably reproduces the words and unreliably reproduces a newline the student typed
+  mid-sentence, so matching runs on a whitespace-normalized view with an offset map back to
+  the original — and the span is then cut from the ORIGINAL string. This can only ever turn
+  one match into several (which refuses), so it fails toward refusal. Test asserts the
+  original whitespace survives.
+- **Case-sensitive.** A differently-cased quote refuses rather than resolving.
+- **Caller must pass `role:'user'` messages only** — documented in the signature. Passing
+  coach turns would let the coach anchor into its own words and reintroduce the exact
+  tampering this mechanism exists to prevent.
+
+**The spec's headline assertion is tested directly:** a ~900-word passage resolves from a
+~100-character payload (<2% of the passage), against the ~1,200-token echo it replaces —
+which is what blew the ceiling and produced ZERO parsed locks, twice.
+
+### NOT done here (deliberate, not overlooked)
+- **The DONE/NUGGET handler is NOT yet wired to this** (spec Rollout step 1, "client accepts
+  the new forms alongside the existing inline payload"). It touches the scaffold write path,
+  so it wants its own adversarial pass, and it is inert until coach-ai's prompt emits the
+  forms. Next task in this lane.
+- **Mechanism 1 (bare `[DONE:id]`)** already exists as the handler's *fallback*
+  (`resolveDoneText` → nuggetText/existing). Making it the PRIMARY path is part of the same
+  wiring step. Note the spec's reload caveat: it depends on client state, so a refresh must
+  refuse rather than lock the wrong thing.
+- **Multi-message spans** refuse in v1 by design — measure how often before deciding.
+
+### 🔴 Owed to another lane (spec, "Interaction with provenance")
+Referenced locks have a `novelFraction` of 0 **by construction** — the text came out of the
+student's own message. That is correct, and it means the provenance scorer stops carrying
+signal for those locks. **Lever B's threshold work must not be calibrated on a mixed corpus
+of echoed and referenced locks** — the two have completely different distributions.
+Referenced locks need to be identifiable in the record. Flagged to the Lever B owner.
+
+Gate: build green · `test:run` **715 passed** (20 new).
