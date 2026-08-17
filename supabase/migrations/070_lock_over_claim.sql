@@ -1,8 +1,10 @@
--- 069 — Count the turns where the coach said more was saved than it saved
+-- 070 — Count the turns where the coach said more was saved than it saved
 --
--- ⚠️ NUMBER IS PROVISIONAL. Ledger head was 068 when this was written; confirm with
---   select max(version) from public.schema_migrations;
--- at merge, and renumber if another lane landed first. NOT applied yet — a human runs it.
+-- RENUMBERED 069 → 070 at merge by the conductor. 069 was taken by
+-- 069_session_health_findings.sql (focus/admin), applied 2026-08-16. The lane's number was
+-- correct when written and stale by the time it landed — which is the whole reason the
+-- ledger's insert carries no `on conflict`: pasting this as 069 would have failed loudly on
+-- a duplicate key rather than half-applying against another lane's row.
 --
 -- WHY: a student hands over a passage too big for one section, the coach agrees to put it
 -- in as two scenes, then emits ONE [DONE:] and writes "Both scenes are locked in." The
@@ -20,7 +22,7 @@
 -- TOKEN count on every turn, server-side, in /api/tutor's after() hook.
 
 insert into public.schema_migrations (version, name)
-values (69, 'lock_over_claim');
+values (70, 'lock_over_claim');
 
 alter table sessions
   add column if not exists lock_over_claims     integer not null default 0,
@@ -39,6 +41,11 @@ comment on column sessions.last_over_claim_at is
 -- NOT scoped with `and student_id = auth.uid()`: admin remote-in makes auth.uid() the
 -- ADMIN, so the update would match zero rows and report success — a silent no-op inside a
 -- silent-no-op detector.
+-- ⚠️ p_claimed and p_emitted are ACCEPTED AND NOT STORED. Said plainly here because a
+-- parameter the caller believes is being recorded is the same shape as every silent no-op
+-- in this repo's history. The magnitudes live in the route's console.error alongside the
+-- offending sentence, which is what triage actually reads; the signature keeps them so a
+-- later migration can persist them without changing the call site.
 create or replace function record_lock_over_claim(
   p_session_id uuid,
   p_claimed    integer,

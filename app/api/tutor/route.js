@@ -249,7 +249,7 @@ export async function POST(request) {
           p_claimed: overClaim.claimedAtLeast,
           p_emitted: overClaim.emitted,
         })
-        // Migration 069 is applied BY HAND, so this deploy can land before the function
+        // Migration 070 is applied BY HAND, so this deploy can land before the function
         // exists. The console.error above is the part that must never depend on the DB.
         if (ocErr) console.error('[tutor] over-claim record failed:', ocErr.message)
       }
