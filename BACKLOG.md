@@ -772,7 +772,12 @@ feature is new behaviour, and needs a product decision before code.
 limitation — it belongs to the writing-space feature, not to the undo bug. Raising it would
 make the bug LESS visible without fixing it, which is the worse outcome.
 
-## 🐞 BUG · P0 — Composer loses work with no undo  ·  `focus/coaching-session`
+## 🐞 BUG · P0 — Composer loses work with no undo  ✅ SHIPPED 2026-08-17 SF (`0351444`)
+`lib/composerDraft.js`, feeding the EXISTING `recoveredText` path. Its adversarial pass caught
+the fix's own worst bug: `MicButton.js:74` fires `onInterim('')` on every start, so type an
+outline → tap the mic → send would have DELETED the outline — her exact scenario, destroyed by
+the thing built to save it. ⚠️ React wiring has no automated test (no jsdom); the 4-step manual
+pass in TESTING.md is genuinely owed.
 The ONLY item that destroyed real writing and is still unaddressed. Her words:
 *"make it so you can get back something you delete… I ended up deleting probably at least
 half an hour of work."* Cut-and-paste in the composer, no server involved, nothing failing —
@@ -794,14 +799,58 @@ third party, changed retention, new exposure, or the consent flow itself.
 Also: the box is capped at `Math.min(el.scrollHeight,160)` — ~6 lines. She pasted 1,076
 words into it.
 
-## ✨ FEATURE · P1 — A real writing space  ·  `focus/coaching-session`
-Her framing beats ours: brain-dump/outline → draft → edit/final, *"so you can edit your
-draft right as they give you feedback rather than having to remember your draft and all the
-feedback."* Supersedes "bring in what I've already written" (a subset). Her second variant —
-edit in the draft space, then send to the coach — is cheaper and reuses the post-assembly
-editor. Spec before code. The undo stack belongs HERE, not bolted into a 160px box.
+## ✨ FEATURE · P1 — A real writing space — SPLIT INTO TWO
+Her framing was brain-dump → draft → edit. The conductor objected that a free-form space
+inverts the Socratic interaction and weakens "can't cheat"; **Robert's counter dissolved it** —
+*"kids can start with something they have already written… show them where they started and
+then keep the working draft as a space."* A DECLARED starting point is a baseline, not a
+bypass, and the coach stays upstream of everything new. It is also not a fourth space: the
+draft space already exists.
 
-## 🐞 BUG · P1 — Assembly restructures the draft (RE-SCOPED, was P0)  ·  `focus/coach-ai`
+**(a) Starting draft — 📤 SPEC'D + FARMED OUT.** `SPEC-starting-draft.md`, cross-lane
+(`focus/assignment-intake` captures, `focus/coaching-session` renders + wires `studentSources`).
+
+**(b) 🔴 Editable draft BEFORE lock — AGREED, NOT SPEC'D, NOT FARMED OUT.**
+`focus/coaching-session`. This is the half that answers her actual complaint —
+*"having to remember your draft and all the feedback you got on it before rewriting it."*
+Make the draft space editable before the lock, reusing the post-assembly editor she already
+knows. Cheapest of the three and closest to what she asked for. **Nothing exists for this yet.**
+
+⚠️ The 160px composer cap (`Math.min(el.scrollHeight, 160)`) belongs HERE, not to the undo bug.
+Raising it as part of a persistence fix would make that bug LESS VISIBLE without fixing it.
+
+## ✨ FEATURE · P1 — `writing_mode`, inferred at scaffold time  🔴 NOT SPEC'D, NOT FARMED OUT
+`focus/assignment-intake`. **Robert's design, 2026-08-17 SF**, better than the conductor's
+"ask at intake": *"the time to infer whether this is school work or free form writing is when
+assessing the scaffolding. If there is no specific requirements, no word count, no set number
+of paragraphs, no brief, and they say no there is no requirements I just want to write
+something, it can be inferred."*
+
+Asking gets a claim; observing gets evidence — a student rushing intake taps anything. **Three
+of the four signals are already in the DB**: `sessions.requirements` is `{targets:[…],
+actual:{…}}`, so missing `type:'words'` and `type:'paragraphs'` targets plus a thin
+`assignment_text` is most of it.
+
+🔴 **But absence is ambiguous** — `targets: []` means EITHER "the student said there are no
+requirements" OR "the scaffold step never got that far." Same shape as an empty findings table
+reading as "nothing at risk" when the pass had never run. **Store it explicitly at scaffold
+creation, sticky, never recomputed on read:**
+
+    sessions.writing_mode  'school' | 'personal' | 'unknown'   default 'unknown'
+
+`unknown` is the honest default and must stay distinguishable forever.
+
+🔴 **No new stream token.** `[MODE:personal]` is tempting and refused — the token contract is
+the most dangerous surface in the repo. Derive server-side at scaffold creation and put the
+result in the prompt; the coach reads the answer, it does not report it.
+
+## 🐞 BUG · P1 — Assembly restructures the draft  ✅ SHIPPED 2026-08-17 SF (`0351444`)
+Branches on `paragraphType`. Stories get a verbatim prompt; essay prose keeps smoothing bounded
+to the component seam. **Correction to the conductor's analysis:** on a synthetic fixture BOTH
+of Sierra's claims reproduce (ellipsis 1→0, all 16 breaks destroyed) — measuring only her row
+said otherwise. After: 100% survival. Prompt lives in pure `lib/assemblePrompt.js`.
+🟡 Scribe audited, NOT touched: lines 7/8 permit what line 12 forbids, and "tighten run-on
+sentences" is a licence to split. Didn't fire on her row (106→106).
 Measured, so aim at the real defect: **the assembler inserted ~29 unrequested paragraph
 breaks** (3 → 32), restructuring one flow into ~30 paragraphs. That is the most visible
 change to a story and the best candidate for what she saw. Secondary: ~6% of her wording
@@ -840,7 +889,9 @@ the coach real context — a personal story and a graded essay want different qu
 correctly refer to the pasted assignment text and must stay. Not a rename — a prompt change,
 so `test:prompts`. Do not sed it.
 
-## ✨ FEATURE · P2 — Coach speech speed  ·  `focus/coaching-session`
+## ✨ FEATURE · P1 — Coach speech pace  📤 SPEC'D + FARMED OUT 2026-08-17 SF
+`SPEC-coach-pace.md` · `focus/coaching-session` (moved from assignment-intake once the picker
+entry point was cut). Promoted P2→P1: it is accessibility, not a preference.
 *"it'd be nice if you could make it so the coaches can talk slower or faster per your need."*
 `app/api/speak/route.js:41` already sends `voice_settings` with no `speed`. A per-student
 preference beside the read-aloud toggle. After the two above.
