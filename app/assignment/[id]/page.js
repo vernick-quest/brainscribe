@@ -15,7 +15,7 @@ export default async function AssignmentPage({ params }) {
   if (!user) redirect('/login')
 
   const { data: adminProfile } = await supabase
-    .from('profiles').select('full_name, role, onboarding_complete, avatar_url, age_bracket, coach_read_aloud, voice_prompt_dismissed_at').eq('id', user.id).single()
+    .from('profiles').select('full_name, role, onboarding_complete, avatar_url, age_bracket, coach_read_aloud, coach_pace, voice_prompt_dismissed_at').eq('id', user.id).single()
 
   const imp = await getImpersonation(adminProfile)
 
@@ -26,7 +26,7 @@ export default async function AssignmentPage({ params }) {
   const [{ data: session }, { data: profile }] = await Promise.all([
     service.from('sessions').select('*').eq('id', id).single(),
     imp
-      ? service.from('profiles').select('full_name, role, onboarding_complete, avatar_url, age_bracket, coach_read_aloud, voice_prompt_dismissed_at').eq('id', effectiveUserId).single()
+      ? service.from('profiles').select('full_name, role, onboarding_complete, avatar_url, age_bracket, coach_read_aloud, coach_pace, voice_prompt_dismissed_at').eq('id', effectiveUserId).single()
       : Promise.resolve({ data: adminProfile }),
   ])
 
@@ -187,7 +187,8 @@ export default async function AssignmentPage({ params }) {
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       initialSources={sources ?? []}
-      initialStartingDraft={startingDraft}
+      initialStartingDraft={startingDraft.draft}
+      startingDraftReadState={startingDraft.state}
       isContinuation={!!session.continued_from}
       watcherCount={watcherCount}
       country={geoCountry}

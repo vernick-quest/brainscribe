@@ -269,11 +269,12 @@ export default async function TranscriptPage({ params, searchParams }) {
             draft's section, between its heading and its body, which reads to a skimming
             parent as part of the final draft — the one thing the spec says it must never
             be. Always visible to a linked watcher, labelled, its own container. */}
-        {startingDraft && (
+        {(startingDraft.draft || startingDraft.state === 'unknown') && (
           <section className="rounded-2xl p-6"
             style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
             <StartingDraftCard
-              startingDraft={startingDraft}
+              startingDraft={startingDraft.draft}
+              readState={startingDraft.state}
               draftWords={computeActualFromDraft(paragraphs ?? [], scaffold?.components).words}
               draftText={essay}
               audience={isOwner ? 'student' : 'watcher'}

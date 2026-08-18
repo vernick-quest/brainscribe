@@ -19,7 +19,7 @@ import { growthSummary } from '@/lib/startingDraft'
 export default function StartingDraftCard({
   startingDraft,          // { content, word_count, source, created_at } | null
   draftWords = 0,         // from computeActualFromDraft — never recomputed here
-  draftText = '',         // the working draft, for the overlap measurement
+  readState = 'absent',   // 'present' | 'absent' | 'no-table' | 'unknown'
   audience = 'student',   // 'student' | 'watcher'
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -43,6 +43,23 @@ export default function StartingDraftCard({
       ? t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
       : null)
   }, [startingDraft?.created_at])
+
+  // A read we could not complete is NOT the same as no starting draft, and silently
+  // rendering nothing is the reassuring-direction failure: it drops the "arrived with"
+  // half, so a watcher reads the whole working draft as new writing. Say what happened.
+  if (readState === 'unknown') {
+    return (
+      <div className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-muted)' }}>
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+          Starting draft
+        </span>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          We couldn&rsquo;t load what {audience === 'watcher' ? 'they' : 'you'} started with just now, so the
+          comparison below is incomplete. Nothing has been lost — try reloading.
+        </p>
+      </div>
+    )
+  }
 
   // Gate on the SUMMARY, not on content alone. If word_count is null, 0, or unreadable the
   // artifact is the only thing this card is for, and rendering "Arrived with 0 words" above
