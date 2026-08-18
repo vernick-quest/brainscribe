@@ -82,6 +82,8 @@ STRICT RULES:
 - Use ONLY the ideas and words provided in the paragraphs.
 - Do NOT add new arguments, evidence, examples, or ideas.
 - You may adjust transition words at paragraph boundaries only — where one paragraph ends and the next begins.
+- NEVER add, remove, or move a paragraph break. Every paragraph arrives already written and already shaped; reproduce each one's internal line and paragraph structure EXACTLY, including blank lines and dialogue on its own line, and keep the paragraphs themselves separate. Re-paragraphing is the most visible way to alter a piece of writing and it is never yours to do.
+- Do NOT combine or split the student's sentences, and do NOT change their punctuation or capitalisation — ellipses, dashes, fragments and a deliberate lowercase opening are choices they made.
 - Do NOT remove any of the student's ideas.
 - Preserve the student's natural voice and vocabulary exactly.
 - Output ONLY the assembled essay — no commentary, no labels, no preamble.`,

@@ -105,8 +105,9 @@ check('asks what they want to strengthen or add', /\?/.test(p2))
 // and not with it, the block is the thing jamming it shut — not the review gates.
 console.log('\nPROBE 3 — later in the v2: work added, both reviews done, student says finish it')
 // The scaffold is UNCHANGED — that is the real post-addition state, and it is what
-// makes this a hard test. The paragraph count is fixed in v1 of this feature, so a
-// dictated addition lands as a new `paragraphs` row and never grows the scaffold: the
+// makes this a hard test. A DICTATED addition never grows the scaffold (growth is the
+// student's separate "+ Add another section" tap, not something dictation triggers), so it
+// lands as a new `paragraphs` row and leaves the components alone: the
 // coach is still staring at "all 3 paragraphs ✓ done, nothing queued" at the exact
 // moment it has to decide whether completing is now allowed. Only the word/paragraph
 // counts in ASSIGNMENT REQUIREMENTS move. (An earlier version of this probe faked a
