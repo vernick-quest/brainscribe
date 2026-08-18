@@ -15,7 +15,7 @@ const MAX_MB = 5
 
 // Shown one at a time while the session is being created.
 const PROGRESS_MESSAGES = [
-  'Reading your assignment…',
+  'Reading what you wrote…',
   'Spotting the key requirements…',
   'Building your outline…',
   'Setting up your coach…',
@@ -231,7 +231,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
   function handleNext() {
     if (uploading) return
     if (!assignment.trim()) {
-      setSubmitError('Add your assignment first — paste it, upload a photo, or browse writing ideas.')
+      setSubmitError('Add what you\u2019re writing first — paste it, upload a photo, or browse writing ideas.')
       return
     }
     setSubmitError('')
@@ -341,7 +341,10 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignmentText, persona, subject: 'unspecified' }),
+        // `fromSampleLibrary` is POSITIVE evidence for writing_mode: the prompt came from our
+        // own chooser, so no teacher set it. It is a hint, not a verdict — school markers in
+        // the text still win server-side (lib/writingMode.js).
+        body: JSON.stringify({ assignmentText, persona, subject: 'unspecified', fromSampleLibrary: chosenForm != null }),
       })
       const session = await res.json()
       if (!res.ok || !session.id) {
@@ -397,7 +400,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
           )}
 
           <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 'var(--space-1)' }}>
-            Step 1 · Your assignment
+            Step 1 · What you’re writing
           </span>
           <h2 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: '0 0 var(--space-1)' }}>
             What are you writing?
@@ -409,7 +412,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
             ref={textareaRef}
             value={assignment}
             onChange={e => { setAssignment(e.target.value); if (submitError) setSubmitError(''); if (chosenForm) setChosenForm(null) }}
-            placeholder="Paste or type your writing assignment here…"
+            placeholder="Paste or type what you're writing here…"
             rows={4}
             className="w-full resize-none focus:outline-none focus:ring-2 transition"
             style={{ font: 'var(--type-body)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '12px 14px', '--tw-ring-color': 'var(--ring)', color: 'var(--text-strong)' }}
@@ -429,7 +432,7 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
           <div
             role="button"
             tabIndex={0}
-            aria-label="Upload a photo or PDF of your assignment"
+            aria-label="Upload a photo or PDF of what you're writing"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
@@ -524,11 +527,11 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
           <button onClick={goBackToAssignment} type="button"
             className="inline-flex items-center gap-1.5"
             style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, marginBottom: 'var(--space-2)' }}
-            aria-label="Back to your assignment">
+            aria-label="Back to what you're writing">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5M11 18l-6-6 6-6" />
             </svg>
-            Back to your assignment
+            Back to what you’re writing
           </button>
 
           <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 'var(--space-1)' }}>
@@ -636,11 +639,11 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
           <button onClick={goBack} type="button"
             className="inline-flex items-center gap-1.5"
             style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, marginBottom: 'var(--space-2)' }}
-            aria-label="Back to your assignment">
+            aria-label="Back to what you're writing">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5M11 18l-6-6 6-6" />
             </svg>
-            Back to your assignment
+            Back to what you’re writing
           </button>
 
           <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 'var(--space-1)' }}>

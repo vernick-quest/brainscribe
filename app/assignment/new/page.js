@@ -85,9 +85,9 @@ export default async function NewAssignmentPage({ searchParams }) {
             </svg>
             Folder
           </a>
-          <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '0 0 4px' }}>Start a new assignment</h1>
+          <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: '0 0 4px' }}>Start a new project</h1>
           <p style={{ font: 'var(--type-lead)', color: 'var(--text-muted)', margin: 0 }}>
-            Add your assignment and pick the coach who fits it best — we&apos;ll take it from there.
+            Add what you&apos;re writing and pick the coach who fits it best — we&apos;ll take it from there.
           </p>
         </div>
         {ageOk
