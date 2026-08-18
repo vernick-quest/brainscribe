@@ -105,6 +105,46 @@ export function check(label, passed, detail = '') {
   console.log(`  ${passed ? '✅' : '🔴'} ${label}${detail ? ` — ${detail}` : ''}`)
 }
 
+/**
+ * A check whose PASS RATE is the result, for behaviours that are genuinely probabilistic.
+ *
+ * ── Why a rate and not a retry ───────────────────────────────────────────────────────
+ * Three different probes went red across one evening's full runs and all three
+ * re-measured clean. The tempting fix is to retry until green. That is the wrong fix: a
+ * suite that retries to green reports a behaviour which regressed from 100% to 50% as
+ * PASSING, and the regressions this repo actually ships are exactly that shape — silent,
+ * partial, and in the reassuring direction.
+ *
+ * So: run it N times, print what it scored, and fail below a threshold set from a MEASURED
+ * baseline. "P3 passed 2/3" is information; "P3 passed (eventually)" is not.
+ *
+ * FIRST ask whether the fixture is the problem. grown-story probe 1 measured ~50% because
+ * one confirmation turn left the coach free to ask again; a second confirmation took it to
+ * 3/3 and the assertion stayed hard. Strengthen the fixture, weaken nothing — reach for
+ * this only when the behaviour itself is legitimately variable.
+ *
+ * @param produce  async () => result — re-runs the whole turn, so variance is real variance
+ * @param checks   [{ label, test(result) }]
+ * @param threshold  minimum fraction that must pass; set it from what you measured
+ */
+export async function rateCheck({ label, runs = 3, produce, checks, threshold = 2 / 3 }) {
+  const outcomes = checks.map(c => ({ ...c, passes: 0 }))
+  for (let i = 0; i < runs; i++) {
+    const result = await produce(i)
+    for (const o of outcomes) {
+      let ok = false
+      try { ok = !!o.test(result) } catch { ok = false }
+      if (ok) o.passes++
+    }
+  }
+  const need = Math.ceil(threshold * runs)
+  console.log(`  📊 ${label} — ${runs} runs, need ${need}/${runs}`)
+  for (const o of outcomes) {
+    check(`${o.label} [${o.passes}/${runs}]`, o.passes >= need, o.passes === runs ? '' : `rate ${(o.passes / runs * 100).toFixed(0)}%`)
+  }
+  return outcomes
+}
+
 export function report(probeName) {
   const failed = results.filter(r => !r.passed)
   console.log(`\n${failed.length === 0 ? '✅ PASS' : `🔴 FAIL (${failed.length})`} — ${probeName}\n`)

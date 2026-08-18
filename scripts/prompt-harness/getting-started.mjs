@@ -16,7 +16,7 @@
 //
 // ~6 turns, roughly 6 cents.
 
-import { coachTurn, check, report } from './lib/harness.mjs'
+import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
 
 const SET_TOPIC = `Literary analysis: choose one character from the novel we read this term and argue
 how they change over the course of the story. 4-5 paragraphs. Due Thursday.`
@@ -56,24 +56,22 @@ const PROPOSES_TOPIC =
 //
 // Probes 2 and 3 are the same ready signal WITHOUT a content gap and they pass reliably —
 // that contrast is the actual finding here.
-const P1_RUNS = 3
-console.log(`PROBE 1 — ready, count stated, but the coach doesn't know the text (${P1_RUNS} runs, rate check)`)
+console.log("PROBE 1 — ready, count stated, but the coach doesn't know the text")
 const p1Msgs = [
   { role: 'user', content: "hi, i already know what im doing for this one" },
   { role: 'assistant', content: "Great — tell me what you've got." },
   { role: 'user', content: "im doing the younger brother. intro about how he acts at the start, then one paragraph on the fight with his dad, then one on the letter he never sends, then one on the ending where he goes back, then a conclusion. so 5 paragraphs. can we start writing it" },
 ]
-let p1Built = 0
-for (let i = 0; i < P1_RUNS; i++) {
-  const { text } = await coachTurn({ assignment: SET_TOPIC, messages: p1Msgs })
-  const built = /\[SCAFFOLD:[a-z]+:5\]/.test(text)
-  if (built) p1Built++
-  console.log(`  run ${i + 1}: ${built ? 'scaffolded 5' : 'STALLED — ' + text.replace(/\s+/g, ' ').slice(0, 120)}`)
-}
-console.log('─'.repeat(70))
-// Floor, not a target. 0/3 means the ready signal stopped working entirely.
-check(`scaffolds on the ready signal at least once in ${P1_RUNS}`, p1Built > 0, `${p1Built}/${P1_RUNS}`)
-console.log(`  📊 RATE: ${p1Built}/${P1_RUNS} — baseline without Rule 24 measured 4/6, with it 5/6. Track the trend.`)
+// THRESHOLD 1/3 — a FLOOR, not a target, and deliberately the weakest in the suite. This
+// case is not fixed: 4/6 without Rule 24, 5/6 with it, which is noise. The number to watch
+// is the printed rate over time, not the pass. 0/3 means the ready signal died entirely.
+await rateCheck({
+  label: 'PROBE 1 (ready + content gap) — baseline 4/6 without Rule 24, 5/6 with it',
+  runs: 3,
+  threshold: 1 / 3,
+  produce: async () => (await coachTurn({ assignment: SET_TOPIC, messages: p1Msgs })).text,
+  checks: [{ label: 'scaffolds the stated count on the ready signal', test: t => /\[SCAFFOLD:[a-z]+:5\]/.test(t) }],
+})
 
 // ── PROBE 2 — ready signal WITHOUT a count (the Rule 2 / Rule 24 seam) ───────────────
 // [SCAFFOLD:type:count] needs a number and fires only once, so the structure question is
@@ -98,25 +96,31 @@ check('stays within the two-question house rule', questionCount(p2) <= 2, `${que
 check('does not go back to idea-finding', !/what (?:else|other|made|did you feel)|tell me more about (?:a|another)/i.test(p2))
 
 // ── PROBE 3 — explicit pushback on being asked more ──────────────────────────────────
+// RATE-CHECKED. The two-question check came back 3 once and 0-2 on every re-measure — the
+// coach sometimes adds a second question after scaffolding, which is inside the house rule
+// but sits on its edge. Reporting the rate makes a real regression (say 100% -> 50%) visible,
+// which retrying-until-green would hide.
 console.log('PROBE 3 — student pushes back on being questioned')
-const { text: p3 } = await coachTurn({
-  assignment: OPEN_TOPIC,
-  messages: [
-    { role: 'user', content: "i want to write about my old dog" },
-    { role: 'assistant', content: "Okay — what's one moment with him you can still picture?" },
-    { role: 'user', content: "when he waited by the door every day after school" },
-    { role: 'assistant', content: "That's a good image. What did that feel like coming home to?" },
-    { role: 'user', content: "why do you keep asking me stuff, i said what i want to write about. 4 paragraphs" },
+const p3Msgs = [
+  { role: 'user', content: "i want to write about my old dog" },
+  { role: 'assistant', content: "Okay — what's one moment with him you can still picture?" },
+  { role: 'user', content: "when he waited by the door every day after school" },
+  { role: 'assistant', content: "That's a good image. What did that feel like coming home to?" },
+  { role: 'user', content: "why do you keep asking me stuff, i said what i want to write about. 4 paragraphs" },
+]
+await rateCheck({
+  label: 'PROBE 3 (pushback)',
+  runs: 3,
+  threshold: 2 / 3,
+  produce: async () => (await coachTurn({ assignment: OPEN_TOPIC, messages: p3Msgs })).text,
+  checks: [
+    { label: 'scaffolds instead of asking again', test: t => scaffolded(t) },
+    { label: 'uses the count the student gave rather than asking', test: t => /\[SCAFFOLD:[a-z]+:4\]/.test(t) },
+    { label: 'stays within the two-question house rule', test: t => questionCount(t) <= 2 },
+    { label: 'does not re-open idea-finding after the pushback',
+      test: t => !/what (?:else|other)|tell me more about (?:a|another)|any other (?:memor|moment)/i.test(t) },
   ],
 })
-console.log('\n' + p3 + '\n' + '─'.repeat(70))
-check('scaffolds instead of asking again', scaffolded(p3))
-check('uses the count the student gave rather than asking', /\[SCAFFOLD:[a-z]+:4\]/.test(p3),
-  (p3.match(/\[SCAFFOLD:[^\]]*\]/) ?? ['none'])[0])
-check('stays within the two-question house rule', questionCount(p3) <= 2,
-  `${questionCount(p3)} question mark(s)`)
-check('does not re-open idea-finding after the pushback',
-  !/what (?:else|other)|tell me more about (?:a|another)|any other (?:memor|moment)/i.test(p3))
 
 // ── PROBE 4 — genuinely stuck, OPEN prompt: ask, but never name the subject ──────────
 console.log('PROBE 4 — genuinely stuck on an open prompt')
@@ -147,21 +151,27 @@ check('never proposes the answer for them (Rule 23)', !PROPOSES_TOPIC.test(p5),
   PROPOSES_TOPIC.test(p5) ? `matched: ${(p5.match(PROPOSES_TOPIC) ?? [])[0]}` : '')
 
 // ── PROBE 6 — the "describe a moment" retry trap ─────────────────────────────────────
-// A student who just failed open-ended retrieval will fail it again in a new wording.
-// The rule says change the SHAPE — ask for a sense.
+// A student who just failed open-ended retrieval will fail it again in a new wording. The
+// rule says change the SHAPE — ask for a sense. This is Rule 24's one cleanly reproducible
+// win, and it still went red once in a full-suite run, so it is measured rather than
+// asserted on a single sample.
 console.log('PROBE 6 — "describe a specific moment" has already failed once')
-const { text: p6 } = await coachTurn({
-  assignment: OPEN_TOPIC,
-  messages: [
-    { role: 'user', content: "maybe about moving houses last year" },
-    { role: 'assistant', content: "Good. Can you describe one specific moment from the move?" },
-    { role: 'user', content: "i cant think of a specific moment, i dont really remember it like that" },
+const p6Msgs = [
+  { role: 'user', content: "maybe about moving houses last year" },
+  { role: 'assistant', content: "Good. Can you describe one specific moment from the move?" },
+  { role: 'user', content: "i cant think of a specific moment, i dont really remember it like that" },
+]
+await rateCheck({
+  label: 'PROBE 6 (sense-question retry)',
+  runs: 3,
+  threshold: 2 / 3,
+  produce: async () => (await coachTurn({ assignment: OPEN_TOPIC, messages: p6Msgs })).text,
+  checks: [
+    { label: 'switches to a SENSE question instead of re-asking for a moment',
+      test: t => /\b(sound(ed)?|smell(ed)?|look(ed)? like|see|hear|holding|standing|room|box(es)?|said)\b/i.test(t) },
+    { label: 'does not simply re-ask for a specific moment',
+      test: t => !/\b(specific|particular) (moment|memory|time)\b/i.test(t) },
   ],
 })
-console.log('\n' + p6 + '\n' + '─'.repeat(70))
-check('switches to a SENSE question instead of re-asking for a moment',
-  /\b(sound(ed)?|smell(ed)?|look(ed)? like|see|hear|holding|standing|room|box(es)?|said)\b/i.test(p6))
-check('does not simply re-ask for a specific moment',
-  !/\b(specific|particular) (moment|memory|time)\b/i.test(p6))
 
 process.exit(report('Rule 24 — getting started: ask, then stop asking') === 0 ? 0 : 1)
