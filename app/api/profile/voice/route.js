@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { isValidPace, MIN_PACE, MAX_PACE } from '@/lib/coachPace'
 
 // Owner-scoped write of the coach read-aloud preference + auto-mute "don't ask
 // again" marker. Uses the USER's authed server client (runs as `authenticated`
@@ -9,6 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 // Body (either or both):
 //   { readAloud: boolean }  -> sets coach_read_aloud
 //   { dismissed: true }     -> stamps voice_prompt_dismissed_at = now() ("Keep it")
+//   { pace: number }        -> sets coach_pace (0.5–2.0), the read-aloud playback rate
 export async function POST(request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,6 +20,16 @@ export async function POST(request) {
   const update = {}
   if (typeof body.readAloud === 'boolean') update.coach_read_aloud = body.readAloud
   if (body.dismissed === true) update.voice_prompt_dismissed_at = new Date().toISOString()
+  // REJECT rather than clamp. Clamping would store a rate the student never chose and
+  // report success for it; the DB CHECK is the backstop, not the validation.
+  if (body.pace !== undefined) {
+    if (!isValidPace(body.pace)) {
+      return Response.json(
+        { error: `pace must be a number between ${MIN_PACE} and ${MAX_PACE}` }, { status: 400 }
+      )
+    }
+    update.coach_pace = Number(body.pace)
+  }
 
   if (Object.keys(update).length === 0) {
     return Response.json({ error: 'Nothing to update' }, { status: 400 })

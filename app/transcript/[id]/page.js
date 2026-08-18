@@ -17,6 +17,8 @@ import KeepWorkingButton from '@/components/KeepWorkingButton'
 import { getSubjectLabel } from '@/lib/subjects'
 import SubjectIcon from '@/components/SubjectIcon'
 import { computeActualFromDraft, targetDisplay } from '@/lib/requirements'
+import { fetchStartingDraft } from '@/lib/startingDraft'
+import StartingDraftCard from '@/components/StartingDraftCard'
 import { CONTINUATION_ENABLED } from '@/lib/sessionContinuation'
 
 export default async function TranscriptPage({ params, searchParams }) {
@@ -50,7 +52,7 @@ export default async function TranscriptPage({ params, searchParams }) {
     redirect(dest)
   }
 
-  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }, { data: restoration }] = await Promise.all([
+  const [{ data: paragraphs }, { data: scaffold }, { data: messages }, { data: rubricRow }, { data: sourceRows }, { data: draftFeedback }, { data: restoration }, startingDraft] = await Promise.all([
     db.from('paragraphs').select('*').eq('session_id', id).order('position'),
     // assignment_type is NOT optional here: it selects the recommended-target band
     // (a personal statement aims 90–95% of the ceiling, an essay 80–90%). Selecting
@@ -67,6 +69,11 @@ export default async function TranscriptPage({ params, searchParams }) {
     db.from('draft_restorations')
       .select('session_id, words_before, words_after, summary, acknowledged_at')
       .eq('session_id', id).maybeSingle(),
+    // What the student arrived with, before the coach. In the Promise.all rather than a
+    // serial await: this is a watcher's critical path, and an earlier draft of this change
+    // added a sequential round trip to it while a comment two files away claimed the
+    // opposite. Guarded inside fetchStartingDraft against intake's migration not existing.
+    fetchStartingDraft(db, id)
   ])
 
   // Auto-generated Works Cited (deterministic; MLA on the transcript). Metadata only.
@@ -257,6 +264,23 @@ export default async function TranscriptPage({ params, searchParams }) {
           </section>
         ) : (
         <>
+        {/* "Here is what she arrived with. Here is what she has now." — in that order, and
+            in its OWN card ABOVE the final draft. It was briefly rendered INSIDE the final
+            draft's section, between its heading and its body, which reads to a skimming
+            parent as part of the final draft — the one thing the spec says it must never
+            be. Always visible to a linked watcher, labelled, its own container. */}
+        {startingDraft && (
+          <section className="rounded-2xl p-6"
+            style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
+            <StartingDraftCard
+              startingDraft={startingDraft}
+              draftWords={computeActualFromDraft(paragraphs ?? [], scaffold?.components).words}
+              draftText={essay}
+              audience={isOwner ? 'student' : 'watcher'}
+            />
+          </section>
+        )}
+
         {/* Final essay */}
         <section className="rounded-2xl p-6 space-y-4"
           style={{ backgroundColor: 'var(--surface-card)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-default)' }}>
