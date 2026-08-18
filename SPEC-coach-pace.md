@@ -126,9 +126,16 @@ the session. Three specific traps:
 
 ## Scope decisions
 
-- **Range and steps:** 0.5×–2.0×, in 0.1 steps, default 1.0. Label in plain words, not
-  numbers — *"slower / normal / faster"* with a slider beneath. A student who needs this
-  should not have to reason about multipliers.
+- **Range and steps:** five presets, not a continuous range —
+  `1× → 0.75× → 0.5× → 1.25× → 1.5×`, default 1×, slower first (see the control section).
+  ⚠️ An earlier draft of this spec said "0.1 steps with a slider beneath" while the control
+  section specified tap-to-cycle. Those contradict, and a contradictory spec gets resolved by
+  whoever reads it last — the same failure coach-ai hit today in a prompt that claimed both
+  "flow into a single paragraph" and "preserve every interior break". **Presets win**: a
+  slider needs fine motor control and a decision, a button needs one tap, and no student
+  needs 1.3× specifically.
+- **The label is the rate itself** (`1×`, `0.75×`), because that is what every app they
+  already use shows. Put the plain words in the `aria-label` and the tooltip, not the face.
 - **Per-student, not per-coach.** Pace is about the listener. It must not reset when they
   switch coaches — that would silently undo an accessibility setting mid-assignment.
 - **Not price-gated.** Consistent with the standing rule that voice is not a paid tier.
@@ -139,7 +146,7 @@ the session. Three specific traps:
 
 - Per-coach pace overrides.
 - Auto-detecting a preferred pace from behaviour. Tempting and wrong — inferring a disability
-  accommodation from usage data is a much larger decision than a slider.
+  accommodation from usage data is a much larger decision than a button.
 - Changing the scribe/STT side. This is output pace only.
 
 ## Verification
