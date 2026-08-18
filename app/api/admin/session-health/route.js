@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import { runSessionHealthPass } from '@/lib/runSessionHealth'
+import { latestMonitorRuns, MONITOR_SESSION_HEALTH } from '@/lib/runMonitors'
 
 // GET   /api/admin/session-health — open "student work at risk" findings.
 // POST  /api/admin/session-health — re-run the pass now (it's free: no model calls).
@@ -43,15 +44,39 @@ export async function GET() {
 
   // "Zero rows" is AMBIGUOUS by construction: findings clear by deletion, so an empty
   // table means either "the pass ran and everything is healthy" or "the pass has never
-  // run". Reporting the second as the first is a false all-clear — precisely the silence
-  // this detector exists to break. last_seen_at on any row IS the last run time; with no
-  // rows we cannot know, so we say so instead of reassuring.
+  // run" — and reporting the second as the first is a false all-clear.
+  //
+  // Inferring the run from the findings could never resolve that: the inference IS the
+  // ambiguity. Migration 073 records the run itself, so a clean corpus now reads as clean
+  // instead of as unchecked. last_seen_at is kept only as the fallback for the window
+  // between this deploy and the paste of 073.
   const rows = data ?? []
-  const lastRunAt = rows.length
+  const inferredRunAt = rows.length
     ? rows.reduce((m, r) => (r.last_seen_at > m ? r.last_seen_at : m), rows[0].last_seen_at)
     : null
 
-  return NextResponse.json({ findings: rows, pending: false, lastRunAt, everRun: rows.length > 0 })
+  let recordedRunAt = null, runsPending = false
+  try {
+    const { runs, pending } = await latestMonitorRuns()
+    runsPending = pending
+    recordedRunAt = runs?.[MONITOR_SESSION_HEALTH]?.ran_at ?? null
+  } catch (e) {
+    // Never fatal — the findings are the payload. But say so: silently falling back to the
+    // inference would reintroduce the exact ambiguity 073 was added to remove.
+    console.error('[admin/session-health] monitor_runs read failed, falling back to inference:', e?.message)
+  }
+
+  const lastRunAt = recordedRunAt ?? inferredRunAt
+  return NextResponse.json({
+    findings: rows,
+    pending: false,
+    lastRunAt,
+    everRun: Boolean(lastRunAt),
+    // How we know: 'recorded' is a fact; 'inferred' still carries the old ambiguity and the
+    // UI must keep hedging while it is true.
+    runEvidence: recordedRunAt ? 'recorded' : inferredRunAt ? 'inferred' : 'none',
+    runsPending,
+  })
 }
 
 export async function POST() {
