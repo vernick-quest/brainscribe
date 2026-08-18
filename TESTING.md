@@ -4265,3 +4265,33 @@ on an empty last section reaches that state too); `sectionHeading` no longer cal
   `reconcileComponentsWrite` untouched, so two tabs that each grew once clobber each other.
 
 Gate after fixes: build green · `test:run` **741 passed**.
+
+## 2026-08-17 — The ⚠ count now points at the assignment causing it (focus/admin)
+
+**Files:** `app/admin/page.js`, `components/AdminDashboard.js`. No migration.
+
+**Reported:** Sierra's row showed ⚠ 1, and neither assignment row underneath showed anything.
+
+**Cause.** `warningsBySession` — which feeds the per-assignment badge — was built from
+`auditFindings` ONLY, while the student column had been widened to every source. Verified live:
+her "Short story about a squirrel litter" carries **4 session-health findings (critical, high,
+medium, medium) and 0 audit findings**, so the audit-only badge had nothing to draw. The promise
+was kept at student level and broken one level down, which leaves a count you can't trace — the
+exact hunt the column exists to remove.
+
+**Fix:** `warningsBySession` is now derived from the SAME `attentionForStudent` result that
+produces the student count, so the two cannot diverge by construction. The badge colours from
+`worst` (critical/high → red) and its tooltip NAMES each finding rather than saying "audit finding".
+
+**Invariant checked against live data** — a student's ⚠ count must equal the number of their
+assignment rows carrying a badge:
+```
+✓ Baron Vernick   ⚠=3  badged rows=3  worst=medium
+✓ Sierra Pfleger  ⚠=1  badged rows=1  worst=critical
+     "Short story about a squirrel litter"  4 findings [critical]
+INVARIANT HOLDS: every ⚠ count is traceable to badged rows.
+```
+Note the shape this makes visible: Sierra is **1 session** in the column and **4 findings** on the
+row — the per-session count is what stops four findings on one session reading as four problems.
+
+`npm run test:run` **755/755 green** · build green.

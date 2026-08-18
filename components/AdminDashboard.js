@@ -1214,13 +1214,18 @@ function SessionRow({ session, studentName, compact = false, ownerRole }) {
       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--surface-spark)' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.backgroundColor = 'var(--surface-card)' }}>
 
+    {/* Names the actual findings. The student row's ⚠ count is only useful if you can
+        trace it to a row — "1 warning" with nothing marked below is the hunt this
+        column exists to remove. */}
     {warn?.total > 0 && (
       <button
         onClick={() => jumpToAudit?.(session.id)}
-        title={`${warn.total} open guardrail-audit finding${warn.total === 1 ? '' : 's'} on this assignment${warn.high ? ` · ${warn.high} high` : ''} — open it in the Audit tab`}
-        aria-label={`${warn.total} audit finding${warn.total === 1 ? '' : 's'} — show in Audit tab`}
+        title={`${warn.total} finding${warn.total === 1 ? '' : 's'} on this assignment` +
+          (warn.labels?.length ? `:\n${warn.labels.join('\n')}` : '') +
+          '\nClick to open it in the Audit tab'}
+        aria-label={`${warn.total} finding${warn.total === 1 ? '' : 's'} on this assignment${warn.worst ? `, worst ${warn.worst}` : ''} — show in Audit tab`}
         className="ml-3 shrink-0 text-[11px] font-bold tabular-nums rounded-full px-2 py-0.5 hover:opacity-80 transition"
-        style={warn.high > 0
+        style={(warn.worst === 'critical' || warn.worst === 'high' || warn.high > 0)
           ? { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)' }
           : { backgroundColor: 'var(--status-thin-bg)', color: 'var(--status-thin)' }}>
         {warn.total}

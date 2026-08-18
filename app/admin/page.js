@@ -114,17 +114,15 @@ export default async function AdminPage() {
     warningsById.set(f.student_id, w)
   }
 
-  // Per-ASSIGNMENT warning counts, so an expanded student card can say which of
-  // their assignments the finding is actually on rather than only that the student
-  // has one somewhere.
+  // Per-ASSIGNMENT warnings. Built from the SAME attention items as the student column
+  // (below), never from audit findings alone.
+  //
+  // It used to read auditFindings only, which broke the promise one level down: Sierra's
+  // row showed ⚠ 1 while BOTH her assignment rows showed nothing, because her finding is
+  // mechanical (4 session-health rows, 0 audit rows). A count you cannot trace to a row
+  // is a count you have to go hunting for — which is the remote-in this column exists to
+  // replace. Populated after attentionById is computed, so the two can never diverge.
   const warningsBySession = {}
-  for (const f of auditFindings ?? []) {
-    if (!f.session_id || f.resolved || f.severity === 'none') continue
-    const w = warningsBySession[f.session_id] ?? { total: 0, high: 0 }
-    w.total += 1
-    if (f.severity === 'high') w.high += 1
-    warningsBySession[f.session_id] = w
-  }
 
   // ── The ⚠ column: everything that needs Robert, in one number ──────────────────
   // Every in-scope detector feeds this (see lib/attention.js for the design rule and
@@ -167,6 +165,19 @@ export default async function AdminPage() {
       refusedRevisionSessions: mine.filter(s => refusedBySession.has(s.id))
         .map(s => ({ id: s.id, ...refusedBySession.get(s.id) })),
     }))
+  }
+
+  // Same source as the ⚠ column: whatever makes a student's number makes the row badge.
+  for (const att of attentionById.values()) {
+    for (const sess of att.sessions) {
+      warningsBySession[sess.sessionId] = {
+        total: sess.all.length,
+        worst: sess.severity,
+        // Retained for anything still reading the old shape.
+        high: sess.all.filter(x => x.severity === 'critical' || x.severity === 'high').length,
+        labels: sess.all.map(x => `${x.severity} — ${x.label}${x.detail ? ` (${x.detail})` : ''}`),
+      }
+    }
   }
 
   const profilesWithActivity = (allProfiles ?? []).map(p => ({
