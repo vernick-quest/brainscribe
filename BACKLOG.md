@@ -735,3 +735,87 @@ A custom section marked `complete` has no `paragraphs` row until session complet
 session (3 extra queries + a full provenance pass per lock, plus a `NOT SCORED (no scribed
 text)` warn per scene). Shadow mode, so it costs latency and log noise rather than
 correctness. (Lever B's file.)
+
+---
+
+# SIERRA'S FEEDBACK — re-ranked 2026-08-17 PM SF against measured evidence
+
+She sent six items early Mon 2026-08-17 SF, then used the app all day. Her session is the
+evidence: 49 turns 7:02am–4:49pm, **0 truncated turns, 0 unclosed tokens,
+`lock_over_claims` 0**, and she GREW to a `custom` "Scene 2" (339w, confirmed, cursor
+advanced to 2). The overnight batch works in the wild.
+
+⚠️ **Two of her six were re-scoped by measurement, and one of mine was wrong.** I told
+Robert the assembler had rewritten her draft, on the strength of reading the prompt
+("smooth transitions between components") without measuring the output. Measured against
+her real text: ellipses 2→2, dashes 1→1, sentence enders 106→106, quotes 58→58 — **every
+punctuation class survived, nothing was merged** — and **93.8%** of her 8-word passages are
+byte-identical. Capability is not occurrence. State the check, or mark it unverified.
+
+## P0 — Composer loses work with no undo  ·  `focus/coaching-session`
+The ONLY item that destroyed real writing and is still unaddressed. Her words:
+*"make it so you can get back something you delete… I ended up deleting probably at least
+half an hour of work."* Cut-and-paste in the composer, no server involved, nothing failing —
+so every net we own (truncation guard, no-overwrite guard, `detectLockOverClaim`, health
+pass) is blind to it. They all protect text AFTER it reaches the server.
+
+🔴 **Extend `recoveredDictation`/`recoveredText` (`TutorSession.js:846,577,3065`) — do not
+build a second store.** It already restores words into the composer, but only on two
+triggers, both server failures (`/api/scribe` fails at 2275, continuation guard at 2307).
+The belief is already in the product; it is scoped to the case we imagined instead of the
+case that happened. Debounced, keyed by session, restore on mount, **clear on successful
+send only** (clearing on a failed send erases what the guard exists to protect).
+⚠️ Ask auth-coppa first whether `localStorage` is acceptable for unsaved under-13 writing.
+Also: the box is capped at `Math.min(el.scrollHeight,160)` — ~6 lines. She pasted 1,076
+words into it.
+
+## P1 — A real writing space  ·  `focus/coaching-session`
+Her framing beats ours: brain-dump/outline → draft → edit/final, *"so you can edit your
+draft right as they give you feedback rather than having to remember your draft and all the
+feedback."* Supersedes "bring in what I've already written" (a subset). Her second variant —
+edit in the draft space, then send to the coach — is cheaper and reuses the post-assembly
+editor. Spec before code. The undo stack belongs HERE, not bolted into a 160px box.
+
+## P1 — Assembly fidelity — RE-SCOPED, was P0  ·  `focus/coach-ai`
+Measured, so aim at the real defect: **the assembler inserted ~29 unrequested paragraph
+breaks** (3 → 32), restructuring one flow into ~30 paragraphs. That is the most visible
+change to a story and the best candidate for what she saw. Secondary: ~6% of her wording
+altered (1 word in 16). Punctuation and sentence boundaries need PROTECTING, not repairing —
+they already survive.
+
+- `lib/assembleParagraph.js:12` — "smooth transitions between components" is unbounded
+  permission. Narrow it; forbid inserting or removing paragraph breaks.
+- `app/api/assemble-essay/route.js:79` — same defect, already bounded to paragraph
+  boundaries. Add the rule, don't rewrite.
+- `lib/prompts.js:1316` (scribe) — legitimately cleans dictation. **Audit and report only.**
+- `paragraphType` is ALREADY threaded into `assembleParagraphText` — "narrative gets zero
+  smoothing" is a branch on a parameter that already arrives. No plumbing, no seam.
+- **Fidelity harness with the real baseline: 93.8% verbatim, punctuation 100%.** That is the
+  number a regression moves. Measure before changing the prompt.
+
+⚠️ Two caveats on her report: she assembled twice and only one `paragraphs` row exists
+(`discardParagraph` can remove one), and this row was created 7:05am — her complaint may
+describe an output this one replaced. Ask her whether it was the paragraph breaks; if so it
+is a two-line prompt fix.
+
+## P1 — "Projects", not "assignments"  ·  `focus/assignment-intake`
+Robert's scoping: the reframe is the top-level word, because people sometimes write for fun.
+Display text only — leave routes, identifiers and `assignment_text` alone. The whole visible
+surface is ~12 strings: `app/assignment/new/page.js` (title, "Start a new assignment"),
+`app/folder/page.js` ("Your assignments" ×2, "New assignment"), `Navbar.js:22` breadcrumb,
+`NewSessionForm.js` ("Reading your assignment…", "Add your assignment first…", the textarea
+placeholder, 2 aria-labels).
+
+Then her second idea, which is the better half: ask **"Is this for school, or writing of your
+own?"** at creation and persist it. It is what lets the coach's language follow, and it gives
+the coach real context — a personal story and a graded essay want different questions.
+
+## P2 — Coach language follows that flag  ·  `focus/coach-ai` · BLOCKED on the item above
+3 greetings ("I've read your assignment") + ~56 `lib/prompts.js` mentions, MOST of which
+correctly refer to the pasted assignment text and must stay. Not a rename — a prompt change,
+so `test:prompts`. Do not sed it.
+
+## P2 — Coach speech speed  ·  `focus/coaching-session`
+*"it'd be nice if you could make it so the coaches can talk slower or faster per your need."*
+`app/api/speak/route.js:41` already sends `voice_settings` with no `speed`. A per-student
+preference beside the read-aloud toggle. After the two above.
