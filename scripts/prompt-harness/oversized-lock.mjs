@@ -15,12 +15,12 @@
 //
 // ~4 turns, roughly 5 cents.
 
-import { coachTurn, check, report } from './lib/harness.mjs'
+import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
 import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 
-// Reported, not gated. Same call the Rule 24 probe makes: a check that flips run to run
-// gets ignored when it blocks, so behaviours we have NOT fixed are printed loudly and the
-// invariants we HAVE fixed are the ones that fail the build.
+// Report-only, for a behaviour we have NOT fixed and do not want to gate on. Anything
+// merely PROBABILISTIC now uses rateCheck instead — printing without gating let a drop to
+// zero scroll past, which is the opposite failure from retrying until green.
 const observe = (label, passed, detail = '') =>
   console.log(`  ${passed ? '🟢' : '🔶 KNOWN OPEN'} ${label}${detail ? ` — ${detail}` : ''}`)
 
@@ -69,28 +69,48 @@ function assertNoSplitLock(text, label) {
 }
 
 // ── PROBE 1 — the student pastes an oversized passage and asks for it to go in ───────
-console.log('PROBE 1 — ~380 words pasted for ONE component slot')
-const { text: p1 } = await coachTurn({
-  assignment: STORY,
-  scaffold: SCAFFOLD,
-  messages: [{ role: 'user', content: BIG_PASSAGE }],
-})
-console.log('\n' + p1 + '\n' + '─'.repeat(70))
-assertNoSplitLock(p1, 'P1')
+// Whole probe is ONE rate check over 3 runs. It used to make a separate single call and
+// then three more for the size check — four turns to test one moment. Every assertion here
+// is per-run, so they all ride the same runs and each reports its own rate.
+//
 // NOTE ON VACUITY: this turn legitimately produces NO lock — Rule 17 requires a named
 // review pass before any lock, so the coach reviews here and locks later. That makes the
-// negative assertions above trivially true on this probe, which is why PROBE 2 exists:
-// it drives the conversation to the turn where locks actually fire and asserts they did.
-// Naming the size is the honest half of the rule — not a cover story about the app.
-// Match the CONCEPT, not one phrasing: observed forms include "at least three distinct
-// moments", "a few different moments", "five paragraph slots ... all going into paragraph
-// one", "it reads as one long block". Two narrower versions failed replies that were doing
-// exactly the right thing. Reported rather than gated — the phrasing varies run to run.
-observe('P1: notices this is more than one section\'s worth',
-  /\b(?:two|three|four|five|a few|several|multiple|at least \w+)\s+(?:distinct\s+|separate\s+|different\s+)?(?:scenes?|sections?|paragraphs?|parts?|moments?|slots?)\b/i.test(p1)
-  || /(?:separate|different|its own)\s+paragraphs?\b|more than one (?:paragraph|section|scene)|one long block|all going into (?:paragraph|the first)|big (?:chunk|piece)|bigger than one/i.test(p1))
-check('P1: invents no cover story about the system needing pieces',
-  !/\b(?:the (?:system|app|token|field)s? (?:needs?|requires?|can'?t|only)|character limit|too (?:long|many characters) for)\b/i.test(p1))
+// negative assertions below trivially true on THIS probe, which is why PROBE 2 exists: it
+// drives the conversation to the turn where locks actually fire and asserts they did.
+console.log('PROBE 1 — ~380 words pasted for ONE component slot')
+const p1Once = async () => {
+  const { text } = await coachTurn({ assignment: STORY, scaffold: SCAFFOLD, messages: [{ role: 'user', content: BIG_PASSAGE }] })
+  return text
+}
+const dupeIds = t => {
+  const byId = doneTokens(t).reduce((m, d) => ({ ...m, [d.id]: (m[d.id] ?? 0) + 1 }), {})
+  return Object.entries(byId).filter(([, n]) => n > 1)
+}
+await rateCheck({
+  label: 'PROBE 1 (oversized paste)',
+  runs: 3,
+  threshold: 1,   // the destroying cases must hold EVERY run — no tolerance for these
+  produce: p1Once,
+  checks: [
+    { label: 'P1: never two [DONE:] for the SAME id (the destroying case)', test: t => dupeIds(t).length === 0 },
+    { label: 'P1: never promises to add the rest next turn', test: t => !PROMISES_CONTINUATION.test(t) },
+    { label: 'P1: invents no cover story about the system needing pieces',
+      test: t => !/\b(?:the (?:system|app|token|field)s? (?:needs?|requires?|can'?t|only)|character limit|too (?:long|many characters) for)\b/i.test(t) },
+  ],
+})
+// Separate threshold: WHETHER it notices the size varies in phrasing run to run, while the
+// destroying cases above must never happen at all. Different risks, different bars.
+await rateCheck({
+  label: 'PROBE 1 (notices the size)',
+  runs: 3,
+  threshold: 2 / 3,
+  produce: p1Once,
+  checks: [{
+    label: 'P1: notices this is more than one section\'s worth',
+    test: t => /\b(?:two|three|four|five|a few|several|multiple|at least \w+)\s+(?:distinct\s+|separate\s+|different\s+)?(?:scenes?|sections?|paragraphs?|parts?|moments?|slots?)\b/i.test(t)
+      || /(?:separate|different|its own)\s+paragraphs?\b|more than one (?:paragraph|section|scene)|one long block|all going into (?:paragraph|the first)|big (?:chunk|piece)|bigger than one/i.test(t),
+  }],
+})
 
 // ── PROBE 2 — THE ONE THAT MATTERS: the turn where locks actually fire ───────────────
 // Review pass done, student says go. This is the only point at which a split lock can be
