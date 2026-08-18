@@ -1,6 +1,20 @@
 # Spec — Coach speaking pace
 
-**Status:** proposed, not started · **Author:** conductor, 2026-08-17 SF · **Owner:** `focus/assignment-intake`
+**Status:** proposed, not started · **Author:** conductor, 2026-08-17 SF
+**Owner:** `focus/coaching-session`  ⚠️ *changed from `focus/assignment-intake` — see below*
+
+> **Lane change, 2026-08-17 SF.** This was assigned to `focus/assignment-intake` for one
+> reason: they built the coach picker with voice previews, so setting a pace while sampling
+> voices was a natural home. **Cutting that entry point from v1 removed the only part of this
+> feature that lived in their lane.** Everything left is coaching-session's:
+> `VoiceToggleButton` and `ReplyComposer` in `TutorSession.js`, the TTS playback in
+> `lib/useCoachVoice.js`, and `app/api/profile/voice/route.js` — whose last change is
+> literally titled *"coaching-session: coach read-aloud toggle"*.
+>
+> Ownership follows the code, not the load. Coaching-session is the busier lane and moving
+> this to balance that would split one small feature across two lanes — the seam shape that
+> produced three of this week's bugs. If the picker entry point is added later, **that** part
+> is assignment-intake's.
 
 Let a student choose how fast their coach talks, and change it without stopping the coach.
 
