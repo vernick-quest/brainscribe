@@ -69,6 +69,33 @@ export async function coachTurn({ persona = 'owen', assignment, scaffold = null,
   return { text: json.content.find(b => b.type === 'text')?.text ?? '', dynamicTail, staticPrefix }
 }
 
+/**
+ * A raw single-shot model call, for probes that test something other than a coach turn
+ * (the assembler runs on Haiku with its own system prompt). Same env handling, so there is
+ * only ever one place that knows how to reach the API.
+ */
+export async function callModel({ model, system, user, maxTokens = 4000 }) {
+  const env = loadEnv()
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+  })
+  const json = await res.json()
+  if (json.error) {
+    console.error('[prompt-harness] API error:', JSON.stringify(json.error).slice(0, 300))
+    process.exit(2)
+  }
+  return {
+    text: json.content.find(b => b.type === 'text')?.text ?? '',
+    stopReason: json.stop_reason,
+  }
+}
+
 // ── Tiny assertion reporter ──────────────────────────────────────────────────
 // A probe asserts on the CONTENT of the reply, never on "did the call succeed".
 const results = []
