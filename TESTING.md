@@ -4388,3 +4388,67 @@ The 160px composer cap is deliberately unchanged: it belongs to the writing-spac
 and raising it would make this bug less visible without fixing it.
 
 Gate: build green · `test:run` **783 passed** · `scripts/verify/composer-draft.mjs` 14/14.
+
+## 2026-08-17 — Starting draft: capture (focus/assignment-intake half)
+
+**What changed** (`supabase/migrations/071_session_starting_drafts.sql`,
+`lib/startingDraft.js` + `.test.js`, `app/api/sessions/[sessionId]/starting-draft/route.js`,
+`components/NewSessionForm.js`, `scripts/starting-draft-gate.mjs`):
+
+- New **Screen 2 · Your starting point** between the assignment and coach screens:
+  *"Have you already started writing this?"* → **"No — I'm starting fresh"** (one tap,
+  goes straight to the coach) or **"Yes — I've written some already"** (reveals a
+  textarea). The choice is a declaration, not just UI state: choosing "starting fresh"
+  clears any text typed before changing their mind.
+- The draft is written **once**, at creation, to its own table. It is immutable **by
+  construction**: `session_id` is the PK, RLS grants INSERT + SELECT only, and UPDATE /
+  DELETE are revoked for `authenticated`, so a revision has no wire representation. There
+  is deliberately no PATCH or DELETE endpoint.
+- **v1 refuses** a starting draft on a session that already has confirmed components
+  (409 `work_already_started`) — past the first lock it is a mid-stream paste, not a
+  baseline.
+- **v1 is paste/type only — no upload.** `parse-assignment`'s prompt is tuned to *extract
+  an assignment*; run a student's story through it and you store a summary, and a
+  summarised draft is not a baseline. `'upload'` stays valid in the schema check for a
+  later verbatim-OCR path.
+
+**Automated gate (run this, don't eyeball it):**
+
+```bash
+npm run test:starting-draft
+```
+
+Requires migration 071 to be applied — it exits 2 with "migration not applied" rather than
+passing vacuously. It creates two throwaway users + a session and deletes them in a
+`finally`, printing loudly anything it could not clean up. It asserts on **values read
+back**, never on status codes (a zero-row PATCH answers 204; an RLS-filtered read answers
+`200 []`).
+
+Manual checks (13+/consented student):
+1. /assignment/new → assignment → **Next** lands on "Your starting point", not the coach.
+2. "No — I'm starting fresh" → coach screen in one tap. Start a session → works exactly as
+   before, and no `session_starting_drafts` row exists for it.
+3. "Yes" → paste ~200 words → live word count matches the paste → Next → pick a coach →
+   Start. Row exists with `content` **byte-identical to what was pasted**, including blank
+   lines and indentation.
+4. Back out of the coach screen to the draft screen and back again — the pasted text and
+   the assignment both survive.
+5. **Failure path:** with devtools offline (or by blocking `/starting-draft`), press Start.
+   The session is created, an error appears, the pasted text is **still on screen**, and a
+   "Continue without saving my starting draft" link appears. Pressing Start again must
+   retry against the SAME session — check the Folder afterwards shows **one** new
+   assignment, not two.
+6. **Refusal:** in an existing session with at least one locked component, POST to
+   `/api/sessions/<id>/starting-draft` → 409 `work_already_started`.
+7. Watcher view: a linked parent opening the transcript can see the draft (rendering is
+   focus/coaching-session's half — until that lands, verify via the gate's step 6).
+
+🔴 **Must not merge alone.** `app/api/scaffold/[sessionId]/route.js` builds
+`studentSources` from paragraphs + messages only. If drafts exist and that list does not
+include them, every lock drawn from the draft scores `novelFraction 1.00` and is recorded
+as coach-authored — the student's own writing, logged as the coach's. The two-line change
+is written out in the seam comment at the bottom of `lib/startingDraft.js`
+(`fetchStartingDraft`).
+
+🔴 **This does nothing for Sierra's current session.** Her words are already locked; the
+feature captures a baseline at creation and refuses mid-stream by design.
