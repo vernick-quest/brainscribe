@@ -134,7 +134,7 @@ export default async function DashboardPage() {
         <PendingInviteBanner invites={pendingInvites} readOnly={!!imp} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" style={{ marginBottom: 'var(--space-6)' }}>
-          <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your assignments</h1>
+          <h1 style={{ font: 'var(--type-title)', color: 'var(--text-strong)', margin: 0 }}>Your projects</h1>
 
           {/* New assignment lives on its own page; hidden while impersonating. */}
           {!imp && (
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M12 5v14M5 12h14"/>
               </svg>
-              New assignment
+              New project
             </a>
           )}
         </div>

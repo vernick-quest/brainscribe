@@ -24,6 +24,7 @@
 // Anything it cannot clean up is printed LOUDLY at the end.
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
+import { startingDraftTiming } from '../lib/startingDraft.js'
 
 const env = {}
 for (const line of readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n')) {
@@ -170,6 +171,40 @@ try {
   check('8. service_role can still insert and delete',
     svcIns.data?.content === SENTINEL && !svcDel.error && (svcDel.data?.length ?? 0) === 1,
     `insert=${svcIns.error?.message ?? 'ok'} delete=${svcDel.error?.message ?? `${svcDel.data?.length} rows`}`)
+
+
+  // ── 9. THE RETROACTIVE INSERT — documented, not hypothetical ────────────────
+  // The v1 "too late" rule lives in the capture route. RLS grants INSERT with no timing
+  // condition, so a student who finishes the work can still declare the finished text as
+  // what they "arrived with" by posting straight to PostgREST. This step asserts that the
+  // hole IS reachable, so the boundary is recorded where it actually sits — if a later
+  // change closes it in RLS, this fails and gets updated deliberately.
+  const { data: lateSession } = await admin.from('sessions').insert({
+    student_id: student.id, assignment_text: 'Gate session — retroactive', persona: 'owen',
+  }).select('id, created_at').single()
+  created.sessions.push(lateSession.id)
+
+  // Plant confirmed work: the exact state the route refuses on.
+  await admin.from('paragraph_scaffolds').insert({
+    session_id: lateSession.id,
+    components: [{ index: 0, status: 'complete', items: [{ id: 'topic_sentence', status: 'confirmed', text: 'Locked work.' }] }],
+  })
+
+  const late = await student.client.from('session_starting_drafts')
+    .insert({ session_id: lateSession.id, content: SENTINEL, word_count: 9, source: 'pasted' })
+    .select('created_at').single()
+  check('9. RLS does NOT block a retroactive declare (route-only rule — known, surfaced not sealed)',
+    !late.error, `insert was refused (${late.error?.code}) — RLS now enforces it; update this gate and the comment in lib/startingDraft.js`)
+
+  // ...and the mitigation: the timing must make it visible.
+  const timing = startingDraftTiming({
+    sessionCreatedAt: lateSession.created_at,
+    draftCreatedAt: late.data?.created_at,
+    firstLockAt: lateSession.created_at,   // the lock existed before the declare
+  })
+  check('9b. the timing helper flags it as declared after work was locked',
+    timing.afterFirstLock === true && /after work was already locked/.test(timing.label),
+    `timing = ${JSON.stringify(timing)} — the watcher view would show nothing unusual`)
 
 } catch (err) {
   fail++

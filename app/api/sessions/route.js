@@ -7,6 +7,7 @@ import { getImpersonation } from '@/lib/impersonation'
 import { onboardingGreeting, getPromptByKey } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { sessionStamp } from '@/lib/sessionStamp'
+import { inferWritingMode } from '@/lib/writingMode'
 
 const anthropic = new Anthropic()
 
@@ -78,7 +79,12 @@ ${assignmentText}`,
 
   logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId })
 
-  const parsed = extractJSON(response.content[0].text) ?? {}
+  // Did the pass actually produce parseable metadata? This is NOT cosmetic: writing_mode
+  // must never infer "no requirements" from targets that are empty because nothing looked
+  // (see lib/writingMode.js). A parse miss still falls back to a usable outline below,
+  // which is right for the UI and WRONG as evidence — so the two are reported separately.
+  const parsedRaw = extractJSON(response.content[0].text)
+  const parsed = parsedRaw ?? {}
 
   const title = typeof parsed.title === 'string' && parsed.title.trim()
     ? parsed.title.trim().replace(/^["']|["']$/g, '')
@@ -120,7 +126,7 @@ ${assignmentText}`,
     // ranges in one block. Words win — that is what we actually count.
     .filter((r, _i, all) => r.type !== 'chars' || !all.some(o => o.type === 'words'))
 
-  return { title, summary, outline, requirements }
+  return { title, summary, outline, requirements, metaRan: parsedRaw !== null }
 }
 
 export async function POST(request) {
@@ -156,7 +162,8 @@ export async function POST(request) {
   if (gateFail) return gateFail
 
   const { assignmentText, persona = 'owen', subject = 'unspecified', subjectCustomLabel,
-          isOnboarding = false, onboardingPromptKey = null } = await request.json()
+          isOnboarding = false, onboardingPromptKey = null,
+          fromSampleLibrary = false } = await request.json()
   if (!assignmentText) return Response.json({ error: 'Missing assignment' }, { status: 400 })
 
   try {
@@ -205,7 +212,7 @@ export async function POST(request) {
     }
 
     // One AI call for all metadata, in parallel with creating the session row
-    const [{ title, summary, outline, requirements }, { data, error }] = await Promise.all([
+    const [{ title, summary, outline, requirements, metaRan }, { data, error }] = await Promise.all([
       generateSessionMeta(assignmentText, user.id),
       supabase
         .from('sessions')
@@ -250,7 +257,27 @@ export async function POST(request) {
     })
     if (greetErr) console.error('[sessions POST] greeting insert failed:', greetErr.message)
 
+    // School work, or writing nobody assigned? Inferred ONCE, here, from POSITIVE evidence
+    // and never recomputed on read (migration 073). `metaRan` is load-bearing: without it an
+    // empty targets array from a FAILED parse would read as "no requirements" and quietly
+    // become 'personal'. 'unknown' is the honest answer and stays distinguishable.
+    const writingMode = inferWritingMode({
+      metaRan,
+      requirements,
+      assignmentText,
+      fromSampleLibrary: fromSampleLibrary === true,
+    })
+
     await supabase.from('sessions').update({ outline, title, assignment_summary: summary }).eq('id', data.id)
+
+    // Its OWN guarded write, for the same reason `requirements` has one below: if migration
+    // 073 has not been applied yet the column is absent, and folding this into the write
+    // above would take the outline, title and summary down with it on EVERY session — a
+    // core-flow regression caused by a metadata field. Logged, never fatal; the column
+    // defaults to 'unknown', which is the correct answer when nothing could record one.
+    const { error: modeErr } = await supabase.from('sessions')
+      .update({ writing_mode: writingMode }).eq('id', data.id)
+    if (modeErr) console.error('[sessions POST] writing_mode write skipped:', modeErr.message)
 
     // Structured numeric requirements live in their own guarded write so a parse
     // miss — or migration 017 not yet applied (column absent) — can never break

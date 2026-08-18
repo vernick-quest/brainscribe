@@ -233,12 +233,12 @@ function buildGreeting(persona, name, scaffold, onboarding = false, isContinuati
 
   if (allDone) {
     const g = {
-      deon: `Hey ${name}. Your essay is done. Every part of it. Nice work.`,
-      zoe:    `Hi ${name}! You finished your whole essay — every single part! I'm so proud of you. It's ready!`,
-      alistair: `Hello ${name}. It's Alistair. Your essay is complete. Every part of it. Well done.`,
-      matilda:   `Hi ${name} — it's Tilly. Your essay is finished. Every part of it. That's a real accomplishment.`,
-      owen:    `Hi ${name}. It's Owen. Your essay is done — every part of it. You did that. All of it.`,
-      jade: `hey ${name}! your essay is done — like actually done. every single part. that's huge.`,
+      deon: `Hey ${name}. Your draft is done. Every part of it. Nice work.`,
+      zoe:    `Hi ${name}! You finished the whole thing — every single part! I'm so proud of you. It's ready!`,
+      alistair: `Hello ${name}. It's Alistair. Your draft is complete. Every part of it. Well done.`,
+      matilda:   `Hi ${name} — it's Tilly. Your draft is finished. Every part of it. That's a real accomplishment.`,
+      owen:    `Hi ${name}. It's Owen. Your draft is done — every part of it. You did that. All of it.`,
+      jade: `hey ${name}! your draft is done — like actually done. every single part. that's huge.`,
     }
     return g[persona] ?? g.owen
   }
@@ -259,12 +259,12 @@ function buildGreeting(persona, name, scaffold, onboarding = false, isContinuati
 
   // Has scaffold but nothing complete yet
   const g = {
-    deon: `Hey ${name}. I've read your assignment. Let's start building your essay. What do you already know about this topic?`,
-    zoe:    `Hi ${name}! I've read your assignment and I'm excited to dig in! What's the first thing that pops into your head about this?`,
-    alistair: `Hello ${name}. I'm Alistair. I've read the assignment. Let's begin. What do you already know about this subject?`,
-    matilda:   `Hi ${name} — I'm Tilly, lovely to meet you. I've had a read through your assignment. I'm curious — what do you already think about this topic?`,
-    owen:    `Hi ${name}. I'm Owen. I've had a look at your assignment. No rush. What's the first thing that comes to mind when you think about this?`,
-    jade: `hey ${name}! okay I read your assignment. have you started anything yet? if not, no stress. let's just start talking. what do you already know about this?`,
+    deon: `Hey ${name}. I've read what you're working on. Let's start building it. What do you already know about this topic?`,
+    zoe:    `Hi ${name}! I've read what you're working on and I'm excited to dig in! What's the first thing that pops into your head about this?`,
+    alistair: `Hello ${name}. I'm Alistair. I've read what you're working on. Let's begin. What do you already know about this subject?`,
+    matilda:   `Hi ${name} — I'm Tilly, lovely to meet you. I've had a read through what you're working on. I'm curious — what do you already think about this topic?`,
+    owen:    `Hi ${name}. I'm Owen. I've had a look at what you're working on. No rush. What's the first thing that comes to mind when you think about this?`,
+    jade: `hey ${name}! okay I read what you're working on. have you started anything yet? if not, no stress. let's just start talking. what do you already know about this?`,
   }
   return g[persona] ?? g.owen
 }
