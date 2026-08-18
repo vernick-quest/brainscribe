@@ -21,6 +21,7 @@ import { computeActual, computeActualFromDraft, targetDisplay } from '@/lib/requ
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
+import { nextPace, paceFace, paceAriaLabel, normalizePace, applyPlaybackRate, scaleDurationMs } from '@/lib/coachPace'
 import { readDraft, writeDraft, clearDraftIfMatches, sweepExpiredDrafts, getDraftStorage } from '@/lib/composerDraft'
 import StartingDraftCard from '@/components/StartingDraftCard'
 
@@ -548,11 +549,43 @@ function VoiceToggleButton({ readAloud, onToggle, saving = false }) {
   )
 }
 
+// Coach speaking PACE — the coach's output, so it sits beside the read-aloud toggle and not
+// beside the mic (which is the student's input). Tap-to-cycle rather than a slider: five
+// presets fit a 44px target, and a slider inside a session footer is a fiddly thing to hit.
+//
+// The cycle leads with SLOWER. Podcast apps lead with faster because their users speed
+// things up; these students slow down, and a cycle starting at 1.25× buries the
+// accessibility case three taps deep. Sierra: "only if they can match the pace you need."
+//
+// The face shows the rate; the aria-label says it in plain words, because a student who
+// needs this should not have to reason about multipliers and "1.25×" tells a screen-reader
+// user nothing.
+function CoachPaceButton({ pace, onCycle, saving = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      aria-label={paceAriaLabel(pace)}
+      title={`Coach speaking pace — ${paceFace(pace)}`}
+      className="flex items-center justify-center rounded-full transition shrink-0 text-[11px] font-bold"
+      style={{
+        width: 44, height: 44,
+        backgroundColor: normalizePace(pace) === 1 ? 'var(--surface-muted)' : 'var(--surface-spark)',
+        color: normalizePace(pace) === 1 ? 'var(--text-subtle)' : 'var(--accent-text)',
+        border: `1px solid ${normalizePace(pace) === 1 ? 'var(--border-default)' : 'var(--border-accent)'}`,
+        opacity: saving ? 0.7 : 1,
+      }}
+    >
+      {paceFace(pace)}
+    </button>
+  )
+}
+
 // Renders the 'listening' or 'dictating' footer and calls onSubmit with the
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, onDraftChange = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, onDraftChange = null, noticeLine = null, readAloud = true, onToggleReadAloud, coachPace = 1, onCyclePace, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -698,6 +731,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
             onFinal={(t) => { if (t && !justSubmittedRef.current) { editingRef.current = false; setText(''); resetHeight(); onSubmit(t) } }}
           />
           {onToggleReadAloud && <VoiceToggleButton readAloud={readAloud} onToggle={onToggleReadAloud} saving={savingVoicePref} />}
+          {onCyclePace && readAloud && <CoachPaceButton pace={coachPace} onCycle={onCyclePace} saving={savingVoicePref} />}
           <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
             <textarea
               ref={textareaRef}
@@ -740,6 +774,7 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
           onFinal={(t) => { if (t && !editingRef.current && !justSubmittedRef.current) setText(t) }}
         />
         {onToggleReadAloud && <VoiceToggleButton readAloud={readAloud} onToggle={onToggleReadAloud} saving={savingVoicePref} />}
+        {onCyclePace && readAloud && <CoachPaceButton pace={coachPace} onCycle={onCyclePace} saving={savingVoicePref} />}
         <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex-1 flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -786,6 +821,7 @@ export default function TutorSession({
   // form-gated sources shelf + auto-bibliography. Empty/absent for non-essay forms.
   initialSources = [],
   initialStartingDraft = null,
+  startingDraftReadState = 'absent',
   // Count of linked adults (parents via relationships + teachers on this
   // assignment) who can read this session — drives the ambient visibility note.
   watcherCount = 0,
@@ -934,6 +970,11 @@ export default function TutorSession({
   const [readAloud, setReadAloud] = useState(profile?.coach_read_aloud !== false)
   const readAloudRef              = useRef(profile?.coach_read_aloud !== false)
   const [savingVoicePref, setSavingVoicePref] = useState(false)
+  // Coach speaking pace. Mirrored into a ref because playClip reads it at PLAY time, which
+  // is many renders after the tap — reading a render closure here is the stale-closure bug
+  // class this file has been burned by, and it would silently play at the old rate.
+  const [coachPace, setCoachPace] = useState(normalizePace(profile?.coach_pace))
+  const coachPaceRef              = useRef(normalizePace(profile?.coach_pace))
   // Auto-mute offer: fires at most once per session, never during onboarding/skill-studio,
   // and never again once the student has permanently dismissed it.
   const [showVoiceOffer, setShowVoiceOffer]   = useState(false)
@@ -960,6 +1001,36 @@ export default function TutorSession({
   // Header speaker toggle. Flipping to OFF stops any in-flight read-aloud cleanly
   // (existing stopCurrentAudio) — the text stays committed. Clears any pending
   // turn WITHOUT recording a skip (an explicit mute isn't a "reading-ahead" signal).
+  // Tap-to-cycle. Applies to the LIVE element first — the whole reason playbackRate was
+  // chosen over ElevenLabs `speed` is that a student who finds the coach too fast can fix
+  // it DURING the sentence that is too fast. Never pause, never reload, never re-synthesise:
+  // pausing on a gesture is what previously cut the coach off when a student merely
+  // scrolled, and a re-synthesis is billed per character.
+  function cycleCoachPace() {
+    const next = nextPace(coachPaceRef.current)
+    coachPaceRef.current = next
+    setCoachPace(next)
+    applyPlaybackRate(audioRef.current, next)   // mid-utterance, no restart
+
+    setSavingVoicePref(true)
+    fetch('/api/profile/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pace: next }),
+    })
+      .then(res => {
+        if (!res.ok) {
+          // The pace still applies for this session; only the persistence failed. Loud,
+          // not alarming — an accessibility setting that silently fails to follow a student
+          // to their next session is worse than one that says nothing, but a banner mid-
+          // sentence would be its own problem.
+          console.error(`[coach-pace] NOT saved for session ${session.id}: ${res.status} — applies now, will not persist`)
+        }
+      })
+      .catch(err => console.error('[coach-pace] save failed (network) — applies now, will not persist:', err))
+      .finally(() => setSavingVoicePref(false))
+  }
+
   function toggleReadAloud() {
     const next = !readAloudRef.current
     applyReadAloud(next)
@@ -1191,9 +1262,18 @@ export default function TutorSession({
       const done = () => { if (playSeqRef.current === seq) resolve() }
       el.onended = done
       el.onerror = () => { try { URL.revokeObjectURL(url) } catch {} ; done() }
-      el.onloadedmetadata = () => { if (playSeqRef.current === seq) onMeta?.((el.duration || 3) * 1000) }
+      // Scaled by the rate: `el.duration` is the clip's length at 1×, so at 0.5× the audio
+      // takes twice as long and an unscaled caption finishes while the coach is still
+      // mid-sentence — desyncing for exactly the students who slowed it down to follow.
+      el.onloadedmetadata = () => { if (playSeqRef.current === seq) onMeta?.(scaleDurationMs((el.duration || 3) * 1000, coachPaceRef.current)) }
       el.onplaying = () => { everPlayedRef.current = true; pendingGreetingRef.current = null }
       el.src = url
+      // ⚠️ AFTER `el.src`, on EVERY play — not once at mount. playbackRate does not reliably
+      // survive a source change, so setting it once and assuming it sticks is the bug this
+      // ships with otherwise: the pace would hold for the current utterance and silently
+      // revert to 1× on the next one. (lib/coachPace.js also sets preservesPitch here —
+      // without it a slowed coach sounds drunk, which reads as "broken", not "slower".)
+      applyPlaybackRate(el, coachPaceRef.current)
       el.play().catch(() => { done() })   // resolve even if blocked, so the flow continues
     })
   }
@@ -1265,10 +1345,13 @@ export default function TutorSession({
     } catch {
       if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
       const utterance = new SpeechSynthesisUtterance(cleanText)
-      utterance.rate = 0.95
+      // The fallback is the same coach, so it honours the same pace. SpeechSynthesis takes
+      // rate 0.1–10, so the clamped multiplier is always in range.
+      utterance.rate = 0.95 * coachPaceRef.current
       window.speechSynthesis?.speak(utterance)
-      startWordTimer(words.length * 500)
-      await new Promise(r => setTimeout(r, words.length * 500 + 200))
+      const fallbackMs = scaleDurationMs(words.length * 500, coachPaceRef.current)
+      startWordTimer(fallbackMs)
+      await new Promise(r => setTimeout(r, fallbackMs + 200))
     }
   }
 
@@ -3172,7 +3255,8 @@ export default function TutorSession({
             <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation}
               onSpeechStart={() => { tutorRunRef.current++; stopCurrentAudio() }}
               recoveredText={recoveredFor('listening')} onDraftChange={handleDraftChange}
-              coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
+              coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud}
+              coachPace={coachPace} onCyclePace={cycleCoachPace} savingVoicePref={savingVoicePref} />
           )}
 
           {phase === 'dictating' && (
@@ -3185,6 +3269,8 @@ export default function TutorSession({
               noticeLine={scribeNotice}
               readAloud={readAloud}
               onToggleReadAloud={toggleReadAloud}
+              coachPace={coachPace}
+              onCyclePace={cycleCoachPace}
               savingVoicePref={savingVoicePref}
             />
           )}
@@ -3286,12 +3372,12 @@ export default function TutorSession({
               into an editor: it is rendered here, and there is no path from this card to a
               write. Renders nothing at all when there is no starting draft, which is the
               common case and must stay out of the way. */}
-          {initialStartingDraft && (
+          {(initialStartingDraft || startingDraftReadState === 'unknown') && (
             <div className="mx-4 mt-3 shrink-0">
               <StartingDraftCard
                 startingDraft={initialStartingDraft}
                 draftWords={targetActual.words}
-                draftText={fullEssay}
+                readState={startingDraftReadState}
                 audience="student"
               />
             </div>

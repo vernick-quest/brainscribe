@@ -4540,3 +4540,59 @@ policies and the UPDATE/DELETE denial on a planted sentinel row, the COPPA `on d
 cascade`, and the second-insert-fails constraint.
 
 Gate: build green · `test:run` **854** · `scripts/verify/starting-draft.mjs` 14/14.
+
+---
+
+## 2026-08-17 — Coach speaking pace, and two corrections to the starting draft
+
+### 🐞 P1 — Coach pace (`SPEC-coach-pace.md`)
+Sierra: *"only if they can match the pace you need."* Accessibility, not a preference — a
+student who cannot follow the pace does not get a slower coach, they turn the voice OFF.
+
+Tap-to-cycle button beside `VoiceToggleButton` (the coach's OUTPUT, so it sits with the
+read-aloud toggle and not with the mic, which is the student's input). 44px, rate on the
+face, plain words in the aria-label. The cycle leads with **slower** — `[1, 0.75, 0.5, 1.25,
+1.5]` — because podcast users speed up and these students slow down.
+
+**Both playback paths are wired**, which is more than the two the brief named:
+`lib/useCoachVoice.js` (onboarding, coach previews, new-session) *and* `TutorSession`'s own
+`playClip`, which is a separate `<audio>` element the live session uses. Wiring only the
+hook would have left the pace doing nothing in the actual writing session.
+
+⚠️ **Trap 1 is an ORDERING bug**, so it is asserted as an order. `applyPlaybackRate` runs
+*after* `el.src = url` on every play, never once at mount — set earlier, the rate holds for
+the current utterance and silently reverts to 1× on the next, which tests fine by hand and
+fails in real use. `lib/wiring.test.js` asserts the relative position in both paths and that
+neither pauses or reloads to apply it. Positive-controlled: moving the call above the source
+assignment fails the test. `lib/coachPace.test.js` separately proves re-application restores
+the rate after a source change.
+
+Two things not in the spec, found by reading the playback path:
+- **The word-sync caption desyncs at any changed rate.** It is driven from `el.duration`,
+  the clip's length at 1×, so at 0.5× an unscaled caption finishes while the coach is still
+  mid-sentence — for exactly the students who slowed it down to follow along.
+  `scaleDurationMs` fixes both the real clip and the `speechSynthesis` fallback.
+- **The fallback voice honours the pace too** (`utterance.rate = 0.95 × pace`), or a student
+  whose TTS call fails gets an un-paced coach with no explanation.
+
+A failed persist is logged, not surfaced: the pace still applies for the session, and a
+banner mid-sentence would be its own accessibility problem.
+
+**Manual pass owed (not automatable):** pitch at 0.5× and 1.5× — it must sound *slower*, not
+drunk; a change mid-sentence must not restart the line; the setting survives a reload and a
+coach switch; and with the voice OFF the button is not rendered at all.
+
+### Two corrections to the starting draft
+**`fetchStartingDraft` collapsed the same ambiguity the merge rejected.** The conductor kept
+this lane's classifier over intake's `null`-on-any-error version — right call — but mine
+*also* returned `null` for both `absent` and `unknown`, differing only by a log. On the
+render side that failure **flatters the student**: it drops the "arrived with 800 words"
+half, so a watcher sees only the working draft and reads all of it as new. It now returns
+`{ draft, state }`, and the card says plainly that it could not be loaded rather than
+implying there was nothing.
+
+**`draftOverlapFraction` is deleted, not unwired.** Left exported and unused it is an
+invitation to wire the same mistake back in. The reasoning — including the measured 46% on
+genuinely new prose — is preserved where the function was.
+
+Gate: build green · `test:run` **889** · `scripts/verify/starting-draft.mjs` 12/12.
