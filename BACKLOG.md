@@ -810,14 +810,47 @@ draft space already exists.
 **(a) Starting draft — 📤 SPEC'D + FARMED OUT.** `SPEC-starting-draft.md`, cross-lane
 (`focus/assignment-intake` captures, `focus/coaching-session` renders + wires `studentSources`).
 
-**(b) 🔴 Editable draft BEFORE lock — AGREED, NOT SPEC'D, NOT FARMED OUT.**
-`focus/coaching-session`. This is the half that answers her actual complaint —
-*"having to remember your draft and all the feedback you got on it before rewriting it."*
-Make the draft space editable before the lock, reusing the post-assembly editor she already
-knows. Cheapest of the three and closest to what she asked for. **Nothing exists for this yet.**
+**(b) ✅ MOSTLY ALREADY BUILT — replaced by a box-sizing fix.** `focus/coaching-session`.
 
-⚠️ The 160px composer cap (`Math.min(el.scrollHeight, 160)`) belongs HERE, not to the undo bug.
-Raising it as part of a persistence fix would make that bug LESS VISIBLE without fixing it.
+The conductor advocated this as a missing feature without checking what shipped. Measured
+2026-08-17 SF against `components/TutorSession.js`:
+
+| Capability | Exists? | Where |
+|---|---|---|
+| Edit a **confirmed** component before assembly | ✅ **yes, ANY type** — no `custom` gate | `saveComponentEdit`, line ~3653 |
+| Edit an **assembled** paragraph | ✅ yes | `saveDirectEdit`, line ~3538 |
+| **Type/paste your own words** into a slot before locking | ⚠️ **custom sections only** | "Lock in this part", line ~3761 |
+
+So Sierra's actual complaint — *"having to remember your draft and all the feedback you got
+on it before rewriting it for them to lock it in"* — is answered for the path she is now on:
+every scene she adds is a `custom` section, and "Lock in this part" opens an editable box
+prefilled with her own last reply. No coach retyping, no chat composer.
+
+### 🔴 The real remaining gap is BOX SIZE, not capability
+Her complaint led with *"it was hard to have to write all the stuff in such a tiny text box."*
+Every writing surface in the app is sized for a sentence:
+
+| Surface | Ceiling |
+|---|---|
+| Chat composer | `Math.min(el.scrollHeight, 160)` ≈ 6 lines |
+| "Lock in this part" (a whole SCENE) | `rows={2}` |
+| Edit a confirmed component | `rows={3}` |
+| Edit an assembled paragraph | `rows={5}` |
+
+**Fix: auto-grow each to a real working height with a scroll ceiling** (the composer already
+auto-grows — it is the 160 cap that is wrong, not the mechanism). Hours, no write-path risk,
+and it delivers most of what she asked for.
+
+⚠️ Do this as its OWN change, not bundled with a persistence fix. Raising the composer cap
+inside the undo work would have made that bug less visible without fixing it.
+
+### 🔵 PARKED product decision — direct entry for PROSE components
+The `custom`-only gate on "Lock in this part" looks like an oversight and probably is not.
+Prose components have a candidate flow: the coach proposes, the student confirms. A
+type-anything box on `hook`/`context`/`body` **bypasses the coaching entirely** — the same
+objection that killed the free-form workspace, applying with equal force. Custom sections
+have no candidate flow, so a direct box is the only way in. That asymmetry is principled.
+Decide deliberately; do not "fix" it as a gap.
 
 ## ✨ FEATURE · P1 — `writing_mode`, inferred at scaffold time  🔴 NOT SPEC'D, NOT FARMED OUT
 `focus/assignment-intake`. **Robert's design, 2026-08-17 SF**, better than the conductor's
