@@ -1,5 +1,6 @@
 import { startAuditBatch, runAuditBatch } from '@/app/api/admin/audit-batch/route'
 import { runSessionHealthPass } from '@/lib/runSessionHealth'
+import { runProvenanceSilenceCheck } from '@/lib/runMonitors'
 import { NextResponse, after } from 'next/server'
 
 // GET /api/cron/transcript-audit — daily coach-guardrail audit of a small sample
@@ -12,12 +13,15 @@ import { NextResponse, after } from 'next/server'
 // unprotected). Manual run:
 //   curl -H "Authorization: Bearer $CRON_SECRET" https://www.brainscribe.io/api/cron/transcript-audit
 //
-// ONE nightly pass, TWO kinds of finding:
+// ONE nightly pass, THREE kinds of finding:
 //   1. the sampled guardrail audit (model calls) — is the COACHING good?
 //   2. the session-health pass (pure queries, no model) — did the student's WORK survive?
-// The second exists because Sierra's loss was mechanical and the first is structurally
-// blind to it: an audit that reads what the coach SAID cannot see whether locks landed
-// or paragraphs exist. Deliberately NOT a second cron — one nightly pass, two outputs.
+//   3. the provenance silence check (pure queries) — are the monitors themselves alive?
+// (2) exists because Sierra's loss was mechanical and (1) is structurally blind to it: an
+// audit that reads what the coach SAID cannot see whether locks landed or paragraphs
+// exist. (3) exists because (1) and (2) both report by writing rows, and a monitor that
+// has silently stopped writing rows is indistinguishable from a quiet week.
+// Deliberately NOT three crons — one nightly pass, three outputs.
 //
 // Sampling + the run-ledger row are created synchronously; the model calls run in
 // after() so the invocation returns fast. Starts conservative (see DAILY_COUNT);
@@ -46,13 +50,26 @@ export async function GET(request) {
     console.error('[cron/transcript-audit] session health FAILED:', healthError)
   }
 
+  // The silence check, also inline and also pure queries. It asks whether the provenance
+  // shadow monitor still has a pulse — /api/scaffold suppresses recording whenever it
+  // cannot trust a score, so a column drift would stop recording for every session with no
+  // symptom but zero rows, which is what a quiet day looks like too. Runs AFTER the health
+  // pass and independently of it: two monitors must not be able to take each other down.
+  let provenance = null, provenanceError = null
+  try {
+    provenance = await runProvenanceSilenceCheck()
+  } catch (e) {
+    provenanceError = e?.message ?? String(e)
+    console.error('[cron/transcript-audit] provenance silence check FAILED:', provenanceError)
+  }
+
   const started = await startAuditBatch({ count: DAILY_COUNT, triggeredBy: 'cron' })
   if (started.error) {
     // The audit half failing must not discard the health result we already have.
-    return NextResponse.json({ error: started.error, health, healthError }, { status: started.status ?? 500 })
+    return NextResponse.json({ error: started.error, health, healthError, provenance, provenanceError }, { status: started.status ?? 500 })
   }
 
   after(async () => { await runAuditBatch(started) })
 
-  return NextResponse.json({ runId: started.runId, sampled: started.sessions.length, health, healthError })
+  return NextResponse.json({ runId: started.runId, sampled: started.sessions.length, health, healthError, provenance, provenanceError })
 }

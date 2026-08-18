@@ -884,15 +884,173 @@ function AuditFindingCard({ finding, session, student, breachReviews, onChanged 
 // judge findings: a red-bordered block with its own heading, because "the student's
 // writing may be gone" and "the coach could have phrased that better" are not the same
 // class of problem and must not be dismissible with the same shrug.
+// What the reader is supposed to DO. A severity word tells you how loud a finding is, not
+// whether it is yours to act on, and without that every row looks equally like homework —
+// so the panel got skimmed and then acknowledged wholesale, which is the failure mode that
+// makes a monitor worthless.
+//
+// Two different verbs on purpose:
+//   OPEN IT     — something may be lost. Reading the session is the only way to know.
+//   FILE IT     — the shape is worth knowing about; it is not evidence of loss.
+const HEALTH_ACTION = {
+  no_draft_despite_locks: {
+    verb: 'Open it',
+    why: 'Every scaffold item is confirmed and no paragraph exists. This is the exact shape of Sierra\u2019s loss \u2014 finished writing that never became a draft. Open the session and check the text is still there before acknowledging.',
+  },
+  complete_without_draft: {
+    verb: 'Open it',
+    why: 'The session was marked complete with no draft behind it. If the writing is gone this is where it went.',
+  },
+  truncated_turn: {
+    verb: 'Open it if a lock is missing',
+    why: 'A coach reply was cut off mid-token. Harmless if the turn carried no lock \u2014 the count after \u00b7 is how many were cut WITHOUT one, and that is the number that matters. \u26a0\ufe0f A zero is only trustworthy on turns recorded after 2026-08-16: the counter under-reported before that, and it is cumulative per session, so a session that was active either side of the fix can read 0 without meaning it. Open those.',
+  },
+  overstuffed_section: {
+    verb: 'File it',
+    why: 'The student\u2019s writing is piling into one scaffold section. Nothing is lost, but it will hit the assembly ceiling \u2014 worth knowing, not worth chasing.',
+  },
+  late_scaffold: {
+    verb: 'File it',
+    why: 'The student talked for a while before any structure appeared. A pacing signal about the coach, not a loss \u2014 the writing is in the transcript either way.',
+  },
+}
+
 const HEALTH_TONE = {
   critical: { bg: 'var(--status-error-bg)', fg: 'var(--status-error)', word: 'AT RISK' },
   high:     { bg: 'var(--status-error-bg)', fg: 'var(--status-error)', word: 'HIGH' },
   medium:   { bg: 'var(--status-thin-bg)',  fg: 'var(--status-thin)',  word: 'CHECK' },
 }
 
+// ── Monitors: the watcher of the watchers ─────────────────────────────────────────────
+// Every other panel here reports what a pass FOUND. This one reports whether the pass is
+// still HAPPENING, which no findings table can answer: findings clear by deletion, so a
+// healthy corpus and a dead monitor render identically as an empty table.
+//
+// The provenance monitor needs it most. /api/scaffold deliberately suppresses recording a
+// check whenever it cannot trust the score — the right call, because a fabricated failure
+// poisons the calibration set forever while a gap is recoverable — but the symptom of a
+// column drift is then zero rows, and zero rows is also what a quiet Tuesday looks like.
+const MONITOR_TONE = {
+  ok:      { fg: 'var(--status-success)', bg: 'var(--status-success-bg)', word: 'OK' },
+  alert:   { fg: 'var(--status-error)',   bg: 'var(--status-error-bg)',   word: 'DARK' },
+  stopped: { fg: 'var(--status-error)',   bg: 'var(--status-error-bg)',   word: 'STOPPED' },
+  // Amber, not green. "Nothing to measure" is an absence of data and it must not be able
+  // to read as a pass at a glance — a green light that also means "we have no idea" is how
+  // a zero-out-of-zero got reported once as a clean bill of health.
+  unknown: { fg: 'var(--status-thin)',    bg: 'var(--status-thin-bg)',    word: 'NO DATA' },
+  never:   { fg: 'var(--status-thin)',    bg: 'var(--status-thin-bg)',    word: 'NEVER RUN' },
+}
+
+function MonitorsPanel() {
+  const [state, setState] = useState({ loading: true, monitors: [], pending: false, error: '' })
+  const [running, setRunning] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/monitors', { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setState({ loading: false, monitors: [], pending: false, error: json.error ?? 'Failed to load.' }); return }
+      setState({ loading: false, monitors: json.monitors ?? [], pending: !!json.pending, error: '' })
+    } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function recheck() {
+    setRunning(true)
+    try { await fetch('/api/admin/monitors', { method: 'POST' }); await load() }
+    catch {} finally { setRunning(false) }
+  }
+
+  if (state.loading) return null
+  if (state.pending) {
+    return (
+      <div className="rounded-2xl px-4 py-3 text-xs"
+        style={{ border: '1px dashed var(--border-strong)', color: 'var(--text-muted)' }}>
+        Monitor tracking is deployed but migration 074 has not been applied yet — runs cannot be recorded.
+      </div>
+    )
+  }
+  if (state.error) return null
+
+  const bad = state.monitors.filter(m => m.status === 'alert' || m.status === 'stopped')
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{ border: `2px solid ${bad.length ? 'var(--status-error)' : 'var(--border-default)'}`,
+               backgroundColor: bad.length ? 'var(--status-error-bg)' : 'var(--surface-card)' }}>
+      <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
+          {bad.length ? `${bad.length} monitor${bad.length === 1 ? ' is' : 's are'} not reporting` : 'Monitors are reporting'}
+        </span>
+        <span className="flex-1" />
+        <button onClick={recheck} disabled={running}
+          className="text-xs font-semibold cursor-pointer disabled:opacity-60" style={{ color: 'var(--text-muted)' }}>
+          {running ? 'Checking…' : 'Re-check'}
+        </button>
+      </div>
+
+      <div className="px-4 pb-4 space-y-2">
+        {state.monitors.map(m => {
+          const tone = MONITOR_TONE[m.status] ?? MONITOR_TONE.unknown
+          const d = m.detail ?? {}
+          return (
+            <div key={m.key} className="rounded-xl px-3 py-2 text-xs"
+              style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)' }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+                  style={{ backgroundColor: tone.bg, color: tone.fg }}>{tone.word}</span>
+                <span className="font-bold" style={{ color: 'var(--text-strong)' }}>{m.label}</span>
+                <span className="flex-1" />
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {m.ranAt ? `last run ${formatDate(m.ranAt)}` : 'no run on record'}
+                </span>
+              </div>
+              <p className="mt-1" style={{ color: 'var(--text-muted)' }}>{m.what}</p>
+              {m.status === 'alert' && m.key === 'provenance_recording' && (
+                <p className="mt-1 font-semibold" style={{ color: 'var(--status-error)' }}>
+                  {d.commitments} lock{d.commitments === 1 ? ' was' : 's were'} promised by the coach in the last{' '}
+                  {d.windowHours ?? 24}h and not one produced a provenance check. Locks are still saving —
+                  the shadow signal is not. Check the starting-draft read first.
+                </p>
+              )}
+              {m.status === 'stopped' && (
+                <p className="mt-1 font-semibold" style={{ color: 'var(--status-error)' }}>
+                  No run in over 48h. Whatever it last reported, nobody has heard from it since.
+                </p>
+              )}
+              {m.status === 'unknown' && (
+                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Ran with nothing to measure — no locks and no checks in {d.windowHours ?? 24}h.
+                  That is an absence of data, not an all-clear.
+                  {d.lastCheckAt ? ` Last check recorded ${formatDate(d.lastCheckAt)}.` : ''}
+                </p>
+              )}
+              {m.status === 'ok' && m.key === 'provenance_recording' && (
+                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {d.checks} check{d.checks === 1 ? '' : 's'} recorded in {d.windowHours ?? 24}h
+                  {d.darkSessions ? ` · ${d.darkSessions} session(s) had a lock with no check (observational only — a re-emitted [DONE:] locks nothing new)` : ''}.
+                </p>
+              )}
+              {m.status === 'ok' && m.key === 'session_health' && (
+                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Scanned {d.scanned ?? '—'} sessions · {d.found ?? 0} finding(s) standing · {d.cleared ?? 0} cleared.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function SessionHealthPanel({ sessionById, profileById }) {
-  const [state, setState] = useState({ loading: true, findings: [], pending: false, everRun: false, error: '' })
+  const [state, setState] = useState({ loading: true, findings: [], pending: false, everRun: false, runEvidence: 'none', lastRunAt: null, error: '' })
   const [showPre, setShowPre] = useState(false)
+  // Acknowledging used to be a one-way door: filed findings were filtered out of the list
+  // and nothing rendered the reverse, so a mis-file could only be undone in SQL. A triage
+  // control you cannot back out of is one people stop using.
+  const [showFiled, setShowFiled] = useState(false)
   const [running, setRunning] = useState(false)
 
   const load = useCallback(async () => {
@@ -900,7 +1058,7 @@ function SessionHealthPanel({ sessionById, profileById }) {
       const res = await fetch('/api/admin/session-health', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setState({ loading: false, findings: [], pending: false, error: json.error ?? 'Failed to load.' }); return }
-      setState({ loading: false, findings: json.findings ?? [], pending: !!json.pending, everRun: !!json.everRun, error: '' })
+      setState({ loading: false, findings: json.findings ?? [], pending: !!json.pending, everRun: !!json.everRun, runEvidence: json.runEvidence ?? 'none', lastRunAt: json.lastRunAt ?? null, error: '' })
     } catch { setState(s => ({ ...s, loading: false, error: 'Network error.' })) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -930,10 +1088,15 @@ function SessionHealthPanel({ sessionById, profileById }) {
   }
 
   const open = state.findings.filter(f => !f.acknowledged)
+  const filed = state.findings.filter(f => f.acknowledged)
   const live = open.filter(f => !f.pre_existing)
   const pre = open.filter(f => f.pre_existing)
-  const shown = showPre ? open : live
+  const shown = showFiled ? filed : showPre ? open : live
   const worst = live.some(f => f.severity === 'critical')
+  // Sessions, not findings — the unit the ⚠ column counts, and the unit a human acts on:
+  // four findings on one session is one thing to open, not four.
+  const liveSessions = new Set(live.map(f => f.session_id)).size
+  const needOpening = live.filter(f => HEALTH_ACTION[f.signal]?.verb.startsWith('Open')).length
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -942,7 +1105,7 @@ function SessionHealthPanel({ sessionById, profileById }) {
       <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold" style={{ color: 'var(--text-strong)' }}>
           {live.length
-            ? `${live.length} session${live.length === 1 ? '' : 's'} where student work may be at risk`
+            ? `${liveSessions} session${liveSessions === 1 ? '' : 's'} to look at · ${live.length} finding${live.length === 1 ? '' : 's'}`
             : state.everRun
               ? 'Student work: nothing at risk'
               : 'Not checked yet — the pass has not run'}
@@ -953,8 +1116,13 @@ function SessionHealthPanel({ sessionById, profileById }) {
         )}
         <span className="flex-1" />
         {pre.length > 0 && (
-          <button onClick={() => setShowPre(v => !v)} className="text-xs underline cursor-pointer" style={{ color: 'var(--primary)' }}>
+          <button onClick={() => { setShowFiled(false); setShowPre(v => !v) }} className="text-xs underline cursor-pointer" style={{ color: 'var(--primary)' }}>
             {showPre ? 'Hide' : `Show ${pre.length} pre-existing`}
+          </button>
+        )}
+        {filed.length > 0 && (
+          <button onClick={() => { setShowPre(false); setShowFiled(v => !v) }} className="text-xs underline cursor-pointer" style={{ color: 'var(--primary)' }}>
+            {showFiled ? 'Back to open' : `Show ${filed.length} filed`}
           </button>
         )}
         <button onClick={rerun} disabled={running} className="text-xs font-semibold cursor-pointer disabled:opacity-60" style={{ color: 'var(--text-muted)' }}>
@@ -969,10 +1137,31 @@ function SessionHealthPanel({ sessionById, profileById }) {
           or hit Re-check to run it now.
         </div>
       )}
+      {/* How the panel knows the pass ran. 'recorded' (migration 074) is a fact about the
+          run itself; 'inferred' means it is still being read off the findings, which cannot
+          distinguish a clean corpus from a dead pass — so it keeps hedging until 073 lands. */}
+      {state.everRun && (
+        <div className="px-4 pb-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          {state.runEvidence === 'recorded'
+            ? `Pass last ran ${formatDate(state.lastRunAt)}.`
+            : `Last run inferred from the findings themselves (${formatDate(state.lastRunAt)}) — migration 074 has not been applied, so a clean corpus would still read as unchecked.`}
+        </div>
+      )}
       <div className="px-4 pb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
         Deterministic checks over every session — locks that never became a draft, cut-off
         replies, writing piling up where it will not assemble. No model judgement: these are
         facts about whether the work survived.
+        {live.length > 0 && (
+          <>
+            {' '}<span className="font-semibold" style={{ color: 'var(--text-strong)' }}>
+              {needOpening === 0
+                ? 'Nothing here needs the transcript opened — every one is a shape worth filing.'
+                : `${needOpening} of these ${live.length} needs the session opened; the rest are shapes worth filing.`}
+            </span>{' '}
+            Acknowledging files a finding and drops it from the ⚠ column — it does not fix
+            anything, and if the condition returns the nightly pass raises it again.
+          </>
+        )}
       </div>
 
       {shown.length > 0 && (
@@ -991,13 +1180,25 @@ function SessionHealthPanel({ sessionById, profileById }) {
                     <span className="text-[10px] rounded-full px-2 py-0.5" style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-subtle)' }}>pre-existing</span>
                   )}
                   <span className="flex-1" />
-                  <button onClick={() => acknowledge(f, true)} className="text-[10px] font-semibold px-2 py-1 rounded-full cursor-pointer"
-                    style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>Acknowledge</button>
+                  <button onClick={() => acknowledge(f, !f.acknowledged)}
+                    title={f.acknowledged
+                      ? 'Puts this finding back in the open list and back in the ⚠ column.'
+                      : 'Files this finding: it stops counting toward the ⚠ column and stays filed until the condition changes. It does not fix anything.'}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-full cursor-pointer"
+                    style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
+                    {f.acknowledged ? 'Un-file' : 'Acknowledge'}
+                  </button>
                 </div>
                 <p className="mt-1" style={{ color: 'var(--text-strong)' }}>
                   {who ? `${who} · ` : ''}{sess?.title || 'Untitled session'}
                 </p>
                 <p style={{ color: 'var(--text-muted)' }}>{f.detail}</p>
+                {HEALTH_ACTION[f.signal] && (
+                  <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <span className="font-bold" style={{ color: tone.fg }}>{HEALTH_ACTION[f.signal].verb}.</span>{' '}
+                    {HEALTH_ACTION[f.signal].why}
+                  </p>
+                )}
                 <a href={`/transcript/${f.session_id}`} className="underline mt-1 inline-block" style={{ color: 'var(--primary)' }}>
                   Open session →
                 </a>
@@ -1082,6 +1283,7 @@ function AuditTab({ sessionById, profileById, focusSessionId, onFocusHandled }) 
       {/* Student work at risk — deliberately ABOVE and visually apart from the judge
           findings. These are mechanical: did the writing survive? Not "could the
           coaching be better". They must not read as the same kind of item. */}
+      <MonitorsPanel />
       <SessionHealthPanel sessionById={sessionById} profileById={profileById} />
       {/* Control bar */}
       <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"

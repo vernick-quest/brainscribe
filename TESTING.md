@@ -4596,3 +4596,84 @@ invitation to wire the same mistake back in. The reasoning — including the mea
 genuinely new prose — is preserved where the function was.
 
 Gate: build green · `test:run` **889** · `scripts/verify/starting-draft.mjs` 12/12.
+## 2026-08-17 — Monitor pulse: alerting on the silence itself (focus/admin)
+
+### Why
+Two safety passes report by writing rows, and neither could say it was still running.
+`/api/scaffold` deliberately suppresses recording a provenance check whenever the
+starting-draft read fails for an unknown reason — the right trade, because a fabricated
+failure poisons the calibration set permanently while a hole is recoverable — but the
+symptom of a column-name drift is then **zero rows**, which is byte-identical to a quiet
+day. The session-health pass had the mirror problem: `everRun` was inferred from the
+findings table being non-empty, and findings clear by deletion, so a genuinely healthy
+corpus would read "Not checked yet" forever.
+
+### What was verified, and how
+
+**Positive control — the detector fires on the one real outage in the record.** Replayed
+`evaluateProvenanceSilence` day-by-day over 40 days of live `provenance_checks` /
+`coach_commitments`, evaluating each day as if the cron had run at 23:59:
+
+| day | checks | settled locks | verdict |
+|---|---|---|---|
+| 2026-08-04 | 1 | 3 | ok |
+| 2026-08-06 | 0 | 5 | 🔴 ALERT |
+| 2026-08-08 | 0 | 8 | 🔴 ALERT |
+| 2026-08-09 | 0 | 2 | 🔴 ALERT |
+| 2026-08-16 | 8 | 7 | ok |
+| 2026-08-17 | 4 | 0 | ok |
+
+Aug 6/8/9 are the pre-064 window, when the scaffold arm was never wired to the table. That
+gap was found **by hand on 2026-08-11**; the detector raises it on **Aug 6, five days
+earlier**. The cause there (arm never wired) is not the cause it is aimed at (suppression on
+a bad read) — which is the point: it encodes no theory of *how* recording stops, only that
+it did.
+
+**Negative control on the verification itself.** Queried the witness with the wrong column
+name — `coach_commitments.created_at`, the exact drift class this guards against. PostgREST
+answers `42703`, an **error**, not an empty set, so `runProvenanceSilenceCheck` throws and
+the cron reports `provenanceError` instead of degrading into a reassuring "no activity".
+
+**A real defect this caught.** The fail-soft branch checked `error.code === '42P01'`. Probed
+against the live DB, a missing table answers PostgREST's **`PGRST205`**, not the Postgres
+code. Coding to the assumed value meant the pending path never matched: `/api/admin/monitors`
+would have 500'd for as long as 073 sat unapplied, and the panel that reports dead monitors
+would itself have been dead. Fixed to match code **or** message.
+
+**Live now:** `ok` — 4 checks in 24h, `lastCheckAt` 2026-08-17T23:48Z. A real measurement,
+not a zero-out-of-zero.
+
+### Sierra as the self-clearing test (the carried threshold item)
+Dry-ran the reconcile against current data, writing nothing:
+
+- **`no_draft_despite_locks` (CRITICAL) CLEARS** — she now has 1 paragraph. Per-signal
+  self-clearing works on the exact case it was built for. *The signal cleared; whether her
+  earlier locked text made it into that paragraph is the draft-integrity lane's question,
+  not this one's.*
+- Her other three findings correctly persist — independent conditions.
+- **`overstuffed_section` detail moved from `30512 across 1` to `19293 per section (38586
+  across 2)`**: her scaffold GREW to two sections. That is narrative growth appending a
+  scene. **n=1** — not enough to re-cut the threshold. The re-check still stands.
+
+### Triage guidance, because severity is not an instruction
+The panel showed six findings under a header reading "6 sessions", contradicting the ⚠
+column, which counts sessions. Header now reads "3 sessions to look at · 6 findings". Each
+finding carries what to DO — **Open it** (something may be lost) vs **File it** (a shape
+worth knowing, not evidence of loss). `truncated_turn`'s card names its own caveat: the
+`no_lock` count is cumulative per session and under-reported before 2026-08-16, so a session
+active either side of that fix can read `0` without meaning it — and Acknowledge is now **reversible** (a "Show N
+filed" view with Un-file); it was a one-way door undoable only in SQL.
+
+### 🔴 Needs migration 073 pasted
+Until then: `monitor_runs` is absent, `latestMonitorRuns` returns `pending`, the panel says
+so explicitly, and the health panel falls back to the old inference and **labels it as
+inferred**.
+
+### Known blind spot, stated on purpose
+**Partial** silence is invisible. If a drift suppressed only sessions that have a starting
+draft, the rest keep recording and this reads `ok`. `darkSessions` is carried for exactly
+that question but is **observational only** — a re-emitted `[DONE:]` locks nothing new, so a
+session with a commitment and no check is normal, and a CTA that over-counts gets skimmed.
+Record the distribution first; a threshold, if ever, comes from the data.
+
+Gate: build green · `test:run` **903** (11 new in `lib/monitorSilence.test.js`).
