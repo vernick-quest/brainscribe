@@ -966,7 +966,7 @@ function MonitorsPanel() {
     return (
       <div className="rounded-2xl px-4 py-3 text-xs"
         style={{ border: '1px dashed var(--border-strong)', color: 'var(--text-muted)' }}>
-        Monitor tracking is deployed but migration 073 has not been applied yet — runs cannot be recorded.
+        Monitor tracking is deployed but migration 074 has not been applied yet — runs cannot be recorded.
       </div>
     )
   }
@@ -1137,14 +1137,14 @@ function SessionHealthPanel({ sessionById, profileById }) {
           or hit Re-check to run it now.
         </div>
       )}
-      {/* How the panel knows the pass ran. 'recorded' (migration 073) is a fact about the
+      {/* How the panel knows the pass ran. 'recorded' (migration 074) is a fact about the
           run itself; 'inferred' means it is still being read off the findings, which cannot
           distinguish a clean corpus from a dead pass — so it keeps hedging until 073 lands. */}
       {state.everRun && (
         <div className="px-4 pb-2 text-xs" style={{ color: 'var(--text-muted)' }}>
           {state.runEvidence === 'recorded'
             ? `Pass last ran ${formatDate(state.lastRunAt)}.`
-            : `Last run inferred from the findings themselves (${formatDate(state.lastRunAt)}) — migration 073 has not been applied, so a clean corpus would still read as unchecked.`}
+            : `Last run inferred from the findings themselves (${formatDate(state.lastRunAt)}) — migration 074 has not been applied, so a clean corpus would still read as unchecked.`}
         </div>
       )}
       <div className="px-4 pb-3 text-xs" style={{ color: 'var(--text-muted)' }}>

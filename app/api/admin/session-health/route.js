@@ -47,7 +47,7 @@ export async function GET() {
   // run" — and reporting the second as the first is a false all-clear.
   //
   // Inferring the run from the findings could never resolve that: the inference IS the
-  // ambiguity. Migration 073 records the run itself, so a clean corpus now reads as clean
+  // ambiguity. Migration 074 records the run itself, so a clean corpus now reads as clean
   // instead of as unchecked. last_seen_at is kept only as the fallback for the window
   // between this deploy and the paste of 073.
   const rows = data ?? []

@@ -1,10 +1,15 @@
--- 073 — Monitor runs: a recorded pulse for the passes nobody watches
+-- 074 — Monitor runs
+--
+-- RENUMBERED 073 -> 074 by the conductor at merge. focus/assignment-intake authored
+-- 073 (sessions.writing_mode) and Robert applied it while this was in flight — live ledger
+-- head was already 073. Third numbering collision this week; the ledger's no-on-conflict
+-- insert would have caught it at paste time, loudly, but catching it at merge is cheaper.: a recorded pulse for the passes nobody watches
 --
 -- Ledger head was 072 (`select max(version) from public.schema_migrations`, NOT `ls` —
 -- this worktree's directory listing was stale by two files at the time of writing).
 begin;
 insert into public.schema_migrations (version, applied_at, note)
-values ('073', now(), 'monitor runs ledger');
+values ('074', now(), 'monitor runs ledger');
 
 -- ── Two problems, one shape ───────────────────────────────────────────────────────────
 --
