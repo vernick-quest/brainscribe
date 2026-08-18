@@ -70,6 +70,14 @@ const { text: p1 } = await coachTurn({
     { role: 'user', content: "ok here's the next bit. By the third morning the branch was bare and the four acorns were two. He knew the walnut trees were across the open field, and he knew about the hawk on the fence post." },
     { role: 'assistant', content: "That lands — the two acorns doing the counting for you, and the hawk sitting there as a fact rather than a threat. Quick read-over before it goes in: it's spare and it's yours. Happy with it as it stands?" },
     { role: 'user', content: "yeah put it in" },
+    // A SECOND confirmation, because one was not enough to make the lock deterministic:
+    // measured ~50% over four runs, the coach legitimately asking once more (Rule 17
+    // permits it). The fix belongs in the fixture, not the assertion — "a lock actually
+    // fired" is the check that stops every negative assertion below it from passing
+    // vacuously, so weakening it would hollow out the probe. Mirrors oversized-lock.mjs
+    // probe 2, which is stable for exactly this reason.
+    { role: 'assistant', content: "Then I'll put it in as Scene 2 — say the word." },
+    { role: 'user', content: "yep, lock it in" },
   ],
 })
 console.log('\n' + p1 + '\n' + '─'.repeat(70))
