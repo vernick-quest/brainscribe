@@ -895,3 +895,61 @@ entry point was cut). Promoted P2→P1: it is accessibility, not a preference.
 *"it'd be nice if you could make it so the coaches can talk slower or faster per your need."*
 `app/api/speak/route.js:41` already sends `voice_settings` with no `speed`. A per-student
 preference beside the read-aloud toggle. After the two above.
+
+---
+
+# 🔵 OWED MANUAL PASSES — the two places "green" means "nobody looked"
+
+Both are shipped and live. Neither has an automated gate, and both are exactly the kind of
+thing this project has been burned by: a contract proven in a unit test while the wiring that
+makes it real is unverified. **Robert runs these.** Log the result in `TESTING.md` under a new
+dated heading (append-only) whichever way it goes.
+
+## 1. Composer persistence — the fix that would have saved Sierra's half hour
+**Live since `0351444`.** `lib/composerDraft.js` has 28 unit tests, but the React wiring — the
+400ms debounce firing, the `pagehide` listener attaching, the unmount flush, the props
+threading — has no test, because there is no jsdom in this repo. The contract is proven; the
+wiring is not.
+
+Open a real session and use the **chat composer** (the box you type to the coach in).
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Type a few sentences. Wait ~2s. **Close the tab.** Reopen the session. | Your text is back in the box, exactly as typed. |
+| 2 | Type something new. Go **offline** (turn wifi off). Press send. | The send fails AND your text is still in the box. |
+| 3 | Back online. Press send. | It sends, the box clears, and reloading does NOT bring it back. |
+| 4 | 🔴 Type an outline. **Tap the mic.** Speak a short question and send it. | **The typed outline is still there.** |
+
+**Step 4 is the one that matters.** `MicButton.js:74` fires `onInterim('')` on every mic start,
+which empties the composer — so before the adversarial pass, typing an outline → tapping the
+mic → sending would have DELETED the outline. Her exact scenario, destroyed by the thing built
+to save it. If step 4 fails, stop and report it; that is a data-loss regression, not a bug.
+
+*Inspecting directly (optional):* the draft lives at
+`localStorage['brainscribe:composer:<sessionId>']`. Step 1 should show a JSON blob with your
+text; step 3 should remove the key entirely.
+
+## 2. Coach pace — does it sound slower, or does it sound drunk?
+**Live since `7579121`.** `applyPlaybackRate` sets `preservesPitch` and `webkitPreservesPitch`,
+and a unit test asserts both are set — but **no test can hear it.** Without pitch preservation
+a slowed coach sounds drunk and a sped-up one sounds like a chipmunk, which a student reads as
+"the voice is broken", not "the voice is slower".
+
+⚠️ **Precondition: the pace button only renders when read-aloud is ON.** If you don't see it
+beside the voice toggle, turn the coach's voice on first.
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Find the pace button beside the voice toggle. It reads `1×`. | Visible in both listening and dictating modes. |
+| 2 | Tap once → `0.75×`. Let the coach speak. | Slower. **Same voice.** Not deeper, not slurred. |
+| 3 | Tap again → `0.5×`. Listen to a full reply. | Clearly slower and still natural. This is the accessibility case. |
+| 4 | Tap twice more → `1.25×`, then `1.5×`. | Faster, same pitch, no chipmunk. |
+| 5 | Tap once more. | Cycles back to `1×`. Order is `1 → 0.75 → 0.5 → 1.25 → 1.5 → 1`. |
+| 6 | Reload the page. | The rate you chose is still selected (it is on `profiles.coach_pace`). |
+| 7 | Change the rate **while the coach is mid-sentence.** | It changes immediately, without restarting the line. |
+| 8 | Do it on the **live writing session**, not just onboarding. | `TutorSession` has its own `<audio>` element and its own `playClip` — a wiring miss here would work everywhere EXCEPT the place that matters most. |
+
+**Also check the caption**, flagged by the lane and not in the original spec: the word-sync
+caption is driven from `el.duration`, the clip's length at 1×. At `0.5×` it may finish while
+the coach is still talking — for exactly the students who slowed it down. If it desyncs
+noticeably, that is a real finding worth a fix, not a nitpick.
