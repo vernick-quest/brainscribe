@@ -9,9 +9,14 @@
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
+<<<<<<< HEAD
     "test:prompts": "node scripts/prompt-harness/word-target.mjs && node scripts/prompt-harness/continuation.mjs && node scripts/prompt-harness/getting-started.mjs && node scripts/prompt-harness/oversized-lock.mjs && node scripts/prompt-harness/scaffold-growth.mjs && node scripts/prompt-harness/grown-story.mjs && node scripts/prompt-harness/assembly-fidelity.mjs",
     "test:continuation": "node scripts/continuation-gate.mjs",
     "test:starting-draft": "node scripts/starting-draft-gate.mjs"
+=======
+    "test:prompts": "node scripts/prompt-harness/word-target.mjs && node scripts/prompt-harness/continuation.mjs && node scripts/prompt-harness/getting-started.mjs && node scripts/prompt-harness/oversized-lock.mjs && node scripts/prompt-harness/scaffold-growth.mjs && node scripts/prompt-harness/grown-story.mjs && node scripts/prompt-harness/assembly-fidelity.mjs && node scripts/prompt-harness/lock-by-reference.mjs",
+    "test:continuation": "node scripts/continuation-gate.mjs"
+>>>>>>> focus/coach-ai
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
