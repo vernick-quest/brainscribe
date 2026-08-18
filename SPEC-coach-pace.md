@@ -63,17 +63,51 @@ also names 071. Run `select max(version) from public.schema_migrations` when the
 lands — on 2026-08-17 a migration authored as 069 had to be renumbered to 070 for exactly
 this reason.
 
-## Where it is set — two entry points, and both are required
+## The control — podcast-style, beside the read-aloud toggle
 
-1. **At coach pick.** `focus/assignment-intake` already built the coach picker with voice
-   previews, so the natural place to choose a pace is where the student is *already listening
-   to samples*. Adjusting the slider should re-play the preview at the new rate — instantly,
-   because `playbackRate` costs nothing.
-2. **In session.** You do not know your pace until you are working. Must be reachable
-   **without stopping the coach**, sitting beside the existing read-aloud toggle.
+**A tap-to-cycle rate button, not a settings page.** Robert, 2026-08-17: *"a toggle near the
+mic that can speed it up or down like someone listening to a podcast?"* — yes, with one
+placement correction.
 
-One is not enough: picking blind is guessing, and in-session-only means every student meets
-the wrong pace first.
+**Beside `VoiceToggleButton`, not the mic.** The mic is the student's INPUT; pace is the
+coach's OUTPUT. A speed control next to the mic reads as "how fast I talk." `VoiceToggleButton`
+is already the coach-voice control and already renders in BOTH composer modes
+(`TutorSession.js:699` and `741`), so the two form one cluster: on/off + speed. That is the
+podcast-player pattern exactly.
+
+**Why tap-to-cycle beats a settings page**, and it is not a style preference:
+- **The moment of need is mid-sentence.** You discover the pace is wrong while listening. A
+  settings screen means leaving the session to fix it, which most students will not do — they
+  will turn the voice off instead.
+- **It is self-teaching.** A visible `1×` tells a student the control exists. A buried
+  setting tells them nothing, and a student who does not know they can slow the coach down is
+  identical to a student who cannot.
+- **Zero learning curve.** YouTube, Spotify, TikTok, audiobooks. They already know it.
+
+🔴 **One thing podcasts get backwards for this audience. Podcast users mostly speed UP; these
+students mostly need to slow DOWN.** A cycle that runs 1× → 1.25× → 1.5× serves the wrong
+direction first and buries the accessibility case behind three taps. Lead with slower:
+
+    1× → 0.75× → 0.5× → 1.25× → 1.5× → 1×
+
+Always visible (not only during playback) so it can be set before the coach speaks, and a
+44px tap target per the WCAG floor in CLAUDE.md.
+
+## The route already exists
+
+`app/api/profile/voice/route.js` takes `{ readAloud: boolean }` and writes `coach_read_aloud`
+to the caller's own row (migration 030). Extend it to accept `{ pace: number }` → the new
+`coach_pace` column, and reuse the `savingVoicePref` state already threaded through
+`ReplyComposer`. **No new route, no new plumbing** — one column, one param, one button beside
+an existing button.
+
+## Coach-pick entry point — OPTIONAL, cut from v1
+
+An earlier draft of this spec called two entry points mandatory. That was over-specified. With
+a persistent, discoverable, one-tap in-session control, a student sets their pace in the first
+minute of their first session and never thinks about it again. Setting it on the picker while
+sampling voices is a nice touch, not a requirement — build it if it is cheap, and do not block
+v1 on it.
 
 ## 🔴 Voice-pipeline hazards — this is the most fragile area in the repo
 
