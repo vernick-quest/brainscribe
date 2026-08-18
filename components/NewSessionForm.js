@@ -6,6 +6,7 @@ import { PERSONAS as PERSONA_DATA, PersonaAvatar } from '@/lib/personas'
 import { getCoachColor } from '@/lib/coachColors'
 import WritingFormChooser from '@/components/WritingFormChooser'
 import { getForm } from '@/lib/sampleLibrary'
+import { countDraftWords } from '@/lib/startingDraft'
 
 const PERSONAS = Object.entries(PERSONA_DATA).map(([id, p]) => ({ id, ...p }))
 
@@ -30,7 +31,7 @@ const PROGRESS_MESSAGES = [
 // Head Grader (transcript → "work on this with your coach"). Both optional and land
 // on Screen 1; a plain /assignment/new visit passes neither.
 export default function NewSessionForm({ initialAssignmentText = '', initialFocus = '' }) {
-  const [step, setStep]                         = useState('assignment') // 'assignment' | 'coach'
+  const [step, setStep]                         = useState('assignment') // 'assignment' | 'draft' | 'coach'
   const [assignment, setAssignment]             = useState(initialAssignmentText)
   const [persona, setPersona]                   = useState(null)         // no coach pre-selected
   const [loading, setLoading]                   = useState(false)
@@ -45,6 +46,21 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
   // names its form, so the coach scaffolds custom-vs-prose from the wording —
   // see lib/sampleLibrary.js); this is kept for potential future use/telemetry.
   const [chosenForm, setChosenForm]             = useState(null)
+
+  // ── Starting draft (Screen 2) — what the student arrived with ────────────────
+  // `draftChoice` is the DECLARATION, not just UI state: 'none' means the student
+  // said they are starting fresh, 'yes' means they have something to paste. Empty
+  // stays one tap away (the "starting fresh" button advances straight to the coach).
+  const [draftChoice, setDraftChoice]           = useState(null)  // null | 'none' | 'yes'
+  const [startingDraft, setStartingDraft]       = useState('')
+  // typed vs pasted is recorded for display only — never a provenance claim.
+  const [draftSource, setDraftSource]           = useState('typed')
+  const [draftError, setDraftError]             = useState('')
+  // Set once the session row exists. If the draft write then fails we must NOT create a
+  // second session on retry — the id is held so retry targets the same one. STATE, not a
+  // ref: the retry/skip affordance is rendered from it, and a ref change never re-renders,
+  // so the escape hatch would silently never appear.
+  const [createdSessionId, setCreatedSessionId] = useState(null)
 
   // Coach-intro playback state. `revealCount` = how many characters of the current
   // coach's pickerIntro are shown (the typewriter head, driven off audio.currentTime).
@@ -219,16 +235,88 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
       return
     }
     setSubmitError('')
-    setStep('coach')
+    setStep('draft')
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }))
   }
 
-  // Screen 2 → Screen 1. Assignment state is preserved; stop any playing clip.
-  function goBack() {
-    teardownAudio()
-    setStep('assignment')
+  function scrollTop() {
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }))
   }
+
+  // Screen 2 → Screen 3. Declaring "starting fresh" is one tap and clears any text the
+  // student typed before changing their mind, so a stray draft can't be captured after
+  // they said they had none.
+  function chooseNoDraft() {
+    setDraftChoice('none')
+    setStartingDraft('')
+    setDraftError('')
+    setStep('coach')
+    scrollTop()
+  }
+
+  function continueWithDraft() {
+    if (!startingDraft.trim()) {
+      setDraftError("Paste what you've written, or choose \u201cI'm starting fresh\u201d.")
+      return
+    }
+    setDraftError('')
+    setStep('coach')
+    scrollTop()
+  }
+
+  // Screen 3 → Screen 2. Stop any playing clip; the draft is preserved.
+  function goBack() {
+    teardownAudio()
+    setStep('draft')
+    scrollTop()
+  }
+
+  // Screen 2 → Screen 1. Assignment state is preserved.
+  function goBackToAssignment() {
+    setStep('assignment')
+    scrollTop()
+  }
+
+  // Writes the starting draft for a session that now exists. Returns true when there is
+  // nothing to save or the row landed; false when the caller must stop and show the error.
+  async function persistStartingDraft(sessionId) {
+    const content = startingDraft.trim()
+    if (draftChoice !== 'yes' || !content) return true
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/starting-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, source: draftSource }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) {
+        // The session exists; only the draft failed. Say so plainly and keep their words on
+        // screen — never navigate away from text we did not manage to store.
+        setSubmitError(json.error ?? "Your assignment is ready, but we couldn't save your starting draft.")
+        setLoading(false)
+        return false
+      }
+      return true
+    } catch {
+      setSubmitError("Your assignment is ready, but we couldn't save your starting draft — check your connection.")
+      setLoading(false)
+      return false
+    }
+  }
+
+  // Escape hatch after a failed draft write: go to the session the student already has,
+  // without the baseline. Explicit, never automatic — dropping their draft silently is the
+  // thing this whole flow exists to prevent.
+  function continueWithoutDraft() {
+    const id = createdSessionId
+    if (!id) return
+    teardownAudio()
+    router.push(`/assignment/${id}`)
+  }
+
+  // Same splitter the server stores with (lib/startingDraft.js), so the number shown
+  // here and the number a parent is later shown as the baseline cannot disagree.
+  const draftWordCount = countDraftWords(startingDraft)
 
   async function handleSubmit() {
     if (!persona || !assignment.trim() || loading || uploading) return
@@ -236,6 +324,14 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
     setLoading(true)
     setSubmitError('')
     try {
+      // A previous attempt already created the session and failed on the draft write —
+      // retry the draft against THAT session instead of creating a duplicate.
+      if (createdSessionId) {
+        const id = createdSessionId
+        if (!(await persistStartingDraft(id))) return
+        router.push(`/assignment/${id}`)
+        return
+      }
       // When revising toward a rubric criterion, pass the criterion (the rubric's
       // own words) as a plain orienting note appended to the assignment. It's
       // context for the coach — never a suggestion or a grade.
@@ -253,6 +349,15 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         setLoading(false)
         return
       }
+      setCreatedSessionId(session.id)
+
+      // Persist the starting draft BEFORE navigating. It is written once and can never be
+      // re-entered (migration 071 grants insert + select only), so a fire-and-forget write
+      // here would lose the student's arrival snapshot with nothing to retry from — the
+      // exact shape of every silent loss in this repo. Await it, check the VALUE, and if it
+      // fails stay put with their text intact and let them choose.
+      if (!(await persistStartingDraft(session.id))) return
+
       router.push(`/assignment/${session.id}`)
     } catch {
       setSubmitError('Network error — please check your connection and try again.')
@@ -406,7 +511,126 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
         </>
       )}
 
-      {/* ══════════════════════ SCREEN 2 — Choose your coach ══════════════════════ */}
+      {/* ═══════════════════ SCREEN 2 — Your starting point ═══════════════════ */}
+      {/* Declared, not inferred. A student arriving with a draft already has exactly one
+          way in (paste it to the coach) and that channel is unmodelled — this frames the
+          door rather than opening one. "I'm starting fresh" is the common path and costs
+          a single tap. v1 is paste/type only: parse-assignment's prompt is tuned to
+          EXTRACT AN ASSIGNMENT and would summarise a student's story, and a summarised
+          draft is not a baseline. ('upload' stays valid in the schema for a later,
+          verbatim OCR path.) */}
+      {step === 'draft' && (
+        <>
+          <button onClick={goBackToAssignment} type="button"
+            className="inline-flex items-center gap-1.5"
+            style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, marginBottom: 'var(--space-2)' }}
+            aria-label="Back to your assignment">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 12H5M11 18l-6-6 6-6" />
+            </svg>
+            Back to your assignment
+          </button>
+
+          <span style={{ font: 'var(--type-meta)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', color: 'var(--accent-text)', display: 'block', marginBottom: 'var(--space-1)' }}>
+            Step 2 · Your starting point
+          </span>
+          <h2 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: '0 0 var(--space-1)' }}>
+            Have you already started writing this?
+          </h2>
+          <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: '0 0 var(--space-4)' }}>
+            Most people haven&apos;t — that&apos;s completely normal. If you have something already, even
+            rough, put it in and we&apos;ll keep it as your starting point.
+          </p>
+
+          {draftChoice !== 'yes' ? (
+            <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+              <button type="button" onClick={chooseNoDraft}
+                className="text-left transition"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', cursor: 'pointer',
+                  borderRadius: 'var(--radius-md)', minHeight: 44,
+                  background: 'var(--surface-muted)', border: '1.5px solid var(--border-default)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)' }}>
+                <span className="shrink-0" style={{ width: 34, height: 34, borderRadius: 'var(--radius-pill)', background: 'var(--accent-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </span>
+                <span>
+                  <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', display: 'block' }}>No — I&apos;m starting fresh</span>
+                  <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>Go straight to picking your coach</span>
+                </span>
+              </button>
+
+              <button type="button" onClick={() => { setDraftChoice('yes'); setDraftError('') }}
+                className="text-left transition"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', cursor: 'pointer',
+                  borderRadius: 'var(--radius-md)', minHeight: 44,
+                  background: 'var(--surface-muted)', border: '1.5px solid var(--border-default)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)' }}>
+                <span className="shrink-0" style={{ width: 34, height: 34, borderRadius: 'var(--radius-pill)', background: 'var(--accent-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6" />
+                  </svg>
+                </span>
+                <span>
+                  <span style={{ font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-strong)', display: 'block' }}>Yes — I&apos;ve written some already</span>
+                  <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)' }}>Paste it in as your starting point</span>
+                </span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={startingDraft}
+                onChange={e => setStartingDraft(e.target.value)}
+                onPaste={() => setDraftSource('pasted')}
+                placeholder="Paste what you&apos;ve written so far…"
+                rows={8}
+                aria-label="What you have written so far"
+                className="w-full resize-none focus:outline-none focus:ring-2 transition"
+                style={{ font: 'var(--type-body)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '12px 14px', '--tw-ring-color': 'var(--ring)', color: 'var(--text-strong)' }}
+              />
+              {/* Say plainly what happens to it: frozen, and visible to linked adults.
+                  Transparency IS the defence here — declaring a draft does not verify who
+                  wrote it, and a watcher who can see "arrived with 800 words" needs no
+                  detector. Never surprise a student with that after the fact. */}
+              <p style={{ font: 'var(--type-meta)', color: 'var(--text-subtle)', margin: 'var(--space-2) 0 0' }}>
+                {draftWordCount === 1 ? '1 word' : `${draftWordCount.toLocaleString()} words`} · Saved exactly as it is and never changed,
+                so you can see how far you get. Your coach can read it, and so can a linked parent or teacher.
+              </p>
+
+              {draftError && <p className="text-sm" style={{ color: 'var(--status-error)', marginTop: 'var(--space-2)' }}>{draftError}</p>}
+
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginTop: 'var(--space-5)', flexWrap: 'wrap' }}>
+                <button type="button" onClick={continueWithDraft}
+                  className="inline-flex items-center gap-2 transition"
+                  style={{
+                    font: 'var(--type-ui)', fontWeight: 'var(--fw-bold)', color: 'var(--text-on-accent)',
+                    backgroundColor: 'var(--accent)', borderRadius: 'var(--radius-pill)', padding: '12px 22px',
+                    minHeight: 44, cursor: 'pointer',
+                  }}>
+                  Next: choose your coach
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </button>
+                <button type="button" onClick={chooseNoDraft}
+                  style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44 }}>
+                  Actually, I&apos;m starting fresh
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════ SCREEN 3 — Choose your coach ══════════════════════ */}
       {step === 'coach' && (
         <>
           <button onClick={goBack} type="button"
@@ -498,7 +722,22 @@ export default function NewSessionForm({ initialAssignmentText = '', initialFocu
             })}
           </div>
 
-          {submitError && <p className="text-sm text-center" style={{ color: 'var(--status-error)', marginTop: 'var(--space-4)' }}>{submitError}</p>}
+          {submitError && (
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <p className="text-sm text-center" style={{ color: 'var(--status-error)' }}>{submitError}</p>
+              {/* The session exists but its starting draft did not land. Retry targets the
+                  SAME session (no duplicate), and skipping is an explicit choice — we never
+                  drop the student's words on their behalf. */}
+              {createdSessionId && draftChoice === 'yes' && (
+                <p className="text-sm text-center" style={{ marginTop: 'var(--space-2)' }}>
+                  <button type="button" onClick={continueWithoutDraft}
+                    style={{ font: 'var(--type-ui)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44 }}>
+                    Continue without saving my starting draft
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Commit — only enabled once a coach is tapped. Runs the existing submit. */}
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginTop: 'var(--space-6)', flexWrap: 'wrap' }}>
