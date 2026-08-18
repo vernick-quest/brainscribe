@@ -22,6 +22,7 @@ import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 import { readDraft, writeDraft, clearDraftIfMatches, sweepExpiredDrafts, getDraftStorage } from '@/lib/composerDraft'
+import StartingDraftCard from '@/components/StartingDraftCard'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -784,6 +785,7 @@ export default function TutorSession({
   // Research & Citations v1: the session's saved sources (metadata only). Drives the
   // form-gated sources shelf + auto-bibliography. Empty/absent for non-essay forms.
   initialSources = [],
+  initialStartingDraft = null,
   // Count of linked adults (parents via relationships + teachers on this
   // assignment) who can read this session — drives the ambient visibility note.
   watcherCount = 0,
@@ -3276,6 +3278,22 @@ export default function TutorSession({
                   ? `${targetBar.label} — over the limit`
                   : targetBar.label}
               </p>
+            </div>
+          )}
+
+          {/* What they arrived with, above the working draft — "here is what she arrived
+              with, here is what she has now", in that order. Immutable and never fed back
+              into an editor: it is rendered here, and there is no path from this card to a
+              write. Renders nothing at all when there is no starting draft, which is the
+              common case and must stay out of the way. */}
+          {initialStartingDraft && (
+            <div className="mx-4 mt-3 shrink-0">
+              <StartingDraftCard
+                startingDraft={initialStartingDraft}
+                draftWords={targetActual.words}
+                draftText={fullEssay}
+                audience="student"
+              />
             </div>
           )}
 

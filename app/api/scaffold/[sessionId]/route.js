@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkProvenance } from '@/lib/provenance'
 import { annotateScaffoldProvenance, needsProvenancePass } from '@/lib/scaffoldProvenance'
 import { reconcileComponentsWrite } from '@/lib/scaffoldGrowth'
+import { STARTING_DRAFT_TABLE, STARTING_DRAFT_CONTENT_COLUMN, startingDraftSources, classifyStartingDraftRead, provenanceIsTrustworthy } from '@/lib/startingDraft'
 import { createServiceClient } from '@/lib/supabase/service'
 import { after } from 'next/server'
 
@@ -126,7 +127,7 @@ export async function PATCH(request, { params }) {
         body.thesis !== storedRow?.thesis
 
       if (needsProvenancePass(body.components, stored) || thesisChanged) {
-        const [{ data: msgs }, { data: paras }, { data: sess }] = await Promise.all([
+        const [{ data: msgs }, { data: paras }, { data: sess }, startingRead] = await Promise.all([
           supabase.from('messages').select('content')
             .eq('session_id', sessionId).eq('role', 'user'),
           supabase.from('paragraphs').select('position, scribed_text, raw_spoken_text')
@@ -135,10 +136,48 @@ export async function PATCH(request, { params }) {
           // and provenance_checks.student_id is what the COPPA cascade deletes on — a
           // fragment of a child's writing must not survive the child's account.
           supabase.from('sessions').select('student_id').eq('id', sessionId).single(),
+          // ── THE SEAM (SPEC-starting-draft.md) ────────────────────────────────────
+          // A declared starting draft is a THIRD category of the student's own writing,
+          // and it was in neither of the two arrays below. Without it, every lock drawn
+          // from that draft scores novelFraction 1.00 and is written to provenance_checks
+          // as passed=false — the student's own writing recorded as coach-authored, and
+          // fabricated failures seeded into the dataset Phase 2 is calibrated from.
+          //
+          // maybeSingle, not single: no row is the COMMON path (most students arrive with
+          // nothing) and .single() reports that as PGRST116, an error.
+          //
+          // 🔴 SERVICE client, unlike the reads above it. An RLS-filtered read returns
+          // `200` with `data: null`, which is INDISTINGUISHABLE from "no starting draft" —
+          // so a wrong SELECT policy from intake would silently drop the draft out of
+          // studentSources and reinstate the exact blocker this seam exists to prevent,
+          // with every check reporting green. Service role cannot be filtered by a policy,
+          // so that failure mode does not exist here. Safe because the content never
+          // leaves the server: it enters scoring and nothing else. The scaffold WRITE
+          // below stays on the user-scoped client.
+          createServiceClient().from(STARTING_DRAFT_TABLE).select(STARTING_DRAFT_CONTENT_COLUMN)
+            .eq('session_id', sessionId).maybeSingle(),
         ])
+
+        const startingState = classifyStartingDraftRead(startingRead?.error, startingRead?.data)
+        if (startingState === 'no-table') {
+          // focus/assignment-intake's migration is not applied yet, so NO session can have
+          // a starting draft and scoring without one is exactly right. Expected, not a
+          // fault — but said out loud, because the day it stops being true this line is
+          // the only warning that the seam is open.
+          console.log(`[starting-draft] ${STARTING_DRAFT_TABLE} not present — scoring without it (migration unapplied)`)
+        } else if (startingState === 'unknown') {
+          console.error(
+            `[starting-draft] READ FAILED for session ${sessionId}: ` +
+            `${startingRead?.error?.code ?? '?'} ${startingRead?.error?.message ?? ''}. ` +
+            `Cannot tell whether this session has a starting draft, so any lock drawn from ` +
+            `one would score as coach-authored. Locks still persist; the checks are NOT recorded.`
+          )
+        }
+
         const studentSources = [
           ...(paras ?? []).map(p => p.raw_spoken_text),
           ...(msgs ?? []).map(m => m.content),
+          ...startingDraftSources(startingRead?.data),
         ]
         const paragraphTexts = Object.fromEntries(
           (paras ?? []).map(p => [p.position, p.scribed_text])
@@ -169,7 +208,20 @@ export async function PATCH(request, { params }) {
         // overwritten in place and carries no timestamp, so it cannot answer "what is
         // the distribution, and is it moving?" — the question Phase 2 is gated on.
         // Measured 2026-08-11: 19 records in scaffold JSON, ONE row in the table.
-        after(() => recordProvenanceChecks({ sessionId, studentId: sess?.student_id ?? null, checked }))
+        // ⚠️ Record only what we can TRUST. If the starting-draft read failed for an
+        // unknown reason, a lock drawn from that draft scores 1.00 novel — and writing
+        // that to provenance_checks turns a transient read failure into a permanent false
+        // record in the calibration set. The lock itself is never blocked. A hole in the
+        // signal is recoverable and is already logged as such above; a fabricated failure
+        // is not. Same rule the unscorable branch applies, new cause.
+        if (provenanceIsTrustworthy(startingState)) {
+          after(() => recordProvenanceChecks({ sessionId, studentId: sess?.student_id ?? null, checked }))
+        } else {
+          console.warn(
+            `[provenance-shadow] session ${sessionId} — ${checked.length} check(s) NOT RECORDED: ` +
+            `the starting draft could not be read, so their scores are untrustworthy`
+          )
+        }
         // Top-level [THESIS] has no storage slot without a migration (text column)
         // — log-only. The thesis usually ALSO locks as an item (covered above).
         if (thesisChanged) {

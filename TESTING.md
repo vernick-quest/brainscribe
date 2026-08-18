@@ -4388,3 +4388,92 @@ The 160px composer cap is deliberately unchanged: it belongs to the writing-spac
 and raising it would make this bug less visible without fixing it.
 
 Gate: build green · `test:run` **783 passed** · `scripts/verify/composer-draft.mjs` 14/14.
+
+---
+
+## 2026-08-17 — The starting draft: render + the provenance seam (`focus/coaching-session` half)
+
+Per `SPEC-starting-draft.md`. This lane built the READ half only — the capture step, the
+table and migration 071 belong to `focus/assignment-intake`, and **neither half is
+merge-ready alone**. The table does not exist yet, so every new read here degrades.
+
+**The seam** (`app/api/scaffold/[sessionId]/route.js`). A declared starting draft is a third
+category of the student's own writing and was in neither array feeding `studentSources`.
+Proven by `node scripts/verify/starting-draft.mjs` (14/14) against the real modules:
+
+```
+WITHOUT the starting draft   novelFraction 1.00   passed=false   ← her own sentence, as coach-authored
+WITH it                      novelFraction 0.00   passed=true
+```
+
+Scenario 3 checks the inverse and matters as much: coach-authored prose still scores novel
+and still fails with the draft in scope. Widening the sources did not become a licence.
+
+**The growth artifact is not a subtraction.** In v1 the starting draft does not seed the
+scaffold, so the working draft *is* the growth; subtracting would render "arrived with 800,
+added 40" as −760, which is the common case.
+
+### The adversarial pass found the feature DEAD, with every gate green
+
+🔴 **`.order('position'),,`** — a double comma in the `Promise.all` at
+`app/assignment/[id]/page.js` created an **array hole**. `startingDraft` bound to
+`undefined`; the fetch result landed at an index nothing destructured. The card never
+rendered in the live writing session. `npm run build` passed, `test:run` passed 826/826,
+`npx eslint` exited 0. The transcript half was unaffected, so a manual check *there* would
+have shown the feature working while the student-facing half was dead.
+
+Then, fixing it, I did the same class of thing again: `startingDraft` used in the transcript's
+JSX and never added to the destructuring list. **Build passed again** — Turbopack does not
+catch undefined identifiers in `.js`.
+
+**So the wiring is now asserted at the source level**, in `lib/wiring.test.js` (tracked, runs
+under `test:run` — `scripts/verify/` is gitignored and would never have left this machine).
+Identifier bound, producer called, value used, no `,,`. Positive-controlled: reintroducing
+the exact double comma fails it. `no-sparse-arrays` is also enabled in eslint, but **that is
+not a working gate** — lint has 58 pre-existing errors repo-wide and gates nothing today.
+
+🔴 **RLS does not error, and my comment claimed it did.** A policy-filtered read returns
+`200` with `data: null` — verified against live PostgREST — which is indistinguishable from
+"no starting draft". A wrong SELECT policy from intake would therefore drop the draft out of
+`studentSources` silently, reinstating the exact blocker, with every check reporting green.
+**Fixed by reading with the SERVICE client** in the provenance path, which no policy can
+filter; the content never leaves the server, and the scaffold write stays user-scoped. The
+comment now says what the module genuinely cannot see. The spec's *"assert the denial on a
+planted sentinel row"* proof is therefore load-bearing for THIS lane, not only intake's.
+
+🔴 **Column drift would stop ALL provenance recording, silently.** A wrong column returns
+`42703` → `unknown` → recording suppressed for **every** session, which looks identical to
+"no activity" — the state (1 row, measured 2026-08-11) the recording exists to escape. The
+column list is now a single constant instead of two literals. ⚠️ The suppression is
+deliberate and the trade is real: a fabricated failure in the calibration set is
+unrecoverable, silence is not. **Filed for `focus/admin`: alert on zero `provenance_checks`
+rows in 24h**, which turns the silent case into a detected one.
+
+🟠 **I built a detector and put it in front of a parent — removed, not tuned.**
+`draftOverlapFraction` is a stemmed, stopword-stripped bag-of-words fraction: it measures
+shared *vocabulary*, not re-pasting. Measured at **46% on genuinely new prose continuing the
+same story**. The notice therefore fired hardest in the feature's intended use case and told
+a parent the words were "brought forward rather than newly written" — an uncalibrated
+accusation asserting a cause the measurement cannot support. The card's stated principle is
+transparency, not detection. Notice deleted; the function stays for the tests that document
+its limits.
+
+🟠 Also fixed: `word_count` arrives as a **string** from a postgres `numeric`, which rendered
+"Arrived with **0** words" above 800 words of visible text; the card now gates on
+`hasStartingDraft` instead of on content alone. Dates are rendered client-side (server=UTC
+vs browser=local was both a hydration mismatch and the wrong day for a Pacific reader), and
+`new Date('garbage').toLocaleDateString()` returns the truthy string `"Invalid Date"`, which
+the old guard printed. Numbers use a fixed `en-US` locale. The expanded draft scrolls inside
+`40vh` — unbounded, a normal 1,200-word draft pushed the student's own working draft to
+near-zero height. The card was rendered **inside** the Final Draft section, between its
+heading and its body; it now has its own card above it, because reading as part of the final
+draft is the one thing the spec says it must never do.
+
+### 🔴 Cannot merge from this lane alone
+The seam is meaningless until intake writes rows, and a lane's tests can be honest while the
+integration is broken. Owed by `focus/assignment-intake`, and **UNVERIFIED** here: migration
+071 (re-derive the number — 070 is head and two specs both claim 071), the RLS INSERT/SELECT
+policies and the UPDATE/DELETE denial on a planted sentinel row, the COPPA `on delete
+cascade`, and the second-insert-fails constraint.
+
+Gate: build green · `test:run` **854** · `scripts/verify/starting-draft.mjs` 14/14.

@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import TutorSession from '@/components/TutorSession'
 import TeacherAssignmentView from '@/components/TeacherAssignmentView'
 import { getImpersonation } from '@/lib/impersonation'
+import { fetchStartingDraft } from '@/lib/startingDraft'
 
 export default async function AssignmentPage({ params }) {
   const { id } = await params
@@ -99,6 +100,7 @@ export default async function AssignmentPage({ params }) {
     { data: ownerProfile },
     { count: parentLinkCount },
     { data: sources },
+    startingDraft,
   ] = await Promise.all([
     service
       .from('messages')
@@ -140,6 +142,11 @@ export default async function AssignmentPage({ params }) {
       .select('*')
       .eq('session_id', id)
       .order('position'),
+    // What the student arrived with, before the coach. Kept in the same Promise.all so it
+    // costs no extra round trip; guarded inside fetchStartingDraft against intake's
+    // migration not being applied, which would otherwise 500 the live session for every
+    // student on the day this merges ahead of it.
+    fetchStartingDraft(service, id)
   ])
 
   const firstName = ownerProfile?.full_name?.split(' ')[0] ?? 'there'
@@ -180,6 +187,7 @@ export default async function AssignmentPage({ params }) {
       studentName={firstName}
       initialTeachers={(assignmentTeachers ?? []).map(t => ({ id: t.teacher_id, name: t.profiles?.full_name ?? null }))}
       initialSources={sources ?? []}
+      initialStartingDraft={startingDraft}
       isContinuation={!!session.continued_from}
       watcherCount={watcherCount}
       country={geoCountry}
