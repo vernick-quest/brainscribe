@@ -21,6 +21,7 @@ import { computeActual, computeActualFromDraft, targetDisplay } from '@/lib/requ
 import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
+import { readDraft, writeDraft, clearDraftIfMatches, sweepExpiredDrafts, getDraftStorage } from '@/lib/composerDraft'
 
 // ── Markdown helpers ───────────────────────────────────────────────────────────
 
@@ -550,7 +551,7 @@ function VoiceToggleButton({ readAloud, onToggle, saving = false }) {
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, onDraftChange = null, noticeLine = null, readAloud = true, onToggleReadAloud, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -576,6 +577,38 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   useEffect(() => {
     if (recoveredText) { editingRef.current = true; setText(recoveredText) }
   }, [recoveredText])
+
+  // ── Draft autosave (Sierra, 2026-08-17) ──────────────────────────────────────
+  // The other half of the invariant above. That effect restores words the SERVER lost;
+  // hers died here, in this box, with nothing failing and no request made — she pasted an
+  // outline in, went to cut and paste something, and deleted about half an hour of work.
+  //
+  // Held in refs, and the debounce depends on `text` ALONE. The parent re-renders on every
+  // streamed token, so depending on the callback's identity would clear and restart this
+  // timer on each one and the save would never fire during the exact stretch the student
+  // is most likely to be typing.
+  const onDraftChangeRef = useRef(onDraftChange)
+  const textRef = useRef(text)
+  // Assigned in an effect, not during render: a render React discards could otherwise leave
+  // these holding a value that was never committed, which the pagehide/unmount flush would
+  // then write down as the student's draft. Effects run after commit, so what these hold is
+  // always something that actually reached the screen.
+  useEffect(() => { onDraftChangeRef.current = onDraftChange; textRef.current = text })
+
+  useEffect(() => {
+    const t = setTimeout(() => onDraftChangeRef.current?.(textRef.current, mode), 400)
+    return () => clearTimeout(t)
+  }, [text, mode])
+
+  // Flush on the two ways a draft vanishes with no further keystroke to trigger the
+  // debounce: the tab going away (`pagehide` fires where `beforeunload` does not, notably
+  // on mobile Safari), and this composer unmounting when the phase switches between
+  // listening and dictating — which today simply discards whatever was typed.
+  useEffect(() => {
+    const flush = () => onDraftChangeRef.current?.(textRef.current, mode, { flush: true })
+    window.addEventListener('pagehide', flush)
+    return () => { window.removeEventListener('pagehide', flush); flush() }
+  }, [mode])
 
   // Half-duplex backstop: whenever the coach becomes busy (thinking, then speaking),
   // make sure the mic is CLOSED so the coach's read-aloud can't be captured by an
@@ -843,7 +876,14 @@ export default function TutorSession({
   // Scribe-failure recovery: when /api/scribe fails, the student's spoken paragraph
   // must never be lost. We drop back to the dictation composer, restore the raw text
   // into the input (retriable), and show one warm notice line. (fragility audit D2)
-  const [recoveredDictation, setRecoveredDictation] = useState(null) // raw spoken text to restore
+  // { text, mode } — the words to put back in the composer, and WHICH box they belong in.
+  // The mode matters: the dictating box's button says "Add to essay", so a restored chat
+  // message sitting in it becomes essay content the moment the student presses Enter.
+  const [recoveredDictation, setRecoveredDictation] = useState(null)
+  const recoveredFor = mode => (recoveredDictation?.mode === mode ? recoveredDictation.text : null)
+  // localStorage handle, resolved once on the client. Never touched during render: this
+  // component is server-rendered, and Safari in private mode throws on ACCESS.
+  const draftStorageRef = useRef(null)
   const [scribeNotice, setScribeNotice]             = useState(null) // warm retry line
 
   // "Keep working on this" (v2). This session carries a FINISHED draft forward, including
@@ -2084,6 +2124,71 @@ export default function TutorSession({
     }
   }
 
+  // ── Composer draft persistence (Sierra, 2026-08-17) ──────────────────────────
+  // Feeds the SAME restore path that already exists — `recoveredDictation` → the
+  // composer's `recoveredText` prop — rather than a second store. Two stores that both
+  // believe they hold the student's draft is how they end up disagreeing about which is
+  // authoritative, which is the composition failure this repo hit three times in one week,
+  // once destructively.
+  //
+  // NOT while impersonating: an admin remoting in would leave the student's prose sitting
+  // in the ADMIN's localStorage for a month. The admin is not the one writing.
+  const draftsEnabled = !impersonation
+
+  // Restore on mount — a closed tab and a reload are the same loss as a failed send — and
+  // sweep every EXPIRED draft while we are here, not just this session's. readDraft only
+  // ever expires the key it is handed, so without the sweep an abandoned session's draft
+  // lived forever and the store grew one key per session.
+  useEffect(() => {
+    if (!draftsEnabled) return
+    draftStorageRef.current = getDraftStorage()
+    const swept = sweepExpiredDrafts(draftStorageRef.current)
+    if (swept) console.log(`[composer-draft] swept ${swept} expired draft(s)`)
+    const saved = readDraft(draftStorageRef.current, session.id)
+    if (saved) {
+      console.log(`[composer-draft] restored ${saved.text.length} chars into the ${saved.mode ?? 'listening'} composer for session ${session.id}`)
+      setRecoveredDictation({ text: saved.text, mode: saved.mode ?? 'listening' })
+    }
+  }, [session.id, draftsEnabled])
+
+  // Debounced from the composer; `flush` also lifts the text into `recoveredDictation` so
+  // it survives the composer unmounting on a phase switch (which discards it today).
+  function handleDraftChange(text, mode, { flush = false } = {}) {
+    if (!draftsEnabled) return
+    const stored = writeDraft(draftStorageRef.current, session.id, text, mode)
+    if (!stored && typeof text === 'string' && text.trim() !== '') {
+      // The one case worth shouting about: they have words and we could not keep them.
+      // No banner — it would be alarming and unactionable for a quota blip — but this
+      // module is silent by design otherwise, and a silent no-op is what lost her work.
+      console.error(
+        `[composer-draft] COULD NOT SAVE ${text.length} chars for session ${session.id} ` +
+        `(storage unavailable, blocked, or full). Nothing else holds this text.`
+      )
+    }
+    if (flush && text?.trim()) setRecoveredDictation({ text, mode })
+  }
+
+  /**
+   * Clear the saved draft — but ONLY when the stored words are the ones just sent.
+   *
+   * An unconditional clear looked right and was the fix's own worst bug (red-team,
+   * 2026-08-17). Tapping the mic empties the composer (MicButton fires onInterim('')), the
+   * empty save is correctly refused, and then ANY successful send deleted the outline still
+   * sitting in storage — Sierra's exact scenario, destroyed by the thing built to save it.
+   * A late-resolving `/api/messages` did the same to a draft typed AFTER the send.
+   *
+   * `recoveredDictation` is only nulled when we actually cleared, so a stale resolve can no
+   * longer wipe the scribe-failure recovery this is built on top of.
+   */
+  function clearComposerDraft(sentText) {
+    if (!draftsEnabled) return
+    const outcome = clearDraftIfMatches(draftStorageRef.current, session.id, sentText)
+    if (outcome === 'cleared') setRecoveredDictation(null)
+    else if (outcome === 'kept') {
+      console.log(`[composer-draft] send succeeded but a DIFFERENT draft is saved for session ${session.id} — keeping it`)
+    }
+  }
+
   // Persist the student's own turn into `messages`. Deliberately NOT awaited by callers:
   // this is on the hot voice path and blocking it would add a round-trip to every turn.
   // But non-blocking must not mean UNOBSERVABLE — both call sites used to swallow the
@@ -2230,7 +2335,10 @@ export default function TutorSession({
     const userMessage = { role: 'user', content: spokenText }
     const newHistory = [...messages, userMessage]
     setMessages(newHistory)
-    persistUserTurn(spokenText)
+    // Clear the saved draft ONLY once the server confirms it has the words. Still not
+    // awaited (this is the hot voice path), but a failed persist now LEAVES the draft in
+    // place — clearing on a failed send would erase exactly what the restore exists for.
+    persistUserTurn(spokenText).then(res => { if (res?.ok) clearComposerDraft(spokenText) })
 
     // Full-essay read-back is UI-assembled, never model-regenerated (deep-read F7).
     // If the student asks to hear/see the WHOLE piece and there IS content, hand back
@@ -2272,7 +2380,7 @@ export default function TutorSession({
         `cursor ${scaffold?.current_paragraph_index} is past the last of ${scaffold?.components?.length} ` +
         `carried section(s). Student's words preserved in the composer; nothing written.`
       )
-      setRecoveredDictation(spokenText)
+      setRecoveredDictation({ text: spokenText, mode: 'dictating' })
       setScribeNotice(CONTINUATION_BLOCK_NOTICE)
       setPhase('dictating')
       return
@@ -2285,7 +2393,7 @@ export default function TutorSession({
 
     let scribed
     try {
-      const [, scribeRes] = await Promise.all([
+      const [msgRes, scribeRes] = await Promise.all([
         // Non-blocking on purpose (a blip must not cost the student their paragraph),
         // but NOT silent — see persistUserTurn.
         persistUserTurn(spokenText),
@@ -2304,11 +2412,18 @@ export default function TutorSession({
       // Never freeze on "scribe-thinking" or lose the spoken text. Drop back to the
       // dictation composer with the raw words restored so the student can retry.
       setMessages(messages)   // roll back the un-scribed user bubble; the text lives in the composer
-      setRecoveredDictation(spokenText)
+      setRecoveredDictation({ text: spokenText, mode: 'dictating' })
       setScribeNotice("Sorry — I didn't quite catch that. Your words are still here, just tap the arrow to send them again.")
       setPhase('dictating')
       return
     }
+
+    // Gate on /api/messages, NOT on the scribe. `/api/scribe` only TRANSFORMS the text —
+    // it persists nothing — so a 2xx from it is not evidence the words are anywhere
+    // durable, and the earlier version of this comment claiming otherwise was simply
+    // wrong. persistUserTurn's response was being discarded out of the Promise.all above;
+    // it is read now, so a failed transcript write leaves the draft exactly where it is.
+    if (msgRes?.ok) clearComposerDraft(spokenText)
 
     if (scribed.isMeta || !scribed.paragraph) {
       askTutor(newHistory)
@@ -3054,6 +3169,7 @@ export default function TutorSession({
           {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
             <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation}
               onSpeechStart={() => { tutorRunRef.current++; stopCurrentAudio() }}
+              recoveredText={recoveredFor('listening')} onDraftChange={handleDraftChange}
               coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud} savingVoicePref={savingVoicePref} />
           )}
 
@@ -3062,7 +3178,8 @@ export default function TutorSession({
               mode="dictating"
               assignmentKeyterms={assignmentKeyterms}
               onSubmit={handleDictation}
-              recoveredText={recoveredDictation}
+              recoveredText={recoveredFor('dictating')}
+              onDraftChange={handleDraftChange}
               noticeLine={scribeNotice}
               readAloud={readAloud}
               onToggleReadAloud={toggleReadAloud}
