@@ -785,7 +785,12 @@ triggers, both server failures (`/api/scribe` fails at 2275, continuation guard 
 The belief is already in the product; it is scoped to the case we imagined instead of the
 case that happened. Debounced, keyed by session, restore on mount, **clear on successful
 send only** (clearing on a failed send erases what the guard exists to protect).
-⚠️ Ask auth-coppa first whether `localStorage` is acceptable for unsaved under-13 writing.
+✅ **No COPPA gate — Robert, 2026-08-17 SF: "if they are under 13 their parent would have
+signed off."** Under-13 signup is a dead end by design (migration 055): the child only has an
+account because a parent independently consented, so the consent already exists. And
+`localStorage` is on the child's OWN DEVICE and never transmitted — not operator collection
+at all, so consent was never the operative question. Build it. COPPA re-enters only for a new
+third party, changed retention, new exposure, or the consent flow itself.
 Also: the box is capped at `Math.min(el.scrollHeight,160)` — ~6 lines. She pasted 1,076
 words into it.
 
