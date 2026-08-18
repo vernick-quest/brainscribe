@@ -4295,3 +4295,96 @@ Note the shape this makes visible: Sierra is **1 session** in the column and **4
 row — the per-session count is what stops four findings on one session reading as four problems.
 
 `npm run test:run` **755/755 green** · build green.
+
+---
+
+## 2026-08-17 — 🐞 P0: the composer keeps a draft, and only a successful send clears it
+
+Sierra, her most important item: *"make it so you can get back something you delete… I was
+writing my whole outline in the chat for my coach and tried to cut and paste something. I
+ended up deleting probably at least half an hour of work."*
+
+Every guard this codebase owns protects text AFTER it reaches the server. Hers died in the
+browser, in the composer, with nothing failing and no request made — there was nothing for
+the truncation guard, the no-overwrite guard, `detectLockOverClaim` or the health pass to
+see, because by every measure they have, nothing went wrong.
+
+**Built on the restore path that already existed, not beside it.** `recoveredDictation` →
+the `recoveredText` prop → the composer's restore effect already puts a student's words
+back; its own comment states the invariant (*"the student's spoken paragraph must never be
+lost"*) and it fired for exactly two server failures. New `lib/composerDraft.js` (pure,
+storage injected, 28 tests) is the persistence for that same path. No second store.
+
+- **Debounced 400ms**, deps `[text, mode]` only — the parent re-renders on every streamed
+  token, so depending on the callback's identity would restart the timer on each one and the
+  save would never fire during the exact stretch the student is typing.
+- **Flush on `pagehide` and on unmount.** The debounce alone loses the last 400ms before a
+  tab closes, which is half the bar. The unmount flush also means switching between the
+  listening and dictating composers stops discarding typed text.
+- **An empty box NEVER overwrites a saved draft.** Select-all-and-cut is the gesture that
+  lost her work; an autosave that recorded it would hand back nothing.
+- **Not while impersonating** — an admin remoting in would leave the student's prose in the
+  ADMIN's localStorage for a month.
+
+Verification, `node scripts/verify/composer-draft.mjs` — 14/14, the stated bar plus the
+red-team's scenarios: type → tab close → reopen returns all 1,076 words byte-identical; a
+failed send leaves it untouched; a successful send clears it and leaves nothing behind.
+
+### The adversarial pass found the fix's own worst bug
+
+🔴 **An unconditional clear undid the never-write-empty rule from the other side.**
+`MicButton.js:74` fires `onInterim('')` on every mic start, which empties the composer. So:
+
+1. student types their whole outline into the chat box → saved ✓
+2. student taps the mic to ask a question → box empties, the empty save is refused ✓
+3. student speaks and sends → send succeeds → **the outline is deleted**
+
+That is Sierra's own scenario, destroyed by the thing built to save it. A late-resolving
+`/api/messages` did the same to a draft typed *after* a send. **Fix:** `clearDraftIfMatches`
+— delete words only when they are the words you sent; anything else is someone's unsent
+draft and it stays. Pinned by a regression test and harness scenarios 7 and 8.
+
+🔴 **`handleDictation` cleared on a `/api/scribe` 2xx, and my comment claimed "the server has
+her words".** It does not: `/api/scribe` only TRANSFORMS text and persists nothing — checked,
+its only DB access is the coach gate. `persistUserTurn`'s response was being discarded out of
+the `Promise.all`. It is read now, so a failed transcript write leaves the draft in place.
+
+🟡 **Chat text could be restored into the ESSAY box.** `recoveredDictation` is sticky and now
+feeds both composers; the dictating box's button says "Add to essay", so a restored chat
+message becomes essay content the moment a student presses Enter out of habit. The draft now
+carries the `mode` it was typed in and each composer is handed only its own.
+
+🟡 **The 30-day expiry pruned nothing.** `readDraft` only expires the key it is handed, and it
+is only ever handed the open session — so an abandoned session's draft lived forever and the
+module's own "the pile is bounded" comment was false. `sweepExpiredDrafts` now walks the
+prefix on mount.
+
+🟡 Also: `mode` is normalised in `writeDraft` (an unrecognised value would match neither
+composer, so the draft would save and then silently never restore — found because a stale
+4-argument test call produced exactly that), and the composer's refs are assigned in an
+effect rather than during render, so a discarded render can't leave the flush persisting text
+that never reached the screen.
+
+**Accepted, not fixed:** two tabs on the same session are last-writer-wins (no tab identity,
+no merge); and sending then closing the tab before `/api/messages` resolves leaves the sent
+message saved, so it pre-fills on reopen — confusing, but the asymmetry deliberately favours
+keeping text over dropping it.
+
+### ⚠️ What is NOT verified — the React wiring
+The contract is proven. That the 400ms debounce actually fires, that the `pagehide` listener
+attaches, that the unmount flush runs, that the props thread through — none of that has an
+automated test, because this tree has no jsdom or testing-library and adding a DOM stack is a
+dependency call for the conductor. Per CLAUDE.md, UI the build cannot prove belongs here:
+
+**Manual pass owed (Robert), and it is the whole test:**
+1. Type a few sentences into the chat composer. Wait a second. Kill the tab. Reopen the
+   session — **the text is there.**
+2. Type something, go offline, send — **the text survives** (and stays after it fails).
+3. Go back online and send — **it clears**, and does not come back on reload.
+4. Type an outline, tap the mic, send a spoken question — **the outline is still saved**
+   (reload to confirm). This is the one the red-team pass caught.
+
+The 160px composer cap is deliberately unchanged: it belongs to the writing-space feature,
+and raising it would make this bug less visible without fixing it.
+
+Gate: build green · `test:run` **783 passed** · `scripts/verify/composer-draft.mjs` 14/14.
