@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getImpersonation } from '@/lib/impersonation'
 import { validateStartingDraft, hasConfirmedWork } from '@/lib/startingDraft'
 
-// POST /api/sessions/[sessionId]/starting-draft
+// POST /api/sessions/[id]/starting-draft
 //
 // Captures what the student arrived with, once, at session creation. The row is immutable
 // by construction (migration 071: insert + select only, session_id is the PK, no update or
@@ -11,7 +11,11 @@ import { validateStartingDraft, hasConfirmedWork } from '@/lib/startingDraft'
 //
 // Body: { content: string, source?: 'typed' | 'pasted' | 'upload' }
 export async function POST(request, { params }) {
-  const { sessionId } = await params
+  // The slug is `id` because every other route under app/api/sessions/[id] uses that
+  // name, and Next allows exactly ONE slug name per dynamic path position — a second
+  // name here 500s EVERY request in `next dev`/`next start` while `next build` still
+  // exits 0. Pinned by lib/routeSlugs.test.js.
+  const { id: sessionId } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })

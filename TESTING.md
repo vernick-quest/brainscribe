@@ -4797,3 +4797,75 @@ Run on a real session, voice ON, with devtools Network filtered to `speak`.
       survives the per-sentence source changes.
 
 Gate: build green · `test:run` **1015** on this branch over main dcc50da (37 new; 1013 if merged without the TTS-model commit) · `test:continuation` green.
+## 2026-09-25 — 🐞 P0 local: two slug names under one path killed `next dev` and `next start`
+
+`app/api/sessions/[sessionId]/starting-draft/route.js` (added by `3374cee`) sat beside
+`app/api/sessions/[id]/*`. Next allows exactly ONE slug name per dynamic path position, so
+both `next dev` and `next start` threw on **every** request:
+
+```
+Error: You cannot use different slug names for the same dynamic path ('id' !== 'sessionId').
+```
+
+Reproduced on a clean `.next` in this worktree: `GET /login` → **HTTP 000**, the server
+never answered. Not an outage — it was already an ancestor of the deployed `f374564` and
+prod serves fine, because Vercel builds its own routing. Local development only.
+
+### Why nothing caught it
+**`npm run build` exits 0 regardless.** The definition-of-done gate is build + `test:run`,
+and neither loads the dev route table. Same blind spot already recorded for
+`app/globals.css`: a file the build never evaluates can be broken in main indefinitely.
+
+### The fix
+Moved to `app/api/sessions/[id]/starting-draft/route.js`; the handler reads
+`const { id: sessionId } = await params`. **The URL did not change**, so
+`components/NewSessionForm.js` (`/api/sessions/${sessionId}/starting-draft`) needed no edit —
+verified by grep: the old folder name appeared in exactly one place outside TESTING.md, the
+route's own header comment.
+
+### The recurrence guard — `lib/routeSlugs.js` + `lib/routeSlugs.test.js`
+The check now lives where the gate *does* look. `findSlugCollisions()` walks the real `app/`
+tree and fails with the colliding position and the folders to open. It resolves the path Next
+actually serves, not the one on disk — route groups (`(auth)`) and parallel slots vanish from
+the URL, so `app/(a)/[id]` and `app/(b)/[slug]` collide even though they are not siblings; a
+naive "one dynamic child per folder" check would miss that. `_private` folders are pruned.
+
+**Both controls run:**
+- *Positive:* the live check asserts the walk actually reached the tree (>20 dirs, and
+  `api/sessions/[id]/starting-draft` specifically present). Zero collisions and zero
+  directories return the same verdict, and a silent zero is how every false green in this
+  repo has looked.
+- *Negative:* re-created `app/api/sessions/[sessionId]/starting-draft/` and confirmed the
+  suite goes **red** with `/api/sessions is claimed by 'id' and 'sessionId'`, then removed it
+  and confirmed green. The test was proven to fire before being trusted.
+
+### Runtime verification — asserted on values, not on "it started"
+Booted with **dummy** Supabase env (URL pointing at a dead port, so auth always resolves to
+"no user"); this worktree has no `.env.local`. Note the middleware 307s an unauthenticated
+`/api/*` to `/login` *before* routing, so a bare status code cannot distinguish "route
+exists" from "route missing" — sending a `sb-dummy-auth-token` cookie satisfies
+`hasAuthCookie` and lets the request reach the handler.
+
+| check | `next dev` | `next start` |
+|---|---|---|
+| `GET /login` (title `BrainScribe`) | 200 | 200 |
+| `POST /api/sessions/:id/starting-draft` — handler reached | 401 | 401 |
+| **control** `…/starting-draft-does-not-exist` | 404 | 404 |
+| `PATCH /api/sessions/:id` — sibling still routes | 401 | 401 |
+| slug error in server log | none | none |
+
+The 404 control matters: without it a middleware that blanket-401'd would read as a pass.
+Read from the build artifact rather than computed: `.next/app-path-routes-manifest.json`
+maps `/api/sessions/[id]/starting-draft/route` → `/api/sessions/[id]/starting-draft`.
+
+*Correction made during this pass:* the sibling probe first asserted `GET → 401` and got
+**405**. The assertion was wrong, not the code — `app/api/sessions/[id]/route.js` exports
+only `PATCH` and `DELETE`, and 405 already proves routing. Probe switched to `PATCH`.
+
+### Not run
+`npm run test:starting-draft` needs `.env.local` and the live DB, absent in this worktree. It
+exercises `lib/startingDraft.js` against Supabase RLS directly, not over HTTP, so a folder
+rename cannot affect it — but it is **UNVERIFIED here**, not passed.
+
+Gate: clean `.next` · build green · `test:run` **934** (13 new in `lib/routeSlugs.test.js`) ·
+`next dev` and `next start` both boot and serve.
