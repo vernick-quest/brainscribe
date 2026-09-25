@@ -23,6 +23,14 @@
 //
 // Both files carry the same intrinsic size (900x192), so layout is identical in
 // either theme and nothing shifts when the OS setting changes.
+//
+// ── The manual-toggle hole ───────────────────────────────────────────────────
+// `media="(prefers-color-scheme: dark)"` can only ever see the OPERATING SYSTEM.
+// Once the theme toggle shipped, a reader on a light-OS machine who picks Dark
+// would get this light lockup on a dark header — which is exactly the 1.25:1
+// invisible-wordmark bug the dark asset exists to fix. `data-logo-lockup` is the
+// hook globals.css uses to re-point the image for that case; see the
+// "logo lockup under a MANUAL theme choice" block there.
 
 export const LOGO_LIGHT = '/brainscribe-logo.png'
 export const LOGO_DARK = '/brainscribe-logo-dark.png'
@@ -32,7 +40,7 @@ export default function LogoLockup({ alt = 'BrainScribe', style, className, ...r
     <picture>
       <source srcSet={LOGO_DARK} media="(prefers-color-scheme: dark)" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={LOGO_LIGHT} alt={alt} style={style} className={className} {...rest} />
+      <img data-logo-lockup="" src={LOGO_LIGHT} alt={alt} style={style} className={className} {...rest} />
     </picture>
   )
 }

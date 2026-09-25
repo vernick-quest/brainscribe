@@ -6,6 +6,7 @@
 //   active — 'about' | 'blog' to bold the current section's link (omit on legal/landing)
 //   sticky — translucent blurred bar pinned to the top (used on the long legal pages)
 import LogoLockup from '@/components/LogoLockup'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const NAV_LINKS = [
   { href: '/about', label: 'About', key: 'about' },
@@ -52,6 +53,10 @@ export default function SiteHeader({ active, sticky = false }) {
         <a href="/login" style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none' }}>
           Sign in
         </a>
+        {/* Light / dark / follow-the-device. A client island inside this server
+            component — the header itself still renders on the server. */}
+        <ThemeToggle size={32} />
+
         {/* Invite-only early access: the primary CTA goes to the landing-page
             waitlist, NOT /login. The "Sign in" link above stays put so existing
             families always have a way back in. */}

@@ -4869,3 +4869,103 @@ rename cannot affect it — but it is **UNVERIFIED here**, not passed.
 
 Gate: clean `.next` · build green · `test:run` **934** (13 new in `lib/routeSlugs.test.js`) ·
 `next dev` and `next start` both boot and serve.
+---
+
+# Testing checklist — 2026-09-25 · Dark-mode toggle (`focus/coach-visuals`)
+
+Dark mode already shipped as OS-preference-only. This adds the **manual override**
+half the design README specified and the first pass deliberately deferred:
+`theme: 'light' | 'dark' | 'system'`, global, persisted, no flash.
+
+Three states, cycled by one button: **System → Light → Dark → System**. 'System' is
+the ABSENCE of `data-theme`, never a written value — that is what keeps OS-driven
+dark mode working with **scripting turned off**, exactly as it does today.
+
+Worktree was re-synced to `main` (was 151 commits behind) before any of this.
+
+## How it is wired
+- `lib/themePreference.js` — pure logic + the blocking `<head>` script source.
+- `app/layout.js` — inline script in `<head>`, `suppressHydrationWarning` on `<html>`.
+  Per `node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`.
+  **Deliberate divergence from that doc:** it seeds `data-theme="light"` on `<html>`;
+  we do NOT, because that would make `:not([data-theme="light"])` fail for everyone
+  and kill OS-driven dark for every reader who never touches the toggle.
+- `app/globals.css` — the dark token block is now physically duplicated: once under
+  `@media screen and (prefers-color-scheme: dark)` scoped to
+  `:root:not([data-theme="light"])`, once under `@media screen` scoped to
+  `:root[data-theme="dark"]`. CSS cannot give one rule both a media condition and an
+  attribute condition. A test asserts the two blocks are byte-identical.
+- `components/ThemeToggle.js` — in BOTH headers (`Navbar`, `SiteHeader`).
+
+## Automated gate — `npm run test:run` (967 tests, 48 files)
+- [x] ✅ `lib/themePreference.test.js` (32) — cycling, corrupt stored values, and the
+      `<head>` script EXECUTED against a fake window for every stored value,
+      including a `localStorage` that throws.
+- [x] ✅ `lib/theme.test.js` (96) — the two dark blocks byte-identical and
+      declaring the same token set; the manual block inside `@media screen`; the
+      forced-light escape hatch present; the logo override present in BOTH
+      directions; `<html>` carries no default `data-theme`.
+- [x] ✅ `components/ThemeToggle.test.js` — real `<button>`, aria-label naming both
+      the current state and the next one, renders System on the server.
+- [x] ✅ **Gate proven by MUTATION, not by observing green.** Four deliberate breaks,
+      all caught: drifting one token in one block only; un-scoping the manual block
+      from `@media screen`; dropping `:not([data-theme="light"])`; deleting the logo
+      override. Restored green after each.
+
+## The trap this change had to clear
+`components/LogoLockup.js` picks between two raster files with
+`<source media="(prefers-color-scheme: dark)">`, which can **only ever see the OS**.
+A reader forcing Dark on a light machine would have got the NAVY wordmark on a dark
+header — 1.25:1, the exact bug the dark asset exists to fix. Fixed with
+`content: url()` on `img[data-logo-lockup]`, which re-points the rendered image only
+when the override is active.
+- [x] ✅ **Measured in the browser, not assumed.** Forcing Dark on a light OS:
+      `<picture>` resolved to `brainscribe-logo.png` while the painted
+      `content` was `brainscribe-logo-dark.png`. The reverse case inverts correctly.
+- [x] ✅ Costs nothing by default: a clean load with no override fetches exactly
+      ONE lockup file (verified in the network log).
+
+## Verified live (Chromium, both emulated `prefers-color-scheme` values)
+Against the **production build** (`next start`), not dev — see the blocker below.
+
+| OS | Preference | `--bg-page` | `color-scheme` | Logo painted |
+|---|---|---|---|---|
+| light | System | `#fdfbf3` | normal | light (via `<picture>`) |
+| light | **Dark** | `#101a24` | dark | **dark (via override)** |
+| dark | System | `#101a24` | dark | dark (via `<picture>`) |
+| dark | **Light** | `#fdfbf3` | **light** | **light (via override)** |
+
+- [x] ✅ Cycling the real button: System → Light → Dark → System, with `data-theme`
+      and `localStorage` agreeing at every step.
+- [x] ✅ Returning to System **removes** the attribute and clears storage, handing
+      control back to the OS. (The bug this avoids: a stale attribute pins the
+      reader forever and the OS switch silently stops working.)
+- [x] ✅ Tap target is **44×44** (CLAUDE.md minimum) with a 32/36px visible box; the
+      negative margin means adding it did not push its neighbours apart.
+- [x] ✅ Marketing header at 375px wraps without overflow.
+- [x] ✅ No hydration errors; all requests 200/304.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ The toggle on the **signed-in** `Navbar` in a live session — it is the same
+      component and renders in tests, but every Navbar surface needs auth, which
+      cannot be driven headlessly here. Worth one look on `/folder`.
+- [ ] ⬜ Print a transcript while forced to Dark. The manual block is inside
+      `@media screen` precisely so print stays light; asserted in tests, never put
+      on paper.
+- [ ] ⬜ Private/incognito, where `localStorage` throws: the toggle should still
+      switch for the visit and simply not persist.
+- [ ] ⬜ iOS/Android: `color-scheme` should carry form controls and scrollbars.
+
+## 🔴 Pre-existing blocker found (NOT this change — flagged, not fixed)
+`next dev` and `next start` both **fail on every request** on current `main`:
+
+> `Error: You cannot use different slug names for the same dynamic path ('id' !== 'sessionId').`
+
+`app/api/sessions/[sessionId]/starting-draft/route.js` (added by `3374cee`, already
+an ancestor of the deployed `f374564`) collides with `app/api/sessions/[id]/`.
+Reproduced on a clean `.next` rebuild. **`npm run build` exits 0 regardless** — the
+same blind spot recorded for `globals.css`. Production serves fine (Vercel builds its
+own routing), so this is a local-development blocker, not an outage. It belongs to
+whoever owns the starting-draft work; the fix is to fold that route under `[id]`.
+This lane verified by parking that one directory locally and restoring it before
+commit (`git status` confirmed clean).

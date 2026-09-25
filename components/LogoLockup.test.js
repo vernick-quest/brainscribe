@@ -26,6 +26,14 @@ describe('LogoLockup', () => {
     expect(html).toMatch(/<img[^>]+src="\/brainscribe-logo\.png"/)
   })
 
+  // <picture> resolves against the OS only. The theme toggle can put a reader in
+  // dark on a light machine, where this <img> would serve the NAVY wordmark onto a
+  // dark header at 1.25:1 — the exact bug the dark asset exists to fix. globals.css
+  // re-points the image for that case and needs this attribute to find it.
+  it('carries the data-logo-lockup hook the manual-theme override targets', () => {
+    expect(html).toContain('data-logo-lockup')
+  })
+
   it('keeps the alt text — the logo is the site name for a screen reader', () => {
     expect(html).toContain('alt="BrainScribe"')
   })

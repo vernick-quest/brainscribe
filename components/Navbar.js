@@ -7,6 +7,7 @@ import Avatar from '@/components/Avatar'
 import { useTabTitle } from '@/components/TabTitle'
 import LogoLockup from '@/components/LogoLockup'
 import PresenceHeartbeat from '@/components/PresenceHeartbeat'
+import ThemeToggle from '@/components/ThemeToggle'
 
 // The breadcrumb word shown next to the logo — reflects the section of the site
 // the current URL is in. Empty string → show just the logo.
@@ -145,6 +146,12 @@ export default function Navbar({ user, profile }) {
         )}
       </div>
 
+      <div className="flex items-center gap-2">
+      {/* Light / dark / follow-the-device. Sits with the account controls rather
+          than the nav menu so it is one click from every signed-in surface —
+          including the writing session, which is where it matters most at night. */}
+      <ThemeToggle />
+
       {/* Name + avatar → the account page (profile / settings). */}
       <a
         href={accountHref}
@@ -170,6 +177,7 @@ export default function Navbar({ user, profile }) {
           style={{ border: '2px solid var(--border-default)' }}
         />
       </a>
+      </div>
     </header>
   )
 }

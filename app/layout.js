@@ -1,4 +1,5 @@
 import './globals.css'
+import { THEME_INIT_SCRIPT } from '@/lib/themePreference'
 import SiteFooter from '@/components/SiteFooter'
 import JsonLd from '@/components/JsonLd'
 import { organizationSchema, softwareApplicationSchema } from '@/lib/schema'
@@ -41,7 +42,24 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the script below sets data-theme on <html> before
+    // React hydrates, so the attribute React rendered and the one in the DOM differ
+    // by design. Without this React treats it as a hydration error and re-renders
+    // from the nearest boundary, which would undo the attribute and flash the wrong
+    // theme. See node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md
+    //
+    // NOTE: no default data-theme on <html>, unlike the Next example. 'System' is the
+    // ABSENCE of the attribute — globals.css keys the automatic path off
+    // `:root:not([data-theme="light"])` inside the prefers-color-scheme query, so
+    // seeding data-theme="light" here would pin every reader to light and kill
+    // OS-driven dark mode for everyone who never touches the toggle.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Blocking, in <head>, so a reader who chose Dark on a light-OS machine
+            never sees a flash of cream. It runs while the HTML is still parsing —
+            before React exists and before first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="antialiased flex flex-col min-h-screen">
         {/* Site-wide entity schema — appears on every page for AI-assistant
             entity resolution. Page-level FAQPage schema is added per page. */}
