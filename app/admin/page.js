@@ -146,8 +146,8 @@ export default async function AdminPage({ searchParams }) {
   const refusedBySession = new Map()
   for (const sc of scaffoldRes?.data ?? []) {
     const items = (Array.isArray(sc.components) ? sc.components : []).flatMap(c => (Array.isArray(c?.items) ? c.items : []))
-    // duplicateOf: a lock refused as a duplicate (lib/scaffoldWrite.js) — counted here too, or
-    // a refusal is recorded on the row and seen by nobody.
+    // duplicateOf: a part the observe-only detector flagged as a duplicate (lib/scaffoldWrite.js
+    // annotateDuplicates) — counted here too, or the flag sits on the row seen by nobody.
     const refused = items.filter(i => i?.revisionRefused || i?.duplicateOf)
     if (refused.length) {
       const cross = refused.some(i => i.revisionRefused === 'cross-section')

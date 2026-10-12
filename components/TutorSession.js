@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem, findConfirmedDuplicate, refuseDuplicateItem, applyDoneWrite, clearDuplicateStamp } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem, decideDoneWrite, annotateDuplicates } from '@/lib/scaffoldWrite'
 import { draftScaffoldTree } from '@/lib/startingDraftScaffold'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
@@ -876,8 +876,6 @@ export default function TutorSession({
   // destroyed the student's typed line deterministically this way, because the coach's
   // acknowledgment turn parsed against the PRE-lock tree and PATCHed it back.
   const [saveWarning, setSaveWarning] = useState(null)
-  // A coach write refused because its words are already confirmed in another part.
-  const [duplicateNotice, setDuplicateNotice] = useState(null)
   const scaffoldRef = useRef(initialScaffold)
   const applyScaffold = (next) => { scaffoldRef.current = next; setScaffold(next) }
   const captionRef                        = useRef(null)
@@ -1493,9 +1491,6 @@ export default function TutorSession({
     let sc = currentScaffold ? JSON.parse(JSON.stringify(currentScaffold)) : null
     let changed = false
     let newScaffoldCreated = false
-    // Writes refused because their text is already confirmed in ANOTHER part (see
-    // findConfirmedDuplicate). Collected so the student is told, not just the console.
-    const duplicateRefusals = []
 
     const tokenRE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):([^\]]*)\]/g
     let m
@@ -1578,18 +1573,7 @@ export default function TutorSession({
               )
               return item
             }
-            // A candidate that duplicates words already confirmed elsewhere would put a
-            // "Lock it in" button under a second copy of them — same refusal as [DONE:].
-            const nugDup = findConfirmedDuplicate(sc, nugTarget.paraIdx, nugTarget.id, nuggetText, { paragraphs })
-            if (nugDup) {
-              console.error(
-                `[duplicate-guard] REFUSED [NUGGET:${componentId}:…] into paragraph ${nugTarget.paraIdx} — ` +
-                `that text is already in paragraph ${nugDup.paraIdx} (${nugDup.label}). Nothing was changed.`
-              )
-              duplicateRefusals.push({ to: nugTarget.paraIdx, ...nugDup })
-              return refuseDuplicateItem(item, nugDup, nuggetText)
-            }
-            return { ...clearDuplicateStamp(item), status: 'candidate', nuggetText }
+            return { ...item, status: 'candidate', nuggetText }
           })
           changed = true
           }
@@ -1610,46 +1594,28 @@ export default function TutorSession({
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
         const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
-        // Every net that decides what this [DONE:] does lives in lib/scaffoldWrite.js:
-        // decideDoneWrite (unchanged → preserve → fragment → dropped → duplicate → write) inside
-        // applyDoneWrite, which also lands a previously REFUSED move when its source part is
-        // rewritten (so a refused move can never become a loss), and banks every replaced text.
-        // The governing invariant is pinned by lib/scaffoldWriteInvariant.test.js.
-        if (doneTarget) {
-          const applied = applyDoneWrite(sc, doneTarget, inlineText, { paragraphs })
-          sc = applied.scaffold
-          if (applied.outcome === 'preserved') {
+        // The decision is lib/scaffoldWrite.js decideDoneWrite — the same decision this handler
+        // made at 2238e2b (preserve → fragment → dropped → write) plus two no-write short-circuits,
+        // proven equal-Draft by lib/scaffoldWriteInvariant.test.js. Duplicates are NEVER refused
+        // here; annotateDuplicates flags them after the turn (observe-only, round 3).
+        if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
+          const decision = decideDoneWrite({ target: doneTarget, item, inlineText })
+          if (decision.outcome === 'preserved') {
             // On an INFERRED target (inexact id, or a cross-section redirect) the words already
-            // there outrank our guess about which slot was meant. Kept + stamped; the incoming
-            // words are banked on the item (refusedText), never discarded.
+            // there outrank our guess about which slot was meant — banked + stamped
+            // (preserveExistingItem), recoverable via Revise/Edit.
             console.warn(
               `[token-safety-net] [DONE:${componentId}:…] resolved to an INFERRED target ` +
               `(${doneTarget.crossSection ? `cross-section → paragraph ${doneTarget.paraIdx}` : 'inexact id'}) ` +
               `that already holds the student's words — keeping them rather than overwriting. ` +
-              `The revision did NOT land; its words are banked on the item.`
+              `The revision did NOT land; it is recoverable via Revise/Edit.`
             )
-          } else if (applied.outcome === 'fragment') {
+          } else if (decision.outcome === 'fragment') {
             console.warn(`[token-safety-net] [DONE:${componentId}:…] quoted a fragment of the confirmed text — keeping the longer version`)
-          } else if (applied.outcome === 'duplicate') {
-            // Never a silent no-op: console, an item stamp (with the refused words BANKED and an
-            // "add them here anyway" button), a line at the top of the panel, and a note in the
-            // coach's next scaffold state.
-            console.error(
-              `[duplicate-guard] REFUSED [DONE:${componentId}:…] into paragraph ${doneTarget.paraIdx} — ` +
-              `that text is already confirmed in paragraph ${applied.dup.paraIdx} (${applied.dup.label}). ` +
-              `Not written a second time; the words are banked on the part.`
-            )
-            duplicateRefusals.push({ to: doneTarget.paraIdx, ...applied.dup })
-          }
-          // A move refused earlier just landed because its source was rewritten (applyDoneWrite).
-          // The student sees words appear somewhere they did not just ask about — say why.
-          for (const m of applied.moved ?? []) {
-            const sec = sc.components?.[m.paraIdx]
-            const where = sec?.items?.length === 1 ? sec.items[0].label : `Paragraph ${m.paraIdx + 1}`
-            setDuplicateNotice(`The words that were moved out of the part you just changed are now in ${where}, so nothing was lost.`)
           }
           // 'dropped' is logged inside resolveDoneText and stamped writeDropped on the item.
-        }
+          return decision.item
+        })
         changed = true
       }
 
@@ -1786,14 +1752,21 @@ export default function TutorSession({
       }
     }
 
-    // A refused duplicate must be VISIBLE. The item stamp only renders inside a section card
-    // that is expanded and current, and a refused write can target a section that is neither,
-    // so the student also gets one plain line at the top of the Draft panel.
-    if (duplicateRefusals.length) {
-      const r = duplicateRefusals[duplicateRefusals.length - 1]
-      const where = sc?.components?.[r.to]
-      const toLabel = where?.items?.length === 1 ? where.items[0].label : `Paragraph ${r.to + 1}`
-      setDuplicateNotice(`Those words are already in ${r.label ?? `Paragraph ${r.paraIdx + 1}`}, so they weren't added to ${toLabel} a second time. They're kept under ${toLabel} — tap "Add them here anyway" there if you meant it.`)
+    // Duplicate DETECTOR — observe-only (lib/scaffoldWrite.js annotateDuplicates). Runs after
+    // every write of the turn has landed and recomputes from scratch, so a flag appears when the
+    // same words sit in two sections and clears when they no longer do. It only sets/removes
+    // `duplicateOf`; it never changes text, status or the cursor, so it cannot re-route anything.
+    if (sc) {
+      const before = new Set((sc.components ?? []).flatMap((p, i) => (p.items ?? []).filter(it => it.duplicateOf).map(it => `${i}.${it.id}`)))
+      const ann = annotateDuplicates(sc, { paragraphs })
+      for (const f of ann.flagged) {
+        if (before.has(`${f.paraIdx}.${f.id}`)) continue
+        console.error(
+          `[duplicate-detector] paragraph ${f.paraIdx} "${f.id}" holds words already confirmed in ${f.of.label} — ` +
+          `the same text is in the Draft twice. Flagged for the student and the coach; nothing was blocked.`
+        )
+      }
+      if (ann.changed) { sc = ann.scaffold; changed = true }
     }
 
     // Persist any change — including when the scaffold was created THIS turn. The
@@ -2182,9 +2155,9 @@ export default function TutorSession({
   // ── Nugget panel actions ─────────────────────────────────────────────────────
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
-    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
-      ...clearDuplicateStamp(item), status: 'confirmed', text: nuggetText,
-    }))
+    const newScaffold = annotateDuplicates(updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
+      ...item, status: 'confirmed', text: nuggetText,
+    })), { paragraphs }).scaffold
     applyScaffold(newScaffold)
     await patchScaffold(newScaffold.components)
     const note = {
@@ -2450,9 +2423,11 @@ export default function TutorSession({
     const oldText = item?.text || item?.nuggetText || ''
     if (newText === oldText) { setEditingComponent(null); return }
 
-    const newScaffold = updateComponentItem(live, paraIdx, componentId, i => ({
-      ...clearDuplicateStamp(i), text: newText, nuggetText: newText, status: 'confirmed',
-    }))
+    // Recompute duplicate flags now (observe-only) so a note clears the moment the student's
+    // own edit removes the second copy, not a turn later.
+    const newScaffold = annotateDuplicates(updateComponentItem(live, paraIdx, componentId, i => ({
+      ...i, text: newText, nuggetText: newText, status: 'confirmed',
+    })), { paragraphs }).scaffold
     applyScaffold(newScaffold)
     setEditingComponent(null)
 
@@ -3489,24 +3464,6 @@ export default function TutorSession({
           {/* ── Scaffold / essay body ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
 
-            {/* A lock the app declined because the same words are already in another part.
-                Plain and specific: where the words ARE, where they did not go, and that
-                nothing was removed — never a silent no-op (lib/scaffoldWrite.js). */}
-            {duplicateNotice && (
-              <div role="status" className="rounded-xl px-4 py-2.5 flex items-start justify-between gap-2"
-                style={{ backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-                <p className="text-xs leading-snug" style={{ color: 'var(--text-body)' }}>{duplicateNotice}</p>
-                <button
-                  onClick={() => setDuplicateNotice(null)}
-                  aria-label="Dismiss this notice"
-                  className="text-xs font-semibold rounded-md px-2 shrink-0"
-                  style={{ color: 'var(--text-muted)', minHeight: 44, minWidth: 44 }}
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
             {/* Thesis callout (when confirmed) */}
             {scaffold?.thesis && (
               <div className="rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--surface-spark)', border: '1.5px solid var(--border-accent)' }}>
@@ -3668,7 +3625,7 @@ export default function TutorSession({
                           {para.items.map(item => {
                             const isConfirmed = item.status === 'confirmed'
                             // For completed paragraphs, skip items with no content to show
-                            if (isComplete && !isConfirmed && !item.text && !item.nuggetText && !item.duplicateOf) return null
+                            if (isComplete && !isConfirmed && !item.text && !item.nuggetText) return null
 
                             const statusColors = {
                               locked:    { dot: 'var(--border-strong)',   text: 'var(--text-subtle)' },
@@ -3777,28 +3734,15 @@ export default function TutorSession({
                                     </p>
                                   )}
 
-                                  {/* A lock aimed HERE was refused because those words are
-                                      already confirmed in another part. Shown even when this
-                                      part is empty — that is the common case. */}
+                                  {/* Duplicate DETECTOR flag (observe-only): these words are also
+                                      confirmed in another section. Nothing was blocked — the
+                                      student decides which copy goes, through Edit/Revise. The flag
+                                      is recomputed every turn and clears when the copy is gone. */}
                                   {item.duplicateOf && (
-                                    <div className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
+                                    <p className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
                                       style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-                                      <p>Those words are already in {item.duplicateOf.label ?? `Paragraph ${item.duplicateOf.paraIdx + 1}`}, so they weren’t added here again.</p>
-                                      {/* The refused words are BANKED on the item (lib/scaffoldWrite.js) —
-                                          one tap puts them here anyway (a refrain, a quote used twice on
-                                          purpose). confirmNugget clears the stamp through the bank and
-                                          tells the coach, exactly like any panel lock-in. */}
-                                      {item.duplicateOf.text && !isEditingThis && (
-                                        <button
-                                          onClick={() => confirmNugget(paraIdx, item.id, item.duplicateOf.text)}
-                                          disabled={phase !== 'listening'}
-                                          className="mt-1 text-[11px] font-semibold rounded-md px-2 transition disabled:opacity-40"
-                                          style={{ color: 'var(--accent-text)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-accent)', minHeight: 44 }}
-                                        >
-                                          Add them here anyway
-                                        </button>
-                                      )}
-                                    </div>
+                                      This looks like it’s already in {item.duplicateOf.label ?? `Paragraph ${item.duplicateOf.paraIdx + 1}`} — you can remove one in Edit.
+                                    </p>
                                   )}
 
                                   {/* Nugget action buttons — only for current paragraph in listening phase */}

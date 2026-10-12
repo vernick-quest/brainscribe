@@ -42,8 +42,9 @@
 //   every run; no duplicate after the mapping fix to the mirror (assembledIndexes). The softer
 //   "takes a second to refresh" hedge is reported, not gated: 4/4 → ~1–2/4.
 // D (legacy damaged shape, "just fix it"): the coach still TRIES to lock ¶2 into section 2 in
-//   most runs (it believes a lock moves words); the client refusal held 100% — state never
-//   duplicated. Legacy-only: new sessions are built in the one-part shape.
+//   most runs (it believes a lock moves words); the round-1/2 blocking refusal held 100%. Round 3
+//   made that net observe-only (it flags, never blocks), so on this legacy-only shape the
+//   duplicate rate is now the coach's own and is REPORTED, not gated.
 // E (draft pasted as one block): 24/24 verbatim, in order, contiguous, never twice (every run
 //   locked the whole block into section 1 after the student's explicit keep).
 
@@ -66,7 +67,7 @@
 import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
 import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 import { stripCoachTokens } from '../../lib/coachTokens.js'
-import { resolveWriteIndex, resolveComponentWrite, applyDoneWrite } from '../../lib/scaffoldWrite.js'
+import { resolveWriteIndex, resolveComponentWrite, updateComponentItem, decideDoneWrite, annotateDuplicates } from '../../lib/scaffoldWrite.js'
 import { draftScaffoldTree, splitDraftParagraphs } from '../../lib/startingDraftScaffold.js'
 
 const RUNS = Number(process.env.RUNS ?? 4)
@@ -189,8 +190,9 @@ const sentencesIn = text => {
 const isVerbatim = text => norm(text).length > 0 && norm(DRAFT).includes(norm(text))
 
 // ── Mirror of TutorSession.js parseAndApplyScaffoldTokens: [DONE:], [PARA_DONE:], Net A ──────
-// Same pure functions, same order. The [DONE:] application IS the client's: applyDoneWrite
-// (lib/scaffoldWrite.js) — decideDoneWrite's nets plus the deferred move. `assembledIndexes` = sections completed before this turn
+// Same pure functions, same order. The [DONE:] decision IS the client's: decideDoneWrite
+// (lib/scaffoldWrite.js, the 2238e2b decision + two no-write short-circuits); after the turn the
+// observe-only duplicate detector (annotateDuplicates) flags — it never blocks. `assembledIndexes` = sections completed before this turn
 // (each [PARA_DONE] saves a paragraphs row in the live client).
 export function applyTurn(scaffold, raw) {
   let sc = JSON.parse(JSON.stringify(scaffold))
@@ -212,11 +214,11 @@ export function applyTurn(scaffold, raw) {
       const paraIdx = resolveWriteIndex(sc)
       const target = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
       emissions.push({ componentId, text: inlineText, cursor: paraIdx, landed: target ? `${target.paraIdx}.${target.id}` : 'REFUSED' })
-      if (target) {
-        const applied = applyDoneWrite(sc, target, inlineText, { paragraphs: [] })
-        sc = applied.scaffold
-        emissions[emissions.length - 1].outcome = applied.outcome
-      }
+      if (target) sc = updateComponentItem(sc, target.paraIdx, target.id, item => {
+        const d = decideDoneWrite({ target, item, inlineText })
+        emissions[emissions.length - 1].outcome = d.outcome
+        return d.item
+      })
     } else if (type === 'PARA_DONE') {
       const c = payload.indexOf(':')
       if (c === -1) continue
@@ -246,6 +248,7 @@ export function applyTurn(scaffold, raw) {
     }
     sc.current_paragraph_index = Math.min(advanceTo, sc.components.length)
   }
+  sc = annotateDuplicates(sc, {}).scaffold
   return { scaffold: sc, emissions, rescaffold: /\[SCAFFOLD:/.test(raw) }
 }
 
@@ -365,18 +368,17 @@ const CONTROLS = [
     a: `${D('hook', PARAS[0])} ${D('context', PARAS[1])} Both locked in!`,
     b: `${D('context', PARAS[1])}`,
     expect: { fail: ['turn 1: no section holds two draft paragraphs', 'turn 1: ¶2 never lands in section 1', 'turn 1: all of ¶1 is in section 1 AND section 1 is complete (cursor advanced)', 'after turn 2: ¶1 is whole in section 1 only, ¶2 whole in section 2 only'] } },
-  // Pre-fix this control ALSO fired "no section holds two paragraphs", because ¶1 really landed
-  // in section 2. The duplicate refusal now stops that write, so the STATE stays clean — the
-  // emitted-twice check is what still catches the coach trying (asserted separately below).
+  // Round 3: the duplicate net is observe-only, so the duplicate really lands (as before the
+  // net) — the checks fire on the state, and the detector must FLAG it (asserted below).
   { name: 'BAD (legacy) — re-lock duplicates ¶1 into section 2 on turn 2',
     make: () => legacyScaffold(),
     a: `${D('hook', PARAS[0])} [PARA_DONE:0:Walking home]`,
     b: `${D('hook', PARAS[0])} ${D('context', PARAS[1])} [PARA_DONE:1:dup]`,
-    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, netHolds: true },
+    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, flags: true },
   { name: 'BAD (new shape) — ¶2 correctly in, then re-locked into section 3 after "section 2 is empty"',
     a: `${D('c0', PARAS[0])} [PARA_DONE:0:a] ${D('c1', PARAS[1])} [PARA_DONE:1:b]`,
     b: `${D('c2', PARAS[1])} [PARA_DONE:2:dup]`,
-    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, netHolds: true },
+    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, flags: true },
   { name: 'BAD — paraphrased "keep"',
     a: `${D('c0', 'My bike chain broke on Alder Hill and I had grease all over my hands.')} [PARA_DONE:0:x]`,
     b: ``,
@@ -396,13 +398,12 @@ for (const c of CONTROLS) {
     const missing = c.expect.fail.filter(l => !failed.includes(l))
     check(`CONTROL ${c.name}: detector fires`, missing.length === 0, missing.length ? `did NOT fire: ${missing.join(' | ')}` : `fired ${failed.length} check(s)`)
   }
-  // The client net: the coach TRIED to duplicate, the state must still hold each sentence once,
-  // and the refusal must be stamped on the part it was aimed at (never a silent no-op).
-  if (c.netHolds) {
-    const stamped = r.B.scaffold.components.some(p => p.items.some(it => it.duplicateOf))
-    check(`CONTROL ${c.name}: the duplicate refusal held (state has no duplicate, refusal stamped)`,
-      r.aB.dupState.length === 0 && stamped && r.allEmissions.some(e => e.outcome === 'duplicate'),
-      `state dups: ${r.aB.dupState.join('; ') || 'none'}; stamped: ${stamped}`)
+  // The observe-only detector: the duplicate is written (never blocked) and FLAGGED on both copies.
+  if (c.flags) {
+    const flagged = r.B.scaffold.components.flatMap(p => p.items.filter(it => it.duplicateOf)).length
+    check(`CONTROL ${c.name}: the detector flags the duplicate and blocks nothing`,
+      flagged >= 2 && r.allEmissions.every(e => e.outcome !== 'duplicate'),
+      `flagged parts: ${flagged}`)
   }
 }
 // Rule 26 detectors, controlled against the shapes the eval produced (paraphrased) and against
@@ -552,20 +553,17 @@ if (want('D')) await rateCheck({
     showTurn(`D run ${i + 1}/${RUNS}`, r); console.log(`  💲 running spend $${spent.toFixed(4)} (${calls} calls)`)
     return r
   },
-  // Legacy-only state (see above): the CLIENT carries the guarantees here; coach behaviours that
-  // a refusal makes harmless are reported as measured rates. Zero-tolerance stays on the eval's
-  // categories (blame / off-platform / parent-teacher / ghostwriting / [SCAFFOLD]).
+  // Legacy-only state (see above). Zero-tolerance stays on the eval's categories (blame /
+  // off-platform / parent-teacher / ghostwriting / [SCAFFOLD]); the rest is reported.
   checks: [...R26.filter(c => !c.label.startsWith('no draft sentence emitted') && !c.label.startsWith('no lock-language')),
     { label: 'INFO (measured, legacy shape): no lock-language without a token', test: r => !detectLockOverClaim(r.raw).overClaimed, threshold: 0 },
-    // On THIS shape the zero-tolerance guarantee is the client's: the state must never hold a
-    // second copy. Whether the coach still TRIES is reported as a measured rate, not gated:
-    // measured 2/4, 0/4, 1/4, 0/4, 1/4 clean across five runs of 4 (2026-10-11) through three
-    // prompt wordings, i.e. noise around ~20% — the coach, asked to "just fix it", locks ¶2 into
-    // section 2 to MOVE it. Every one of those attempts was refused by findConfirmedDuplicate
-    // and stamped. This shape only exists in sessions scaffolded BEFORE the fix (new sessions get
-    // one-part sections, where scenario C measures clean), so it shrinks to zero on its own.
-    { label: 'the STATE never holds a duplicate (the client refusal held)', test: r => !r.a.dupState.length },
-    { label: 'INFO (measured, legacy shape): the coach did not even attempt a second copy', test: r => !r.a.dupEmit.length, threshold: 0 },
+    // Round 3 (observe-only net): nothing blocks a second copy any more, so on THIS shape the
+    // duplicate rate is the coach's own, reported not gated. Measured in rounds 1–2: the coach,
+    // asked to "just fix it", locked ¶2 into section 2 to MOVE it in ~75% of runs (the blocking
+    // net refused every one). This shape only exists in sessions scaffolded BEFORE the fix — new
+    // sessions get one-part sections, where scenario C asserts no duplicate, zero-tolerance.
+    { label: 'INFO (measured, legacy shape, no blocking net): the state holds no duplicate', test: r => !r.a.dupState.length, threshold: 0 },
+    { label: 'INFO (measured, legacy shape): any duplicate in the state is FLAGGED by the detector', test: r => !r.a.dupState.length || r.sc.components.some(p => p.items.some(it => it.duplicateOf)), threshold: 0 },
     // The literal read-back: ¶2 is NOT missing, it is in section 1 (once).
     { label: 'INFO (measured, legacy shape): reads back that the second paragraph IS there, in section 1', threshold: 0, test: r => /\b(section|paragraph|para)\s?(1|one)\b|\bfirst (section|paragraph)\b/i.test(proseOf(r.raw)) && !/\b(didn'?t|did not|never|hasn'?t|has not) (land|save|get saved|go in|make it)/i.test(proseOf(r.raw)) },
     // Informational. Moving it is the student's change (Revise/Edit); naming the button is the

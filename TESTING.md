@@ -5211,3 +5211,46 @@ New behaviour the student can see:
 
 Gate: build green · `test:run` **1248** · no migration · `test:continuation` still NOT run here
 (writes the live DB) — run it before merging.
+
+## 2026-10-12 (~00:26 PDT) — Round 3: the duplicate net is OBSERVE-ONLY (conductor's decision) (focus/coach-ai)
+
+Supersedes the round-2 duplicate REFUSAL above. A re-review found that any blocking refusal changes
+state, a changed state re-routes later tokens (Net A doesn't advance; the next shared id becomes an
+exact revision), and no local rule closes that. The after-simulation had shown the refusal never
+fired: the one-part starting-draft shape and the prompt prevented every duplicate. So:
+
+- **Write path = the 2238e2b decision** (preserve → fragment → dropped → write), plus two no-write
+  short-circuits: an identical re-lock (quote style ignored) and a bare `[DONE:id]` on a confirmed part
+  whose captured nugget is absent or equal. Fragment check also ignores quote style. REMOVED: the
+  refusal, the deferred move, the `replaced` / `refusedText` banks, "Add them here anyway", the
+  top-of-Draft notice.
+- **Duplicate detector, observe-only** (`annotateDuplicates`): after every write it recomputes flags
+  from scratch (cross-section, ≥80% one-way containment, restating parts and non-draft custom
+  sections exempt). Console `[duplicate-detector]`; a note under BOTH copies; the coach's scaffold
+  state says "Para N and Paragraph M hold the same words"; counted in draftIntegrity/admin. The
+  flag clears as soon as one copy is gone. It never changes text, status or the cursor.
+- **Proof** (`lib/scaffoldWriteInvariant.test.js`, strongest form): for 14 named cases and 13,500
+  seeded sequences the new Draft EQUALS the 2238e2b Draft — cursor, every status, every part's text —
+  except the two listed no-write differences (quote style; old wrote a quoted fragment of the text the
+  new code kept). Controls: "bank everything, write nothing" fires on every named case where the old
+  code wrote, and on all three generated shapes; a blocking refusal fires; an UNRESTRICTED bare-DONE
+  no-op fires (so the nugget restriction is load-bearing).
+
+### Manual pass — replaces round-2 step 9 ("Add them here anyway" no longer exists)
+12. Starting-draft session: ask the coach to put a paragraph you already kept into the next section
+    too. It DOES land (nothing is blocked); under BOTH copies a note reads "This looks like it's
+    already in Paragraph N — you can remove one in Edit." Edit one copy away: both notes disappear
+    (immediately after Save, and still gone after the coach's next reply).
+Steps 8, 10 and 11 from round 2 still apply (in 10, expect no second copy only because the coach
+should not lock one; if it does, step 12's note should appear).
+
+### Measured (round 3, final prompt)
+- `starting-draft-mapping.mjs` WITHOUT the blocking net: GREEN. On the one-part shape the prompt
+  alone held zero duplicates in saved state (A/B 4/4, C 4/4, E 4/4, zero-tolerance). Legacy four-part
+  scenario D (sessions scaffolded before the fix only): a duplicate now lands in 2/4 runs (the round-2
+  net refused these) — every one flagged by the detector; reported, not gated.
+- Full `test:prompts`: green except `oversized-lock` P1 (0/3; re-measured new 3/6 vs pre-change
+  baseline 1/6 — a noisy soft check, no regression) and `min-binding`'s documented Rule 12 family
+  (one unprompted "finish it as it is?" offer; one completion after a yes to the fixture's own offer).
+
+Gate: build green · `test:run` **1258** · no migration · `test:continuation` still NOT run here.
