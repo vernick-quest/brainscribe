@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { escapeHtml } from '@/lib/coppa'
+import { SUPPORT_EMAIL } from '@/lib/site'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -115,6 +116,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
       },
       body: JSON.stringify({
         from: 'BrainScribe <notifications@brainscribe.io>',
+        reply_to: SUPPORT_EMAIL,
         to: parentEmail,
         subject: `Reminder: ${studentName} is waiting for your BrainScribe approval`,
         html,

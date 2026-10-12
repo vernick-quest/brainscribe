@@ -8,6 +8,7 @@ import Icon from '@/components/Icon'
 import { UNDER13_SETUP_COPY } from '@/lib/parentFirst'
 import LogoLockup from '@/components/LogoLockup'
 import { nextWelcomeStep } from '@/lib/welcomeFlow'
+import { SUPPORT_EMAIL } from '@/lib/site'
 
 const ROLES = [
   {
@@ -88,6 +89,13 @@ function WelcomeContent() {
   // assertion and the parent-first under-13 flow never ran.
   const [code, setCode] = useState('')
   const [redeeming, setRedeeming] = useState(false)
+  // "No code? Ask for one" (lib/accessRequest.js). Without it a 13+ person stuck here
+  // reached NO alert at all — the owner's new-account email fires at the role picker,
+  // which is past this wall. 'idle' | 'sending' | 'requested' | 'already_requested' |
+  // 'already_invited'. The address shown back is the session's, from the server.
+  const [askState, setAskState] = useState('idle')
+  const [askEmail, setAskEmail] = useState('')
+  const [askError, setAskError] = useState('')
   // The two flow flags live in REFS, not state, and the in-flight init() is awaited
   // before any step is resolved. init() is async and age is now the first question,
   // so a fast tapper could otherwise answer age before the flags land and silently
@@ -182,6 +190,49 @@ function WelcomeContent() {
       setError('Something went wrong. Please try again.')
     }
     setRedeeming(false)
+  }
+
+  // Ask the owner for a code. 13+ ONLY: this handler is reachable only from the
+  // access-code step, which nextWelcomeStep never routes an under-13 answer to — and the
+  // server refuses a protected account regardless (the button is not the control).
+  // The email is NOT sent: the server uses the signed-in session's address.
+  async function handleAskForCode() {
+    if (askState === 'sending' || ageBracket !== '13plus') return
+    setAskState('sending')
+    setAskError('')
+    try {
+      const res = await fetch('/api/access/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ageBracket }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body.status === 'already_has_access') {
+        // Access landed some other way (an invite accepted in another tab). Move on.
+        accessGatedRef.current = false
+        setStep(nextWelcomeStep('access-code', { ageBracket, accessGated: false }))
+        return
+      }
+      if (!res.ok) {
+        if (body.code === 'coppa_protected') {
+          // Same landing as confirm-role's coppa_locked: a protected account belongs in
+          // the parent-first flow, never at the code wall.
+          setAgeBracket('under13')
+          setAskState('idle')
+          setStep(nextWelcomeStep('age', { ageBracket: 'under13', nameNudge: false }))
+          return
+        }
+        setAskError(body.error ?? 'We could not send your request just now.')
+        setAskState('idle')
+        return
+      }
+      setAskEmail(body.email ?? '')
+      setAskState(['requested', 'already_requested', 'already_invited'].includes(body.status) ? body.status : 'requested')
+    } catch (e) {
+      console.error('[welcome] access request error:', e)
+      setAskError('We could not send your request just now.')
+      setAskState('idle')
+    }
   }
 
   // Save the confirmed/corrected name, then continue. The nudge now sits AFTER the
@@ -409,6 +460,81 @@ function WelcomeContent() {
           >
             {redeeming ? 'Unlocking…' : 'Unlock →'}
           </button>
+
+          {/* ── No code? Ask for one ─────────────────────────────────────────
+              Only on this step, and this step is 13+ only (lib/welcomeFlow.js). */}
+          <div
+            aria-live="polite"
+            style={{
+              marginTop: 4,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border-default)',
+              textAlign: 'center',
+            }}
+          >
+            {askState === 'requested' || askState === 'already_requested' || askState === 'already_invited' ? (
+              <div style={{
+                backgroundColor: 'var(--status-success-bg)',
+                borderRadius: 12,
+                padding: '12px 14px',
+                textAlign: 'left',
+              }}>
+                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-strong)', margin: '0 0 4px' }}>
+                  {askState === 'already_invited' ? 'We already sent you a code' : 'Request sent'}
+                </p>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-body)', lineHeight: 1.55, margin: 0 }}>
+                  {askState === 'already_invited'
+                    ? <>Check your inbox{askEmail ? <> at <strong>{askEmail}</strong></> : null} (and spam), then enter the code above.</>
+                    : askState === 'already_requested'
+                      ? <>We already have your request{askEmail ? <> for <strong>{askEmail}</strong></> : null}. We&rsquo;ll email you a code as soon as there&rsquo;s room.</>
+                      : <>We&rsquo;ll email you a code{askEmail ? <> at <strong>{askEmail}</strong></> : null} as soon as there&rsquo;s room. You can close this page &mdash; just sign in again when it arrives.</>}
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAskForCode}
+                disabled={askState === 'sending'}
+                style={{
+                  width: '100%',
+                  minHeight: 44,
+                  padding: '0.75rem 1rem',
+                  borderRadius: 14,
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  color: 'var(--brand-navy)',
+                  backgroundColor: 'transparent',
+                  border: '1.5px solid var(--border-strong)',
+                  cursor: askState === 'sending' ? 'not-allowed' : 'pointer',
+                  opacity: askState === 'sending' ? 0.6 : 1,
+                  transition: 'background-color 0.15s',
+                }}
+              >
+                {askState === 'sending' ? 'Sending your request…' : 'No code? Ask for one'}
+              </button>
+            )}
+
+            {askError && (
+              <p role="alert" style={{
+                fontSize: '0.85rem',
+                color: 'var(--status-error)',
+                backgroundColor: 'var(--status-error-bg)',
+                padding: '10px 14px',
+                borderRadius: 10,
+                margin: '10px 0 0',
+                textAlign: 'left',
+              }}>
+                {askError}
+              </p>
+            )}
+
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '10px 0 0' }}>
+              Or email us directly at{' '}
+              <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: 'var(--accent-text)', fontWeight: 600 }}>
+                {SUPPORT_EMAIL}
+              </a>
+            </p>
+          </div>
 
           <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
             Invited by a parent or teacher? You're already in — just sign in from your invite link.

@@ -5077,3 +5077,60 @@ No pressure if it feels complete", and the session completed.
 
 Gate: build green · `test:run` **972** · `test:prompts` all 10 files green (two new:
 `starting-draft.mjs`, `min-binding.mjs`).
+
+## 2026-10-11 — "No code? Ask for one" on the /welcome code step (focus/auth-coppa)
+
+Closes the gap where a signed-in 13+ person with no code stopped at the code step and the owner
+was NEVER alerted (the new-account alert fires at the role picker, past the code wall).
+New: `POST /api/access/request` (authed), `lib/accessRequest.js` (+ test), source `welcome` added to
+`ACCESS_REQUEST_SOURCES` and to the ack sources. Same `subscribers` row + same `notifyOnSubscribe`
+as the landing form — no second notification path. No migration.
+
+### Verified locally (worktree `next dev`, fetch STUBBED in the page — nothing left the browser)
+- The code step renders the outline "No code? Ask for one" button under Unlock, and
+  "Or email us directly at brainscribe.io@gmail.com" (mailto) — light and dark.
+- Tap → exactly ONE `POST /api/access/request` with body `{"ageBracket":"13plus"}` (no email);
+  a stubbed `requested` reply shows "Request sent — We'll email you a code at <address>…".
+- A stubbed 500 shows the error inline and keeps the button; a stubbed 403 `coppa_protected`
+  routes to the parent-first screen (button gone).
+- The code step was reached by setting React state in the page (Google sign-in is not possible in
+  the preview). The real server route was NOT exercised against a real DB — it is covered by the
+  route-level Vitest suite in `lib/accessRequest.test.js` with a fake DB and spied senders.
+
+### Still to check (needs a real 13+ Google account with no code — conductor / Robert)
+1. Sign in with a fresh 13+ Google account → "I'm 13 or older" → code step → tap "No code? Ask for
+   one". Screen says "Request sent" and shows YOUR Google address.
+2. Owner inbox: ONE alert, subject `BrainScribe: new access request from <address>`, with
+   `Source: the code screen after sign-in ("No code? Ask for one")` and
+   `Account: Has a student account but NO access yet (no code recorded) — stuck at the code screen.`
+3. Requester inbox: one "We got your BrainScribe request" ack.
+4. Tap again / reload and tap again: screen says "We already have your request"; NO second alert,
+   NO second ack.
+5. /admin → Tools → waitlist: the address shows as **No code** ("signed in · no code yet", "via welcome").
+6. Under-13 path: "I'm under 13" → parent screen; the button never appears. (Server refusal for a
+   protected account is unit-tested; not exercised live.)
+
+## 2026-10-11 — Reply-To on every email; admin alerts reply to the requester (focus/auth-coppa)
+
+brainscribe.io has no MX record, so replies to `notifications@brainscribe.io` bounce. Now every
+`api.resend.com/emails` payload (12 call sites in app/ + lib/) sets `reply_to`:
+user-facing mail → `SUPPORT_EMAIL` (brainscribe.io@gmail.com, defined once in `lib/site.js`);
+admin access-request / new-account alerts → the person the alert is about, with the first body line
+"Reply to this email to answer them directly — your reply goes to <them>, not to BrainScribe."
+A possibly-under-13 account (COPPA-protected, under13 signup, or a failed account lookup) gets NO
+requester Reply-To — the alert says replying does not reach them. Guard: `lib/replyTo.test.js`
+(positive-controlled: deleting `reply_to` from coppa/resend and from sendViaResend each turned it red).
+COPPA emails: Reply-To only (three already had the same literal; swapped to the constant; resend
+reminder + student-approval gained one). No content/token/link/recipient change.
+
+### Verified
+- Payload shape for `sendAdminAlert` with and without `replyTo` (stubbed fetch, no send).
+- Alert bodies rendered locally and read as fit to be quoted to the requester.
+
+### UNVERIFIED — needs one real send (conductor / Robert)
+1. Trigger an access request (or the "No code? Ask for one" button). In Gmail, open the alert →
+   Reply: the To: field shows the REQUESTER's address, not notifications@ or the owner.
+2. Reply to any user-facing email (e.g. the "We got your request" ack) from the requester's inbox:
+   it lands in brainscribe.io@gmail.com, no bounce.
+3. Confirm Resend accepts `reply_to` on the live key (the API field name is per Resend's docs; not
+   exercised against the real API here).
