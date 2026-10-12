@@ -11,7 +11,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import CoachThinking, { thinkingLabel } from './CoachThinking.js'
+import CoachThinking, { thinkingLabel, CoachTurnFailed } from './CoachThinking.js'
 import { PERSONAS } from '@/lib/personas'
 
 const render = (persona) => renderToStaticMarkup(createElement(CoachThinking, { persona }))
@@ -46,5 +46,21 @@ describe('CoachThinking', () => {
     expect(render('owen')).toContain('color:var(--tutor-muse)')
     const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8')
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*{\s*\.coach-thinking-dots > span\s*{\s*animation:\s*none/)
+  })
+})
+
+describe('CoachTurnFailed (a timed-out / failed turn)', () => {
+  const html = renderToStaticMarkup(createElement(CoachTurnFailed, { persona: 'owen', message: 'That took too long — tap to try again.', onRetry: () => {} }))
+  it('shows the gentle message and a real "Try again" button with a 44px target', () => {
+    expect(html).toContain('That took too long — tap to try again.')
+    expect(html).toMatch(/<button type="button"[^>]*style="[^"]*min-height:44px[^"]*"[^>]*>Try again<\/button>/)
+  })
+  it('copy is aria-hidden (the persistent status region announces it), the button is not', () => {
+    expect(html).toMatch(/<span aria-hidden="true">That took too long/)
+    expect(html).not.toMatch(/<button[^>]*aria-hidden/)
+  })
+  it('uses tokens only', () => {
+    const styles = [...html.matchAll(/style="([^"]*)"/g)].map(m => m[1]).filter(st => !st.includes('border-radius:50%'))
+    for (const st of styles) expect(st).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i)
   })
 })

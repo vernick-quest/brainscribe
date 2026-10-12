@@ -5392,3 +5392,81 @@ thinking) AND the request then errors, the error path's run-id guard skips the r
 indicator stay until reload; that guard predates this change.
 
 Gate: build green · `test:run` **1355** · no migration · no Anthropic spend · ElevenLabs 866 chars.
+
+## 2026-10-12 (~16:40 PDT) — No more stuck "thinking": every exit hands Send back; 45s timeout + Try again (focus/coaching-session)
+
+Follow-on to the section above. Two pre-existing ways a coach turn stranded the session on
+"Owen is thinking…" with Send — and every panel action gated on the same phase — disabled
+until a reload:
+
+1. **Replaced turn, then failure.** The exit paths reset the UI only if `tutorRunRef` still
+   held the turn's id, but Replay and the student starting to speak bump that counter too (it
+   is the AUDIO run). Tap Replay while the coach thinks, have the request fail → nothing reset.
+   Now UI ownership is `askTurnRef`, bumped ONLY when `askTutor` starts a turn
+   (`lib/coachTurn.js` `turnExit`). A turn replaced by a NEWER turn still leaves the UI to that
+   turn (it must not reopen Send under one that is still thinking).
+2. **No timeout.** `runCoachTurn` arms a watchdog before the fetch: no reply bytes within
+   `FIRST_TEXT_TIMEOUT_MS` = 45s of the send, or `STALL_TIMEOUT_MS` = 45s of silence between
+   chunks → `AbortController.abort()`. ~6× the new model's 7.6s p90 to first word; no cap on
+   total length (a long healthy reply keeps resetting the stall timer).
+
+On any failure the indicator becomes a gentle inline notice in the same slot —
+"That took too long — tap to try again." / "{Coach} couldn't answer just then — tap to try
+again." / (429) "Lots of messages in a row — give it a few seconds…" — with a 44px **Try again**.
+Try again re-asks with the SAME history: the student's message is already on screen and was
+persisted by the send, so nothing is re-sent or re-persisted; a one-shot slot means a double tap
+asks once. Any new turn (a fresh Send) clears the offer.
+
+**Writes vs. an aborted turn**: a timed-out turn applies NOTHING — the abort errors the read
+loop before the scaffold parse, and `finish()` is re-checked after the loop for a stream that
+closed in the same instant. A late `[DONE:]` cannot write. A turn that was merely superseded
+(Replay, speech, a newer turn) still applies its tokens as before — dropping them would lose a
+lock the coach really made. **Exception, deliberately**: a complete `[CARE]` that arrived before
+the failure still opens the crisis card (display-only, fail-safe; the server only strips it).
+
+Also: the ack clip is `abandon()`ed on failure (not started → never plays after the notice;
+already playing → finishes); a stalled reply's partial read-aloud is stopped unless the audio
+moved on to a Replay; the one-shot resume signal is restored if the turn that carried it failed.
+
+### Verified (2026-10-12)
+- `npm run build` green · `npm run test:run` **1386** (+31: `lib/coachTurn.test.js`, failure-row
+  render tests, `abandon()`; `lib/wiring.test.js` updated to the new shape with the same
+  guarantees + a [CARE] guard). Lint: new files clean; TutorSession unchanged at 27 pre-existing.
+- Positive controls (each broken, saw red, restored): post-loop `finish()` check removed → the
+  "closes in the same instant" late-[DONE:] test fails; watchdog no longer aborts → 3 timeout
+  tests fail; `currentTurn` keyed on `tutorRunRef` (the original bug) → wiring guard fails;
+  ownership ignoring newer turns → 3 tests fail; [CARE] surfacing removed → wiring guard fails.
+- Real Chromium, real `fetch` + `AbortController` against a throwaway local streaming route
+  (deleted, not committed), watchdog shortened to 1.5s by injection: stalled stream → aborted at
+  1.5s, the server's [DONE:] sent at 4s never reached apply; no headers → timeout at 1.5s; HTTP
+  500 → error + retry offered; slow healthy stream (1s gaps, 4s total) → completed and applied.
+  Failure row rendered light + dark (dark: #FBB85A on #17232E), button 44px; a real double-click
+  + third click on Try again → exactly one retry.
+
+### UNVERIFIED — manual pass for Robert (real session; desktop + iPhone)
+TutorSession was not exercised (no Google sign-in in the preview); the 45s timings were only
+tested by injection. To force failures use DevTools → Network → **Offline** or request blocking
+on `/api/tutor`.
+11. **Replay-then-fail**: send; while "{Coach} is thinking…" shows, tap Replay on an earlier coach
+    message, then go Offline. Within a few seconds: the replay keeps playing, the indicator turns
+    into "{Coach} couldn't answer just then — tap to try again.", and Send works again. The panel
+    buttons (Lock it in etc.) are enabled again too.
+12. **Try again**: go back Online, tap Try again (double-tap it). ONE new coach reply arrives; your
+    message appears once in the transcript — reload the page and check it is still there once,
+    not twice.
+13. **Timeout**: block `/api/tutor` with a request-blocking rule that hangs (or throttle to a
+    custom 1 kb/s profile) and wait 45s: "That took too long — tap to try again." Before 45s the
+    indicator must still be showing (a slow reply is never cut early).
+14. **Your words are safe**: type a message, send it, force a failure. Your message bubble stays.
+    Type a NEW message instead of tapping Try again: it sends normally and the notice goes away.
+15. **Voice on, stall mid-reply** (hardest to force; skip if you can't): the partial reply stops
+    reading aloud when the notice appears.
+
+Known limit, NOT fixed here (route owned by another lane): when the client aborts a turn,
+`/api/tutor`'s `finally` still persists whatever text had streamed as an assistant message, and
+records any complete `[DONE:]` in `coach_commitments`. So after a mid-stream timeout, a reload can
+show a partial coach message, and the integrity detector may see a promise the client never
+applied (the retry normally re-locks it). Rare at 45s, but worth a route-side fix (skip the insert
+and commitment when `request.signal.aborted`).
+
+Gate: build green · `test:run` **1386** · no migration · no API spend.

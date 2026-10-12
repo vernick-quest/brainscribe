@@ -36,3 +36,25 @@ export default function CoachThinking({ persona }) {
 export function thinkingLabel(persona) {
   return `${getPersona(persona).name} is thinking…`
 }
+
+// A turn that failed or timed out (lib/coachTurn) — same slot as the indicator it replaces,
+// so the chat doesn't jump. Gentle copy (turnFailureMessage) + a real 44px button. The
+// student's own message stays in the transcript above; "Try again" re-asks the coach with
+// it — nothing is re-sent. Like CoachThinking, the copy is aria-hidden here because
+// LiveCaption's persistent status region announces it; the button carries its own name.
+export function CoachTurnFailed({ persona, message, onRetry }) {
+  return (
+    <div className="flex justify-start" data-coach-turn-failed="">
+      <PersonaAvatar personaId={persona} size={28} className="mr-2 mt-1 shrink-0" />
+      <div className="rounded-2xl rounded-bl-sm px-4 py-2 max-w-lg text-sm leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1"
+        style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-body)' }}>
+        <span aria-hidden="true">{message}</span>
+        <button type="button" onClick={onRetry}
+          className="text-sm font-semibold rounded-full px-4 transition active:scale-95"
+          style={{ minHeight: 44, color: 'var(--accent-text)', backgroundColor: 'var(--surface-card)', border: '1.5px solid var(--border-accent)' }}>
+          Try again
+        </button>
+      </div>
+    </div>
+  )
+}
