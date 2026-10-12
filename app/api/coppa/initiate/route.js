@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { isValidEmail, escapeHtml } from '@/lib/coppa'
+import { SUPPORT_EMAIL } from '@/lib/site'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://brainscribe.io'
 
@@ -178,7 +179,7 @@ async function sendConsentEmail({ parentEmail, studentName, token, expiresAt }) 
       },
       body: JSON.stringify({
         from: 'BrainScribe <notifications@brainscribe.io>',
-        reply_to: 'brainscribe.io@gmail.com',
+        reply_to: SUPPORT_EMAIL,
         to: parentEmail,
         subject: `Quick approval needed for ${firstName}'s BrainScribe account`,
         html,
