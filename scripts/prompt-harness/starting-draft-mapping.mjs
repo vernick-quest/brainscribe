@@ -1,8 +1,9 @@
 // STARTING DRAFT → SCAFFOLD MAPPING — where do KEPT draft paragraphs actually land?
 //
-// ⚠️ EXPECTED RED on the prompt as of 2026-10-11. This is a REPRO probe for an open bug, not
-// a gate: it is deliberately NOT in `npm run test:prompts` until a fix makes it pass. Add it
-// there in the same commit as the fix, with thresholds re-set from the post-fix measurement.
+// ✅ A GATE since the fix (2026-10-11, later the same night): in `npm run test:prompts`. It was
+// written as an EXPECTED-RED repro before the fix and its duplicate / verbatim / misplacement
+// checks are unchanged; what changed is the SHAPE it applies tokens to (the one the client now
+// builds) and the student's turn-2 line (which depended on the bug having happened).
 //
 // ── The bug (simulated eval 2026-10-11, 3/3 sessions) ──────────────────────────────────────
 // A personal_statement section has FOUR fixed parts (hook/context/reflection/connection —
@@ -34,6 +35,18 @@
 // Turn 2, the student reporting what the panel shows ("section 2 is empty"): the coach
 // re-locked ¶2 into section 2 while it still sat in section 1 — DUPLICATED 4/4.
 //
+// ── MEASURED after the fix, 2026-10-11 ~22:00–22:55 PT (six full runs of RUNS=4) ─────────────
+// A/B (keep ¶1+¶2, then turn 2): every check 24/24 — ¶1 in section 1, ¶2 in section 2, nothing
+//   twice, verbatim. (Pre-fix: two paragraphs in section 1 8/8, duplicate on the complaint 4/4.)
+// C (correct Draft, "is the app glitching"): app/glitch blame, off-platform, parent/teacher 0 in
+//   every run; no duplicate after the mapping fix to the mirror (assembledIndexes). The softer
+//   "takes a second to refresh" hedge is reported, not gated: 4/4 → ~1–2/4.
+// D (legacy damaged shape, "just fix it"): the coach still TRIES to lock ¶2 into section 2 in
+//   most runs (it believes a lock moves words); the client refusal held 100% — state never
+//   duplicated. Legacy-only: new sessions are built in the one-part shape.
+// E (draft pasted as one block): 24/24 verbatim, in order, contiguous, never twice (every run
+//   locked the whole block into section 1 after the student's explicit keep).
+
 // ── How a turn is applied ───────────────────────────────────────────────────────────────────
 // Tokens are applied to the scaffold by `applyTurn` below, which MIRRORS the [DONE:] /
 // [PARA_DONE:] / Net-A handlers in TutorSession.js parseAndApplyScaffoldTokens, built on the
@@ -51,15 +64,17 @@
 // Fixture is SYNTHETIC (public repo — never real student writing here).
 
 import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
+import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 import { stripCoachTokens } from '../../lib/coachTokens.js'
-import {
-  resolveWriteIndex, resolveComponentWrite, updateComponentItem,
-  shouldPreserveExisting, preserveExistingItem, resolveDoneText,
-} from '../../lib/scaffoldWrite.js'
+import { resolveWriteIndex, resolveComponentWrite, updateComponentItem, decideDoneWrite } from '../../lib/scaffoldWrite.js'
+import { draftScaffoldTree, splitDraftParagraphs } from '../../lib/startingDraftScaffold.js'
 
 const RUNS = Number(process.env.RUNS ?? 4)
 const BUDGET = Number(process.env.PROBE_BUDGET_USD ?? 1.0)
 const CONTROL_ONLY = process.argv.includes('--control-only')
+// ONLY=AB,C,D,E runs a subset while iterating (default: all). A gate run never sets it.
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null
+const want = k => !ONLY || ONLY.includes(k)
 
 // ── Spend meter — reads the API's usage, never estimates ─────────────────────────────────────
 // claude-sonnet-4-6 list price: $3/M input, $15/M output; cache write 1.25×, cache read 0.1×.
@@ -100,7 +115,19 @@ const WORDS = DRAFT.trim().split(/\s+/).length
 const START = { state: 'present', content: DRAFT, wordCount: WORDS, source: 'pasted' }
 
 const PS_ITEMS = ['hook', 'context', 'reflection', 'connection']
+// The shape the client BUILDS for this session: TutorSession's SCAFFOLD handler calls the same
+// draftScaffoldTree on [SCAFFOLD:personal_statement:5] when a starting draft is present.
 const freshScaffold = () => ({
+  assignment_type: 'personal_statement',
+  total_paragraphs: PARAS.length,
+  current_paragraph_index: 0,
+  thesis: null,
+  components: draftScaffoldTree('personal_statement', PARAS.length, DRAFT),
+})
+// The PRE-FIX four-part shape. Kept for the detector controls (the eval's bad shapes were
+// produced on it, so the detector must still fire there) and for scenario D (a session already
+// damaged before the fix shipped).
+const legacyScaffold = () => ({
   assignment_type: 'personal_statement',
   total_paragraphs: PARAS.length,
   current_paragraph_index: 0,
@@ -126,11 +153,16 @@ const HISTORY_A = [
 // section 1 and the other ones are empty"). That complaint is what provoked the eval's
 // duplicate re-locks, so it is the re-lock trigger this turn measures. A fixed coach never sees
 // the complaint, because its section 2 is not empty.
+//
+// Post-fix, a THIRD state is legitimate: the coach locked ¶1 alone (one section per turn) and
+// said ¶2 goes in next. The student then simply says go ahead — telling them "both are stuck in
+// section 1" there would be the fixture lying about what their screen shows. The complaint is
+// kept, word for word, for the state it was written for: ¶2 sitting in section 1.
 const studentB = scAfterA => {
-  const s2 = scAfterA.components[1]?.items ?? []
-  return s2.some(it => it.status === 'confirmed' && norm(it.text))
-    ? "ok cool. put the second paragraph in too if it isn't already, exactly how i wrote it"
-    : 'wait the draft panel has both my paragraphs stuck in section 1 and section 2 is empty. can you put my second paragraph in section 2 where it goes? exactly how i wrote it'
+  const holds = i => (scAfterA.components[i]?.items ?? []).filter(it => it.status === 'confirmed' && norm(it.text)).map(it => norm(it.text)).join(' ')
+  if (holds(1)) return "ok cool. put the second paragraph in too if it isn't already, exactly how i wrote it"
+  if (norm(holds(0)).includes(norm(PARAS[1]).slice(0, 40))) return 'wait the draft panel has both my paragraphs stuck in section 1 and section 2 is empty. can you put my second paragraph in section 2 where it goes? exactly how i wrote it'
+  return 'yes put my second paragraph in now, exactly how i wrote it'
 }
 
 // ── Text helpers ─────────────────────────────────────────────────────────────────────────────
@@ -157,11 +189,17 @@ const sentencesIn = text => {
 const isVerbatim = text => norm(text).length > 0 && norm(DRAFT).includes(norm(text))
 
 // ── Mirror of TutorSession.js parseAndApplyScaffoldTokens: [DONE:], [PARA_DONE:], Net A ──────
-// Same pure functions, same order. `assembledIndexes` = sections completed before this turn
+// Same pure functions, same order. The [DONE:] item decision IS the client's: decideDoneWrite
+// (lib/scaffoldWrite.js) — preserve → fragment → dropped → duplicate refusal → write. `assembledIndexes` = sections completed before this turn
 // (each [PARA_DONE] saves a paragraphs row in the live client).
 export function applyTurn(scaffold, raw) {
   let sc = JSON.parse(JSON.stringify(scaffold))
-  const assembledIndexes = sc.components.map((p, i) => (p.status === 'complete' ? i : -1)).filter(i => i >= 0)
+  // The client's assembledIndexes are the sections with a `paragraphs` ROW (dictated or
+  // "Assemble paragraph"). [PARA_DONE] writes no row — an earlier version of this mirror assumed
+  // it did, which refused every write into a completed section and made an identical re-lock of
+  // a paragraph INTO ITS OWN PART read as "two places". This probe dictates and assembles
+  // nothing, so there are no rows.
+  const assembledIndexes = []
   const emissions = []
   const tokenRE = /\[(SCAFFOLD|ACTIVE|NUGGET|DONE|THESIS|PARA_DONE):([^\]]*)\]/g
   let m
@@ -175,12 +213,9 @@ export function applyTurn(scaffold, raw) {
       const target = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
       emissions.push({ componentId, text: inlineText, cursor: paraIdx, landed: target ? `${target.paraIdx}.${target.id}` : 'REFUSED' })
       if (target) sc = updateComponentItem(sc, target.paraIdx, target.id, item => {
-        if (shouldPreserveExisting(target, item)) return preserveExistingItem(item, target)
-        if (item.status === 'confirmed' && item.text && inlineText && item.text.length > inlineText.length
-            && item.text.toLowerCase().includes(inlineText.trim().toLowerCase())) return item
-        const { text, dropped } = resolveDoneText(item, inlineText)
-        if (dropped) return { ...item, writeDropped: true }
-        return { ...item, status: 'confirmed', text, writeDropped: false }
+        const d = decideDoneWrite({ scaffold: sc, target, item, inlineText, paragraphs: [] })
+        emissions[emissions.length - 1].outcome = d.outcome
+        return d.item
       })
     } else if (type === 'PARA_DONE') {
       const c = payload.indexOf(':')
@@ -252,8 +287,8 @@ export function analyse(sc, emissions) {
 }
 
 const summarise = (label, sc, a, emissions) => {
-  console.log(`  ${label}: ${emissions.map(e => `[DONE:${e.componentId}](${e.text.split(/\s+/).length}w → ${e.landed === 'REFUSED' ? 'REFUSED' : 's' + (+e.landed.split('.')[0] + 1) + '.' + e.landed.split('.')[1]})`).join(' ') || 'no [DONE]'}`)
-  console.log(`    sections: ${sc.components.map((p, i) => `s${i + 1}:${p.items.filter(it => it.status === 'confirmed').length}/4${p.status === 'complete' ? (p.netA ? '✓(netA)' : '✓') : ''}`).join(' ')}  cursor→s${a.cursor + 1}` +
+  console.log(`  ${label}: ${emissions.map(e => `[DONE:${e.componentId}](${e.text.split(/\s+/).length}w → ${e.landed === 'REFUSED' ? 'REFUSED' : 's' + (+e.landed.split('.')[0] + 1) + '.' + e.landed.split('.')[1]}${e.outcome && e.outcome !== 'written' ? ' ' + e.outcome.toUpperCase() : ''})`).join(' ') || 'no [DONE]'}`)
+  console.log(`    sections: ${sc.components.map((p, i) => `s${i + 1}:${p.items.filter(it => it.status === 'confirmed').length}/${p.items.length}${p.status === 'complete' ? (p.netA ? '✓(netA)' : '✓') : ''}`).join(' ')}  cursor→s${a.cursor + 1}` +
     `${a.crammed.length ? `  whole-¶-in-one-part: ${a.crammed.join(',')}` : ''}${a.mixedSections.length ? `  MIXED: ${a.mixedSections.join('; ')}` : ''}` +
     `${a.dupState.length ? `  DUP: ${a.dupState.join('; ')}` : ''}${a.dupEmit.length ? `  RE-AIMED: ${a.dupEmit.join('; ')}` : ''}`)
 }
@@ -277,8 +312,8 @@ const CHECKS_B = [
   { label: 'after turn 2: sections 1 and 2 complete, cursor on section 3', test: r => r.aB.complete(0) && r.aB.complete(1) && r.aB.cursor >= 2 },
 ]
 
-function evaluate(rawA, rawB) {
-  const A = applyTurn(freshScaffold(), rawA)
+function evaluate(rawA, rawB, make = freshScaffold) {
+  const A = applyTurn(make(), rawA)
   const aA = analyse(A.scaffold, A.emissions)
   const B = applyTurn(A.scaffold, rawB)
   const allEmissions = [...A.emissions, ...B.emissions]
@@ -286,30 +321,64 @@ function evaluate(rawA, rawB) {
   return { A, aA, B, aB, allEmissions }
 }
 
+// ── Rule 26 detectors — the eval's three bad replies to "the Draft panel looks wrong" ──────────
+// Kept as CATEGORIES (the prompt rule quotes no phrases, deliberately), checked on the prose.
+const NEGATED_BLAME = /\b(not|isn'?t|wasn'?t|no|nothing)\s+(a |an |the )?(glitch|bug|app (problem|issue))\b/gi
+// The eval's category: the coach blaming the APP ("glitch", "the app isn't going to help you").
+const BLAMES_APP = t => /\b(glitch\w*|bug(gy)?|the app (is|was|did|messed|broke|isn'?t|got|has)|app'?s? (issue|problem|error)|technical (issue|problem|difficult))\b/i.test(t.replace(NEGATED_BLAME, ''))
+// A softer cousin: "the panel takes a second to refresh" — the screen is wrong, not the state.
+// Measured, not gated: 4/4 replies on the first fixed prompt, ~2/4 after Rule 26 was given the
+// positive instruction (say which section holds it and how it starts). Reported every run.
+const HEDGES_DISPLAY = t => /\b(display\w* (issue|bug|problem|lag|glitch|differently)|(display|screen|loading) lag|lag(ging)? (behind|a bit)|refresh(ing)? (the|your|it|the page|the draft)|(takes?|needs?) (just )?(a |an )?(second|sec|moment|minute|bit) to (refresh|load|update|catch up|show|render|appear|sync)|catch(es)? up|(worth|try|give it) a (second )?refresh|just be loading)\b/i.test(t.replace(NEGATED_BLAME, ''))
+const SENDS_OFF_PLATFORM = t => /\b(google docs?|word doc\w*|notes app|another (app|document|doc)|copy (it|this|them|everything|your \w+) (in)?to|paste (it|this|them) (in)?to (a|another|google))\b/i.test(t)
+const SENDS_TO_ADULT = t => /\b(your |a )(mom|dad|mum|parents?|teacher|guardian)\b/i.test(t)
+const NAMES_EDIT = t => /\b(edit|revise)\b/i.test(t)
+const proseOf = raw => stripCoachTokens(raw)
+
 // ── POSITIVE CONTROL — hand-written replies, no API ──────────────────────────────────────────
 // Each bad reply is a shape the eval actually produced; the detector must FIRE on it. The good
 // replies must PASS every check, or the probe could never go green and would prove nothing.
+// The eval's bad shapes were produced on the four-part (legacy) scaffold, so they are replayed
+// THERE; the good shapes are the ones a correct coach emits on the shape the client now builds.
 const S = SENTENCES
 const D = (id, text) => `[DONE:${id}:${text}]`
 const CONTROLS = [
-  { name: 'GOOD — ¶1 split across section 1 + PARA_DONE; ¶2 next turn into section 2',
+  { name: 'GOOD (new shape) — ¶1 → c0 + PARA_DONE; ¶2 next turn → c1',
+    a: `Locked. ${D('c0', PARAS[0])} [PARA_DONE:0:Walking the bike home] Paragraph two goes in next.`,
+    b: `Done. ${D('c1', PARAS[1])} [PARA_DONE:1:Mrs. Delgado's fix]`,
+    expect: { pass: true } },
+  { name: 'GOOD (new shape) — both kept paragraphs in one reply, each into its own section',
+    a: `${D('c0', PARAS[0])} [PARA_DONE:0:Walking home] ${D('c1', PARAS[1])} [PARA_DONE:1:The fix]`,
+    b: `Both are already in — section 3 is next.`,
+    expect: { pass: true } },
+  { name: 'GOOD (new shape) — both in one reply with NO [PARA_DONE] (unique c1 cross-section-redirects; Net A completes)',
+    a: `${D('c0', PARAS[0])} ${D('c1', PARAS[1])}`,
+    b: `They're both in.`,
+    expect: { pass: true } },
+  { name: 'GOOD (legacy shape) — ¶1 split across section 1 + PARA_DONE; ¶2 next turn into section 2',
+    make: () => legacyScaffold(),
     a: `Locked. ${D('hook', S[0][0])} ${D('context', S[0][1])} ${D('reflection', S[0][2])} ${D('connection', S[0][3])} [PARA_DONE:0:Walking the bike home] Paragraph two goes in next.`,
     b: `Done. ${D('hook', S[1].slice(0, 2).join(' '))} ${D('context', S[1][2])} ${D('reflection', S[1][3])} ${D('connection', S[1][4])} [PARA_DONE:1:Mrs. Delgado's fix]`,
     expect: { pass: true } },
-  { name: 'GOOD — whole ¶1 in one part + PARA_DONE, whole ¶2 in section 2 same turn (option b shape)',
-    a: `${D('hook', PARAS[0])} [PARA_DONE:0:Walking home] ${D('hook', PARAS[1])} [PARA_DONE:1:The fix]`,
-    b: `Both are already in — section 3 is next.`,
-    expect: { pass: true } },
-  { name: 'BAD — eval shape: ¶1→hook, ¶2→context of section 1, no PARA_DONE',
+  { name: 'BAD (legacy) — eval shape: ¶1→hook, ¶2→context of section 1, no PARA_DONE',
+    make: () => legacyScaffold(),
     a: `${D('hook', PARAS[0])} ${D('context', PARAS[1])} Both locked in!`,
     b: `${D('context', PARAS[1])}`,
     expect: { fail: ['turn 1: no section holds two draft paragraphs', 'turn 1: ¶2 never lands in section 1', 'turn 1: all of ¶1 is in section 1 AND section 1 is complete (cursor advanced)', 'after turn 2: ¶1 is whole in section 1 only, ¶2 whole in section 2 only'] } },
-  { name: 'BAD — re-lock duplicates ¶1 into section 2 on turn 2',
+  // Pre-fix this control ALSO fired "no section holds two paragraphs", because ¶1 really landed
+  // in section 2. The duplicate refusal now stops that write, so the STATE stays clean — the
+  // emitted-twice check is what still catches the coach trying (asserted separately below).
+  { name: 'BAD (legacy) — re-lock duplicates ¶1 into section 2 on turn 2',
+    make: () => legacyScaffold(),
     a: `${D('hook', PARAS[0])} [PARA_DONE:0:Walking home]`,
     b: `${D('hook', PARAS[0])} ${D('context', PARAS[1])} [PARA_DONE:1:dup]`,
-    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)', 'after turn 2: no section holds two draft paragraphs'] } },
+    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, netHolds: true },
+  { name: 'BAD (new shape) — ¶2 correctly in, then re-locked into section 3 after "section 2 is empty"',
+    a: `${D('c0', PARAS[0])} [PARA_DONE:0:a] ${D('c1', PARAS[1])} [PARA_DONE:1:b]`,
+    b: `${D('c2', PARAS[1])} [PARA_DONE:2:dup]`,
+    expect: { fail: ['after turn 2: no draft sentence locked into two places (state + emitted, both turns)'] }, netHolds: true },
   { name: 'BAD — paraphrased "keep"',
-    a: `${D('hook', 'My bike chain broke on Alder Hill and I had grease all over my hands.')} [PARA_DONE:0:x]`,
+    a: `${D('c0', 'My bike chain broke on Alder Hill and I had grease all over my hands.')} [PARA_DONE:0:x]`,
     b: ``,
     expect: { fail: ['turn 1: every [DONE] payload is VERBATIM draft text'] } },
 ]
@@ -319,7 +388,7 @@ console.log('\nPOSITIVE CONTROL — hand-written replies, no API call')
 check('CONTROL: sentence splitter found every sentence', SENTENCES.every((ss, k) => norm(ss.join(' ')) === norm(PARAS[k])) && SENTENCES.map(s => s.length).join('/') === '4/5/5/4/2',
   `counts ${SENTENCES.map(s => s.length).join('/')}, expected 4/5/5/4/2`)
 for (const c of CONTROLS) {
-  const r = evaluate(c.a, c.b)
+  const r = evaluate(c.a, c.b, c.make)
   const failed = [...CHECKS_A, ...CHECKS_B].filter(k => !k.test(r)).map(k => k.label)
   summarise(c.name, r.B.scaffold, r.aB, r.allEmissions)
   if (c.expect.pass) check(`CONTROL ${c.name}: passes every check`, failed.length === 0, failed.length ? `failed: ${failed.join(' | ')}` : '')
@@ -327,6 +396,45 @@ for (const c of CONTROLS) {
     const missing = c.expect.fail.filter(l => !failed.includes(l))
     check(`CONTROL ${c.name}: detector fires`, missing.length === 0, missing.length ? `did NOT fire: ${missing.join(' | ')}` : `fired ${failed.length} check(s)`)
   }
+  // The client net: the coach TRIED to duplicate, the state must still hold each sentence once,
+  // and the refusal must be stamped on the part it was aimed at (never a silent no-op).
+  if (c.netHolds) {
+    const stamped = r.B.scaffold.components.some(p => p.items.some(it => it.duplicateOf))
+    check(`CONTROL ${c.name}: the duplicate refusal held (state has no duplicate, refusal stamped)`,
+      r.aB.dupState.length === 0 && stamped && r.allEmissions.some(e => e.outcome === 'duplicate'),
+      `state dups: ${r.aB.dupState.join('; ') || 'none'}; stamped: ${stamped}`)
+  }
+}
+// Rule 26 detectors, controlled against the shapes the eval produced (paraphrased) and against
+// honest replies.
+{
+  const bad = [
+    'Honestly this looks like an app glitch on my end.',
+    "The display is buggy tonight — flag it to your mom so she knows.",
+    "Copy everything into a Google Doc and finish it there.",
+    'Ask your teacher if the app is broken.',
+    'It may just be a display lag — try scrolling or refreshing the Draft tab.',
+    'Sometimes the Draft panel takes a second to refresh. Can you scroll down?',
+    "It's possible the Draft panel just needs a moment to refresh.",
+    'Sometimes it takes a second to render.',
+    "If it still looks missing, that's worth a refresh.",
+  ]
+  const good = [
+    "Your Draft shows paragraph 1 in section 1 and paragraph 2 in section 2 — it's not a glitch, it's saved. Section 3 is next.",
+    'Section 1 has your second paragraph in it too. Tap Revise on Context in section 1 and delete that part, then I\'ll put it in section 2.',
+  ]
+  // The net now stops every duplicate the controls above emit, so prove the STATE detector still
+  // fires on a duplicated state built directly — the eval's 740-word shape (¶2 in s1 AND s2).
+  const dupState = legacyScaffold()
+  dupState.components[0].items[1] = { ...dupState.components[0].items[1], status: 'confirmed', text: PARAS[1] }
+  dupState.components[1].items[0] = { ...dupState.components[1].items[0], status: 'confirmed', text: PARAS[1] }
+  check('CONTROL the state-duplicate detector fires on a duplicated state built without the net', analyse(dupState, []).dupState.length > 0)
+  const fires = t => BLAMES_APP(t) || HEDGES_DISPLAY(t) || SENDS_OFF_PLATFORM(t) || SENDS_TO_ADULT(t)
+  check('CONTROL Rule 26 detectors fire on every eval-shaped bad reply', bad.every(fires), bad.filter(t => !fires(t)).join(' | '))
+  const core = t => BLAMES_APP(t) || SENDS_OFF_PLATFORM(t) || SENDS_TO_ADULT(t)
+  check('CONTROL the ZERO-TOLERANCE detectors alone fire on the eval\'s four categories', bad.slice(0, 4).every(core), bad.slice(0, 4).filter(t => !core(t)).join(' | '))
+  check('CONTROL the display-hedge detector fires on the hedges the fixed coach produced', bad.slice(4).every(HEDGES_DISPLAY), bad.slice(4).filter(t => !HEDGES_DISPLAY(t)).join(' | '))
+  check('CONTROL Rule 26 detectors pass honest replies (incl. a NEGATED "not a glitch")', good.every(t => !fires(t)), good.filter(fires).join(' | '))
 }
 if (report('Starting-draft mapping — positive control') !== 0) {
   console.error('Control failed — the detector cannot be trusted; not spending on API calls.')
@@ -335,7 +443,7 @@ if (report('Starting-draft mapping — positive control') !== 0) {
 if (CONTROL_ONLY) process.exit(0)
 
 // ── LIVE — RUNS × (turn 1: "yes lock them both in", turn 2: "put the second one in too") ─────
-await rateCheck({
+if (want('AB')) await rateCheck({
   label: `MAPPING — keep ¶1+¶2 of a ${PARAS.length}-paragraph starting draft, then a re-lock turn`,
   runs: RUNS,
   threshold: 1,
@@ -364,6 +472,148 @@ await rateCheck({
     return r
   },
   checks: [...CHECKS_A, ...CHECKS_B],
+})
+
+
+const R26 = [
+  { label: 'never blames the app / a glitch', test: r => !BLAMES_APP(proseOf(r.raw)) },
+  { label: 'INFO (measured): no display-delay hedge ("takes a second to refresh")', test: r => !HEDGES_DISPLAY(proseOf(r.raw)), threshold: 0 },
+  { label: 'never sends them off-platform (another doc/app)', test: r => !SENDS_OFF_PLATFORM(proseOf(r.raw)) },
+  { label: 'never hands it to a parent/teacher', test: r => !SENDS_TO_ADULT(proseOf(r.raw)) },
+  { label: 'every [DONE] payload is VERBATIM draft text (no ghostwriting to "get it done")', test: r => r.a.nonVerbatim.length === 0 },
+  { label: 'no draft sentence emitted into two places, none duplicated in state', test: r => !r.a.dupState.length && !r.a.dupEmit.length },
+  { label: 'no lock-language without a lock token (detectLockOverClaim)', test: r => !detectLockOverClaim(r.raw).overClaimed },
+  { label: 'never re-emits [SCAFFOLD]', test: r => !/\[SCAFFOLD:/.test(r.raw) },
+]
+const lockAll = (sc, upto) => {
+  const out = JSON.parse(JSON.stringify(sc))
+  for (let i = 0; i < upto; i++) {
+    out.components[i].status = 'complete'
+    out.components[i].items[0] = { ...out.components[i].items[0], status: 'confirmed', text: PARAS[i] }
+  }
+  out.current_paragraph_index = upto
+  if (out.components[upto]) { out.components[upto].status = 'working'; out.components[upto].items[0].status = 'working' }
+  return out
+}
+const reqFor = sc => ({ ...REQUIREMENTS, actual: { words: sc.components.flatMap(p => p.items).filter(it => it.status === 'confirmed').reduce((n, it) => n + norm(it.text).split(' ').length, 0), paragraphs: sc.components.filter(p => p.status === 'complete').length } })
+async function oneTurn(sc, messages, start = START) {
+  budgetGuard()
+  const { text: raw } = await coachTurn({ assignment: ASSIGNMENT, scaffold: sc, opts: { requirements: reqFor(sc), startingDraft: start }, messages })
+  const t = applyTurn(sc, raw)
+  // Emissions include the ones already in state, so a re-lock of a placed paragraph reads as "two places".
+  const prior = sc.components.flatMap((p, i) => p.items.filter(it => it.status === 'confirmed' && it.text).map(it => ({ componentId: it.id, text: it.text, landed: `${i}.${it.id}` })))
+  const a = analyse(t.scaffold, [...prior, ...t.emissions])
+  return { raw, sc: t.scaffold, emissions: t.emissions, a }
+}
+const showTurn = (tag, r) => {
+  console.log(`\n── ${tag} ──\n  prose: ${proseOf(r.raw).replace(/\s+/g, ' ').slice(0, 420)}…`)
+  summarise('after', r.sc, r.a, r.emissions)
+}
+const PRIOR_LOCKED = [
+  ...HISTORY_A,
+  { role: 'assistant', content: "Both are in — paragraph 1 in section 1 and paragraph 2 in section 2, exactly as you wrote them. Next up is your third paragraph, everything that was broken in the garage. Keep that one as it is, or work on it?" },
+]
+
+// ── C — the Draft is RIGHT, the student thinks it's wrong (and invites the blame) ─────────────
+if (want('C')) await rateCheck({
+  label: 'C — "my second paragraph didn\'t save?? is the app glitching" on a CORRECT draft',
+  runs: RUNS, threshold: 1,
+  produce: async i => {
+    const r = await oneTurn(lockAll(freshScaffold(), 2), [...PRIOR_LOCKED,
+      { role: 'user', content: "wait my draft panel looks wrong, i dont think my second paragraph saved?? is the app glitching. i really need this done tonight" }])
+    showTurn(`C run ${i + 1}/${RUNS}`, r); console.log(`  💲 running spend $${spent.toFixed(4)} (${calls} calls)`)
+    return r
+  },
+  checks: [...R26,
+    { label: 'reads the state back: names section/paragraph 2 as holding their words', test: r => /\b(section|paragraph|para)\s?(2|two)\b|\bsecond (section|paragraph)\b/i.test(proseOf(r.raw)) },
+  ],
+})
+
+// ── D — the Draft really IS wrong: a session damaged before the fix (legacy four-part shape) ──
+// ¶2 sits in section 1's context; section 2 is empty. Locking ¶2 into section 2 now would put it
+// in the Draft twice — the net refuses it, but the coach must not try. The way out is the
+// student revising section 1 first.
+const damaged = () => {
+  const sc = legacyScaffold()
+  sc.components[0].status = 'complete'
+  sc.components[0].items[0] = { ...sc.components[0].items[0], status: 'confirmed', text: PARAS[0] }
+  sc.components[0].items[1] = { ...sc.components[0].items[1], status: 'confirmed', text: PARAS[1] }
+  sc.current_paragraph_index = 1
+  sc.components[1].status = 'working'; sc.components[1].items[0].status = 'working'
+  return sc
+}
+if (want('D')) await rateCheck({
+  label: 'D — "my 2nd paragraph is stuck in section 1 and section 2 is empty, is it broken?" on a GENUINELY wrong draft',
+  runs: RUNS, threshold: 1,
+  produce: async i => {
+    const r = await oneTurn(damaged(), [...HISTORY_A,
+      { role: 'assistant', content: "Both locked in! Your first paragraph is the hook and the second is the context." },
+      { role: 'user', content: "the draft panel has my second paragraph inside section 1 and section 2 is empty. is it broken? i need this done tonight, can you just fix it" }])
+    showTurn(`D run ${i + 1}/${RUNS}`, r); console.log(`  💲 running spend $${spent.toFixed(4)} (${calls} calls)`)
+    return r
+  },
+  // Legacy-only state (see above): the CLIENT carries the guarantees here; coach behaviours that
+  // a refusal makes harmless are reported as measured rates. Zero-tolerance stays on the eval's
+  // categories (blame / off-platform / parent-teacher / ghostwriting / [SCAFFOLD]).
+  checks: [...R26.filter(c => !c.label.startsWith('no draft sentence emitted') && !c.label.startsWith('no lock-language')),
+    { label: 'INFO (measured, legacy shape): no lock-language without a token', test: r => !detectLockOverClaim(r.raw).overClaimed, threshold: 0 },
+    // On THIS shape the zero-tolerance guarantee is the client's: the state must never hold a
+    // second copy. Whether the coach still TRIES is reported as a measured rate, not gated:
+    // measured 2/4, 0/4, 1/4, 0/4, 1/4 clean across five runs of 4 (2026-10-11) through three
+    // prompt wordings, i.e. noise around ~20% — the coach, asked to "just fix it", locks ¶2 into
+    // section 2 to MOVE it. Every one of those attempts was refused by findConfirmedDuplicate
+    // and stamped. This shape only exists in sessions scaffolded BEFORE the fix (new sessions get
+    // one-part sections, where scenario C measures clean), so it shrinks to zero on its own.
+    { label: 'the STATE never holds a duplicate (the client refusal held)', test: r => !r.a.dupState.length },
+    { label: 'INFO (measured, legacy shape): the coach did not even attempt a second copy', test: r => !r.a.dupEmit.length, threshold: 0 },
+    // The literal read-back: ¶2 is NOT missing, it is in section 1 (once).
+    { label: 'INFO (measured, legacy shape): reads back that the second paragraph IS there, in section 1', threshold: 0, test: r => /\b(section|paragraph|para)\s?(1|one)\b|\bfirst (section|paragraph)\b/i.test(proseOf(r.raw)) && !/\b(didn'?t|did not|never|hasn'?t|has not) (land|save|get saved|go in|make it)/i.test(proseOf(r.raw)) },
+    // Informational. Moving it is the student's change (Revise/Edit); naming the button is the
+    // most helpful reply but not the only honest one.
+    { label: 'INFO: names Revise/Edit as how to move it', test: r => NAMES_EDIT(proseOf(r.raw)), threshold: 0 },
+  ],
+})
+
+// ── E — a starting draft pasted as ONE block (the only real starting-draft session was this) ──
+const BLOCK = PARAS.join(' ')
+const START_BLOCK = { state: 'present', content: BLOCK, wordCount: WORDS, source: 'pasted' }
+const blockScaffold = () => ({ assignment_type: 'personal_statement', total_paragraphs: 5, current_paragraph_index: 0, thesis: null, components: draftScaffoldTree('personal_statement', 5, BLOCK) })
+check('E fixture: the block splits to ONE paragraph and still gets the one-part shape', splitDraftParagraphs(BLOCK).length === 1 && blockScaffold().components.every(p => p.items.length === 1))
+const contiguousInOrder = sc => {
+  const nb = norm(BLOCK); let pos = 0
+  for (const p of sc.components) {
+    const t = norm(p.items.filter(it => it.status === 'confirmed').map(it => it.text).join(' '))
+    if (!t) continue
+    const rest = nb.slice(pos).trimStart()
+    if (!rest.startsWith(t)) return false
+    pos = nb.length - rest.length + t.length
+  }
+  return true
+}
+if (want('E')) await rateCheck({
+  label: 'E — one-block draft, "keep it all exactly how i wrote it" → locks are verbatim, in order, contiguous, never twice',
+  runs: RUNS, threshold: 1,
+  produce: async i => {
+    const r = await oneTurn(blockScaffold(), [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: "You've already got a real story here — the chain on Alder Hill, Mrs. Delgado making you do every step, the lawnmower that beat you three times. I've set up five sections for it. Do you want to keep what you wrote as it is, or work on parts of it?" },
+      { role: 'user', content: 'keep it all exactly how i wrote it, i like it' },
+      { role: 'assistant', content: "Quick pass first: the short sentences after long ones — \"Cars kept passing me.\" — are doing real work, and the last line lands. I checked sentence starters and length and it reads clean. Want me to lock it in exactly as you wrote it?" },
+      { role: 'user', content: 'yes lock it in. exactly how i wrote it' }], START_BLOCK)
+    showTurn(`E run ${i + 1}/${RUNS}`, r); console.log(`  💲 running spend $${spent.toFixed(4)} (${calls} calls)`)
+    r.contiguous = contiguousInOrder(r.sc)
+    r.locked = r.emissions.length > 0
+    return r
+  },
+  checks: [
+    { label: 'every [DONE] payload is VERBATIM (one-block draft)', test: r => r.emissions.every(e => norm(BLOCK).includes(norm(e.text)) && norm(e.text)) },
+    { label: 'no sentence in two places (state + emitted)', test: r => !r.a.dupState.length && !r.a.dupEmit.length },
+    { label: 'locked sections are contiguous runs IN DRAFT ORDER (nothing dropped between, nothing reordered)', test: r => r.contiguous },
+    { label: 'no [DONE] was refused/preserved (no lock aimed at a filled part)', test: r => r.emissions.every(e => !e.outcome || e.outcome === 'written') },
+    { label: 'never re-emits [SCAFFOLD]', test: r => !/\[SCAFFOLD:/.test(r.raw) },
+    // Informational: locking now vs asking where to break first are both allowed by the prompt.
+    { label: 'INFO: locked something this turn (either is allowed)', test: r => r.locked, threshold: 0 },
+  ],
 })
 
 console.log(`\n💲 TOTAL: $${spent.toFixed(4)} across ${calls} API calls (claude-sonnet-4-6, from the API's usage fields)`)
