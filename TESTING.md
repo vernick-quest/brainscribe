@@ -5077,3 +5077,36 @@ No pressure if it feels complete", and the session completed.
 
 Gate: build green · `test:run` **972** · `test:prompts` all 10 files green (two new:
 `starting-draft.mjs`, `min-binding.mjs`).
+
+## 2026-10-11 (later) — Below the minimum, the STUDENT may end it — explicitly (focus/coach-ai)
+
+Product rule, verbatim: "The student can end early when below the word count, BUT they just need
+to say that explicitly." Rule 12 now sorts the student's latest message three ways: PAUSE ("done
+for tonight", bare "I'm done") → saved, session open, no `[COMPLETE]`, the reply ends on a goodbye;
+EXPLICIT ("submit it like this", "finish it as is") → complete at once if the coach already gave
+the numbers, else state the gap + ask ONCE; EVERYTHING ELSE ("ok", "it's good", "looks done") → the
+gap and the next step, and the coach never raises finishing short. Pause is the only exit the coach
+ever mentions. A "yes" to a finishing question the coach raised unprompted does not count.
+
+### Measured (scripts/prompt-harness/min-binding-rates.mjs, 8 per phrasing, final prompt)
+- Unprompted offer after an ambiguous reply, gap just stated: **1/48**. Gap not yet stated: 0/32.
+  Pause: 0/24. **Pre-change prompt: 10/48** ("handing it in as is is your call") — already live.
+- `[COMPLETE]` on an ambiguous reply or a pause: **0** observed in any run.
+- Answering the one confirmation → completes, no second ask: 24/24.
+- Explicit + informed → completes without asking again: 16/24 (fail-safe: the rest ask once more).
+- Explicit + uninformed → asks the one confirmation: ~16/30 (fail-safe: the rest steer back to
+  coaching). One full-suite run saw it state the gap AND complete in the same reply (1/6).
+- Yes to a coach's leaked offer → completes: 1/24.
+
+### Manual pass owed
+1. Below the minimum, all sections done: "looks done to me" → gap + next step; no offer, no completion.
+2. "I'm done for tonight" → saved / come back; no completion; no "or hand it in as is?".
+3. Coach states the gap; reply "I want to submit it like this" → completes, sign-off says the real
+   count and that it is below the minimum. Check the session shows completed and the parent view
+   shows the real word count.
+4. Fresh (gap never stated): "finish it as is" → expect one confirming question; "yes" → completes.
+   ⚠️ Measured ~50%: it may instead steer back to coaching — then say it again.
+
+Gate: build green · `test:run` **1168** · `test:prompts`: the 9 other files green; `min-binding.mjs`
+holds zero-tolerance checks that measure ~2% per sample, so a full run can go red on a real (rare)
+leak — read the printed reply, don't rerun to green.
