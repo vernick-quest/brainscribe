@@ -5311,3 +5311,84 @@ should not lock one; if it does, step 12's note should appear).
   (one unprompted "finish it as it is?" offer; one completion after a yes to the fixture's own offer).
 
 Gate: build green · `test:run` **1258** · no migration · `test:continuation` still NOT run here.
+
+## 2026-10-12 (~16:30 PDT) — Instant acknowledgement clip + "Owen is thinking…" (focus/coaching-session)
+
+Why: the coach model is moving (separate lane) to one with ~4.7s median / ~7.6s p90 to its first
+word (vs ~1.1s). Two covers for that gap: (1) a short pre-rendered clip in the coach's own voice the
+moment a student turn goes to the coach, then the real reply; (2) a visible "Owen is thinking…"
+until the reply's first words appear.
+
+- **Clips**: 8 per coach × 6 = 48 static mp3s, `public/coaches/audio/ack/{asset}-{n}.mp3`, committed
+  (same as the intro clips), rendered by `scripts/pregen-coach-acks.mjs` from `ACK_LINES` in
+  `lib/ackClips.js` (eleven_flash_v2_5, each persona's voiceId, same voice settings as /api/speak).
+  Measured durations 0.68–1.99s at 1×. 866 characters billed once; no per-play TTS cost.
+- **When it plays**: only a turn the STUDENT sent to the coach (typed Send in conversation, or a
+  dictation the scribe routed to the coach as conversation). Never: voice muted; Lock-it-in / panel
+  confirm / skip; direct edits; "Yes, add it to my essay"; "Not quite right"; section done; greeting,
+  resume greeting, coach switch, replay, full read-back. Delay 600ms (also the clip's load window) —
+  if the reply's first visible words arrive inside it, no clip. Load slower than 1.8s → no clip.
+  Rate limit: at most one clip per 20s (from the last one that PLAYED) so quick back-and-forth isn't
+  "Mm, okay" every turn; those turns get the visual indicator only. All tunable in `lib/ackClips.js`.
+- **Sequencing**: the clip plays through `playClip` (the one unlocked element, pace applied). The
+  reply's sentence queue keeps synthesising but holds its FIRST play until the clip ends
+  (`createSpeechStream({ startAfter })`) — never overlapped, never cut. The `stopCurrentAudio()`
+  that runs when /api/tutor's headers arrive now skips this turn's own live clip (headers land
+  inside the clip's window). Every stop (`stopCurrentAudio`: send, mute, coach switch, replay,
+  student speech, unmount) cancels the clip AND the queue; opening the mic cancels the clip.
+  A failed/missing clip or a lost `ended` (8s backstop) never blocks the reply.
+- **Indicator**: `components/CoachThinking.js` inside LiveCaption — coach avatar, three dots in the
+  coach's `--tutor-*` colour (opacity-only pulse, static under reduced motion), "{Name} is
+  thinking…". Same slot and height as the streaming reply bubble (measured 47.09px both). A
+  persistent `role="status"` region announces it. Cleared by the first visible words, by commit,
+  and by the existing error paths.
+
+### Verified (2026-10-12, this lane)
+- `npm run build` green · `npm run test:run` **1355** (was 1311; +44 in `lib/ackClips.test.js` and
+  `components/CoachThinking.test.js`). Lint: new files clean; TutorSession unchanged at its 27
+  pre-existing problems.
+- Positive controls: removing the `startAfter` gate → 4 sequencing tests fail (overlap detected);
+  removing the post-wait cancel re-check → both stop tests fail. Restored, green.
+- `next dev` (worktree, unauthenticated): all 48 clip URLs `200 audio/mpeg`, bytes identical to
+  the files; a nonexistent clip 404s.
+- Real Chromium (desktop browser pane), real clips, real `createAckController` + `createSpeechStream`
+  on ONE `<audio>` element, via a throwaway page (deleted, not committed): reply text arriving
+  mid-clip → clip played to its natural `ended`, first sentence started 31ms later, no pause/cut;
+  stop at 1.1s → clip paused, both queues settled, held sentence never played; reply at 200ms →
+  no clip, sentence played immediately. Indicator rendered for all 6 coaches in light AND dark
+  (dark tokens applied: Owen dots #A172DB; label contrast ≈5.4:1 light, ≈5.1:1 dark).
+
+### UNVERIFIED — needs Robert's manual pass
+TutorSession itself was NOT exercised (Google sign-in can't run in the preview). React wiring,
+real /api/tutor timing, iOS autoplay and the open-mic interplay are unproven. Use a real session.
+1. **Desktop, voice ON, slow reply**: send a typed message. Within ~0.6s you hear a short line in
+   the coach's voice ("Mm, okay.", "Got it.", …) and see "{Coach} is thinking…" with pulsing dots.
+   When the reply streams in, the dots are replaced by the text in the same spot (nothing jumps),
+   and the reply's voice starts right AFTER the clip ends — never on top of it, never cutting it.
+2. **Rate limit**: send again within 20s of the last clip → no clip this time (indicator only).
+   Wait >20s and send → clip again, and not the same line as last time.
+3. **Interrupt mid-clip**: send, and while the clip is playing (a) tap the speaker to mute, (b) on
+   another turn switch coach, (c) on another turn tap the mic. Each time the clip stops at once.
+   After (a) the reply's voice must not start. After (b) whatever the reply does is unchanged from
+   before this change (switching mid-think was never special-cased). For (c) the reply may then read
+   aloud as replies always have with an open mic — check "Mm, okay" is NOT transcribed into the box,
+   and that speaking stops the read-aloud as before.
+4. **Voice OFF**: mute, send → no clip, no /api/speak calls in the Network tab; indicator still shows.
+5. **UI actions get no clip**: Lock it in from the panel, "Yes, add it to my essay", "Not quite
+   right", a direct edit, a section "done" → indicator yes, clip NO.
+6. **Fast reply** (current model, ~1.1s): mostly expect a clip followed promptly by the reply; if
+   the first words beat 0.6s, no clip. Note whether the clip ever feels like it delays the reply.
+7. **iPhone Safari**: steps 1, 3 and 4. Especially: the clip plays after a typed Send on the first
+   turn of a fresh page load (autoplay unlock), and pace (0.75× / 1.25×) applies to the clip too.
+8. **Every coach once** (Owen, Deon, Zoe, Alistair, Tilly, Jade): the clip is that coach's voice,
+   the indicator says that coach's name ("Tilly", never "matilda"), dots in that coach's colour.
+9. **Dark mode + reduced motion** (OS setting): indicator legible in dark; with Reduce Motion on the
+   dots are static.
+10. **Screen reader** (VoiceOver): after Send, "{Coach} is thinking…" is announced once.
+
+Known limits (pre-existing, not changed here): /api/tutor has no client timeout, so a stalled stream
+keeps the indicator (as the old "…" bubble did). If a turn is superseded (e.g. replay tapped while
+thinking) AND the request then errors, the error path's run-id guard skips the reset — phase and
+indicator stay until reload; that guard predates this change.
+
+Gate: build green · `test:run` **1355** · no migration · no Anthropic spend · ElevenLabs 866 chars.
