@@ -60,4 +60,4 @@ Transcript view is at `/transcript/<session_id>`.
 - **Two Claude calls per turn**: `/api/tutor` (streaming, Socratic question) and `/api/scribe` (JSON, paragraph cleanup)
 - **RLS enforces** student isolation and parent/teacher read-only access via `relationships` table
 - **Stripe hooks**: `subscriptions` table is ready; add webhook + gating logic later
-- **ElevenLabs**: TTS is live via `/api/speak` (`eleven_turbo_v2_5`, per-persona voices) and realtime STT via `/api/scribe-token` + `components/MicButton.js`. Requires `ELEVENLABS_API_KEY`.
+- **ElevenLabs**: TTS is live via `/api/speak` (`eleven_flash_v2_5`, per-persona voices) and realtime STT via `/api/scribe-token` + `components/MicButton.js`. Requires `ELEVENLABS_API_KEY`.

@@ -4711,3 +4711,89 @@ code) is a new `No code` state that still needs action — "has an account" is n
 
 Gate: build green · `test:run` **972** (921 → 972; new `lib/accessAlerts.test.js`, extended
 `lib/waitlist.test.js`).
+
+## 2026-10-11 — TTS model: `eleven_turbo_v2_5` → `eleven_flash_v2_5` (`focus/coaching-session`)
+
+**Why:** ElevenLabs' model docs (fetched 2026-10-11) mark Turbo v2.5 **deprecated** and
+"functionally equivalent" to Flash v2.5 except lower average latency on Flash, recommending
+Flash "in all use cases". Same list price per 1K characters on the pricing page.
+**Measured (≈660 chars total):** all six persona voiceIds → 200 `audio/mpeg` on Flash. One 63-char
+line, n=3, time to the LAST byte (what the client waits for): Flash 276–348 ms, Turbo 266–506 ms,
+`eleven_v4_turbo` 735–1108 ms. n=3 is noise-level for Flash vs Turbo — the case rests on the
+deprecation, not the timing. v4 Turbo was NOT chosen: 2 weeks old, slower to finish a clip, and
+a different model generation is a voice-character change that needs a listening A/B.
+STT unchanged: `scribe_v2_realtime` is still the only realtime STT model in the docs.
+
+- [ ] **Each coach still sounds like themselves.** Send one turn with each of the six coaches
+      (or switch coach mid-session). Flag any voice that sounds different from before.
+- [ ] The coach-picker intro clips (pre-rendered on Turbo, not re-rendered) don't sound
+      noticeably different from the same coach live.
+
+Gate: build green · `test:run` **978** on main dcc50da (2 new in `lib/ttsModel.test.js`: model parity + not-deprecated) · `test:continuation` green.
+
+## 2026-10-11 — Coach voice starts with the text, not after it (`focus/coaching-session`)
+
+**Report:** "it types everything out then starts speaking." **Diagnosis (checked, not assumed):**
+the live session already tried to speak the first sentence early, so "speech waits for the whole
+reply" was only *partly* true — but two common shapes fell through to that slow path (wait for
+the whole stream, then synthesise the whole reply as one clip):
+
+1. **Short opener.** The first sentence had to be ≥ 8 chars and the regex was anchored at the
+   start, so "Okay." / "Right." (both taught by the prompt) never split — for the whole turn.
+2. **Lock turn.** The split needed visible text *after* the sentence. A lock turn ends its prose
+   and then streams a long `[DONE:id:…]` payload (the student's paragraph), which is hidden — so
+   the prose looked unfinished until the stream closed.
+
+Both are pinned as a positive control in `lib/speechStream.test.js` (the old split, copied
+verbatim, never fires on either shape mid-stream; the new queue does). Also: the remainder's TTS
+was only requested after the scaffold parse, which can await a network PATCH.
+
+**Fix:** `lib/speechStream.js` — a pure sentence queue. First chunk = shortest run of complete
+sentences ≥ 24 chars (dispatched mid-stream); later chunks dispatched one-ahead while the
+previous clip plays; the remainder flushed the moment the stream closes. ≤ 4 TTS requests per
+reply (was ≤ 2; typical reply is still 2). Characters per reply never increase (chunks partition
+the prose). Wired into BOTH playback paths: the live session (`askTutor`, greeting, replay — all
+through `playClip` on the one unlocked element) and `lib/useCoachVoice.js` (onboarding).
+
+**Verified by machine:** 31 unit tests + 6 wiring tests; 7 deliberate mutants (non-nested
+bracket strip, no cancel check, no cap, no live check before play, stop not cancelling, no
+mid-stream first chunk, stray `]` spoken) each turned a test red. A real-Chromium harness
+(static mp3s, no TTS spend) showed: one `<audio>` element total; `playbackRate=1.25` +
+`preservesPitch` on the SECOND clip after its source change; ~20 ms between clips; a stop during
+clip 2 revoked the queued clip 3, which never played. **Not verified: anything by ear, any
+mobile browser, the real `/api/speak` latency in prod.**
+
+### Manual pass (needs ears — each check costs a few hundred TTS characters)
+Run on a real session, voice ON, with devtools Network filtered to `speak`.
+
+- [ ] **Starts with the text.** Send a turn. The coach starts speaking while the reply is still
+      typing out (or within ~1 s of the first sentence appearing) — not after the whole reply.
+- [ ] **Short opener.** Get a reply that opens "Okay." / "Right." / "Nice!" — it still starts
+      early (the first clip is "Okay. <next sentence>").
+- [ ] **Lock turn.** Lock a component in. The coach's acknowledgement is spoken while the text
+      is still settling, and **your paragraph is NOT read back** (no `[DONE` words, no "DONE",
+      no bracket words anywhere in the audio).
+- [ ] **Sentence boundaries sound natural.** No audible gap or pitch reset worse than the old
+      first-sentence/remainder split. Note the persona if one sounds choppy.
+- [ ] **Pace holds across sentences.** Set pace to slow, send a turn with 3+ sentences: every
+      sentence plays slow, not just the first. Change pace mid-reply: it applies immediately and
+      sticks for the next sentence.
+- [ ] **Interrupt stops everything.** While the coach is on sentence 1 of a long reply, tap the
+      mic and start talking. The audio stops and **sentence 2 never starts** (wait 5 s).
+- [ ] **Interrupt between sentences.** Same, but send a typed reply right at a sentence break.
+- [ ] **Mute mid-reply.** Tap the speaker icon mid-reply: silence at once, nothing resumes.
+- [ ] **Read-aloud OFF ⇒ zero `/api/speak`.** With the voice muted, send two turns and replay
+      nothing: the Network panel shows NO `speak` requests.
+- [ ] **Scrolling does not cut the coach off.** Scroll the transcript mid-reply: audio continues.
+- [ ] **Replay button.** Replay an older long message: it starts speaking quickly; tap replay on
+      a second message mid-play — the first stops, the second's indicator stays on until it ends.
+- [ ] **Greeting / first gesture.** Fresh session load (autoplay may be blocked): the greeting
+      plays, or plays on first tap, once — not twice, not half.
+- [ ] **Onboarding (the hook path).** Walk the FTUE: Owen's lines start promptly and play to the
+      end across sentences; clicking ahead to the next screen switches lines cleanly.
+- [ ] **Fallback.** In devtools, block `/api/speak` (Network → block request URL) and send a
+      turn: the browser voice reads the reply (at your pace), no error, composer usable.
+- [ ] **iOS Safari** (most likely to differ): one voiced turn + one interrupt. The audio unlock
+      survives the per-sentence source changes.
+
+Gate: build green · `test:run` **1015** on this branch over main dcc50da (37 new; 1013 if merged without the TTS-model commit) · `test:continuation` green.

@@ -68,12 +68,13 @@ find them; being told to assume the author is wrong did.
 - Expensive endpoints are rate-limited (`lib/ratelimit.js`); model/voice spend is logged via `lib/usage.js`.
 
 ## Voice pipeline — historically the most fragile area; change carefully
-- **TTS**: `lib/useCoachVoice.js` → `/api/speak` (ElevenLabs `eleven_turbo_v2_5`, per-persona `voiceId`). Plays through **one gesture-unlocked `<audio>` element** because mobile/desktop block autoplay until a user gesture. Do **not** pause on every gesture — that previously cut the coach off when the student merely scrolled.
+- **TTS**: `lib/useCoachVoice.js` → `/api/speak` (ElevenLabs `eleven_flash_v2_5` — turbo v2.5 is deprecated — per-persona `voiceId`). Plays through **one gesture-unlocked `<audio>` element** because mobile/desktop block autoplay until a user gesture. Do **not** pause on every gesture — that previously cut the coach off when the student merely scrolled.
 - **STT**: `components/MicButton.js` uses `@elevenlabs/client` `Scribe` over a WebSocket, authed with a **single-use token** from `/api/scribe-token`. Don't reintroduce these already-fixed bugs:
   - Final transcript must land in the **writing input field**, not just under the mic button — wire `onInterim` (live) vs `onFinal` (committed) correctly.
   - The SDK logs a noisy `1006` on normal socket close (intentionally suppressed) — leave the suppression in.
   - Close the `AudioContext` exactly once (`safeClose`) to avoid a double-close.
   - Watch for latency / UI freeze right after the student speaks.
+- **Sentence-by-sentence speech**: coach speech (live turns, greeting, replay, onboarding) goes through `lib/speechStream.js` — a queue that speaks each sentence as the stream completes it. It strips/holds every bracketed span itself, so feed it the RAW stream, never pre-chunked text (a `[DONE:]` payload is the student's own words). Every clip must go through the ONE unlocked element (`playClip` in `TutorSession`, `playUrl` in the hook) so the pace is re-applied per clip, and every stop must cancel the queue (`stopCurrentAudio` does) — the gap between two sentences is otherwise a window where a stop pauses nothing.
 
 ## Security & data invariants (from `AUDIT-2026-06-21.md` — keep these true)
 - **COPPA consent binds to the invited parent**: require `user.email === pending.parent_email` (case-insensitive) and signer ≠ student. A fresh Google account must never be able to self-approve.

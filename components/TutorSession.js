@@ -22,6 +22,7 @@ import { onboardingGreeting } from '@/lib/onboardingPrompts'
 import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 import { nextPace, paceFace, paceAriaLabel, normalizePace, applyPlaybackRate, scaleDurationMs } from '@/lib/coachPace'
+import { createSpeechStream } from '@/lib/speechStream'
 import { readDraft, writeDraft, clearDraftIfMatches, sweepExpiredDrafts, getDraftStorage } from '@/lib/composerDraft'
 import StartingDraftCard from '@/components/StartingDraftCard'
 
@@ -949,6 +950,11 @@ export default function TutorSession({
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
   const tutorRunRef       = useRef(0)       // bumps each coach turn; a superseded turn's leftover audio bails
+  // The coach's in-flight sentence queue (lib/speechStream). EVERY stop goes through
+  // stopCurrentAudio, which cancels it — so a queued sentence can never start after the
+  // student interrupted, muted, switched coach or left. Without this, the gap BETWEEN two
+  // sentences is a window where a stop pauses nothing and the next clip plays anyway.
+  const speechRef         = useRef(null)
   // True while the component is mounted. Both the detached <audio> (audioRef) and
   // window.speechSynthesis are browser globals that keep playing after unmount, and
   // an in-flight /api/speak can resolve after the student has navigated back to the
@@ -1098,8 +1104,11 @@ export default function TutorSession({
       const el = getAudioEl()
       // If a clip is already playing, the element is unlocked — DON'T touch it.
       // (The old code overwrote el.src on every first gesture, cutting the coach
-      // off mid-sentence when the student scrolled.)
-      if (!el.paused) { cleanup(); return }
+      // off mid-sentence when the student scrolled.) Same if a clip has EVER played:
+      // the element is proven unlocked, and with sentence-by-sentence speech a gesture
+      // can land in the gap between two clips — blessing then would swap in the silent
+      // WAV and its `.then(pause)` could pause the next sentence, stalling the queue.
+      if (!el.paused || everPlayedRef.current) { cleanup(); return }
       // 1-frame silent WAV — playing it within the gesture blesses the element so
       // later async plays are allowed (iOS).
       el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
@@ -1224,6 +1233,8 @@ export default function TutorSession({
   }
 
   function stopCurrentAudio() {
+    // Cancel the sentence queue FIRST: a late-resolving TTS fetch must find it cancelled.
+    if (speechRef.current) { speechRef.current.cancel(); speechRef.current = null }
     playSeqRef.current++   // invalidate any in-flight playback
     if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
     const el = audioRef.current
@@ -1241,6 +1252,7 @@ export default function TutorSession({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      if (speechRef.current) { speechRef.current.cancel(); speechRef.current = null }
       playSeqRef.current++
       tutorRunRef.current++
       if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
@@ -1290,9 +1302,41 @@ export default function TutorSession({
     return URL.createObjectURL(blob)
   }
 
-  async function playTtsUrl(url) {
-    await playClip(url)
-    try { URL.revokeObjectURL(url) } catch {}
+  // Browser-voice fallback for one chunk whose TTS failed. Same coach, same pace. Resolves
+  // on end OR error (a cancel() fires one of them), with a timeout behind both because some
+  // engines never fire `end` at all — a queue must not wait forever on a lost event.
+  function speakFallback(text) {
+    if (!mountedRef.current || typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
+      return Promise.resolve()
+    }
+    return new Promise(resolve => {
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.95 * coachPaceRef.current
+      const words = text.split(/\s+/).filter(Boolean).length
+      const timer = setTimeout(resolve, scaleDurationMs(words * 500, coachPaceRef.current) + 2000)
+      const finish = () => { clearTimeout(timer); resolve() }
+      utterance.onend = finish
+      utterance.onerror = finish
+      window.speechSynthesis.speak(utterance)
+    })
+  }
+
+  // Start a sentence queue (lib/speechStream) for one piece of coach speech and make it
+  // THE active one, so stopCurrentAudio can cancel it. Callers must stopCurrentAudio()
+  // first. Every clip goes through playClip — the ONE gesture-unlocked element, with the
+  // pace re-applied after each source change — never a fresh Audio per sentence.
+  // `isCurrent` is the caller's own supersession check (e.g. the coach turn's run id).
+  function startSpeechStream(activePersona, isCurrent = () => true, onFirstDispatch = null) {
+    const speech = createSpeechStream({
+      synth:    (chunk) => fetchTts(chunk, activePersona),
+      play:     (url) => playClip(url),
+      revoke:   (url) => { try { URL.revokeObjectURL(url) } catch {} },
+      fallback: (chunk) => speakFallback(chunk),
+      isLive:   () => mountedRef.current && readAloudRef.current && isCurrent(),
+      onFirstDispatch,
+    })
+    speechRef.current = speech
+    return speech
   }
 
   async function playWithSync(text, activePersona = persona) {
@@ -1376,26 +1420,12 @@ export default function TutorSession({
     // is already committed by the caller; there's simply nothing to play.
     if (!readAloudRef.current) { stopCurrentAudio(); return }
     stopCurrentAudio()
-    try {
-      const res = await fetch('/api/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: stripMarkdown(text), persona: activePersona, sessionId: session.id }),
-      })
-      if (!res.ok) throw new Error('TTS failed')
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      await playClip(url)
-      try { URL.revokeObjectURL(url) } catch {}
-    } catch {
-      if (!mountedRef.current) return   // navigated away — don't queue speech on a dead session
-      await new Promise(resolve => {
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.rate = 0.95
-        utterance.onend = resolve
-        window.speechSynthesis?.speak(utterance)
-      })
-    }
+    // The whole text is known, but it still goes through the sentence queue: the first
+    // short clip synthesises fast, so a long greeting or replay starts speaking sooner,
+    // and a failed TTS falls back to the browser voice chunk by chunk.
+    const speech = startSpeechStream(activePersona)
+    speech.end(text)
+    await speech.done
   }
 
   async function replayMessage(content, index) {
@@ -1403,7 +1433,10 @@ export default function TutorSession({
     tutorRunRef.current++   // supersede any coach read-aloud still playing so it won't resume over this replay
     setReplayingIndex(index)
     await replayAudioOnly(content, persona)
-    setReplayingIndex(null)
+    // Only clear OUR indicator. A cancelled replay now settles immediately (the queue's
+    // `done` resolves on cancel), so tapping replay on another message would otherwise
+    // clear that message's indicator while it is still playing.
+    setReplayingIndex(cur => (cur === index ? null : cur))
   }
 
   // ── Scaffold token parsing ───────────────────────────────────────────────────
@@ -1759,45 +1792,38 @@ export default function TutorSession({
       }
 
       // Stream the coach's words into the caption as they generate, so the
-      // student gets immediate feedback instead of a static "…". As soon as the
-      // first sentence is complete, start speaking it — the rest is generated and
-      // its audio fetched while that first sentence plays, so the voice starts
-      // much sooner than waiting for the whole reply + its full TTS.
+      // student gets immediate feedback instead of a static "…". Speech follows the
+      // stream sentence by sentence (lib/speechStream): the first sentence is
+      // synthesised the moment it completes, later ones while earlier ones play. The
+      // queue only ever sees token-free prose (it strips/holds every bracketed span
+      // itself), so a [DONE:…] payload — the student's own words — is never spoken.
       stopCurrentAudio()
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let full = ''
-      let firstSentence = null
-      let firstPlay = null
+      let speech = null
+      // Read-aloud OFF ⇒ no queue, so the TTS path is never reached (zero /api/speak);
+      // the text still streams into the caption. Created lazily so a student who turns
+      // the voice on mid-stream still hears this reply, as before.
+      const speechForTurn = () => {
+        if (!speech && readAloudRef.current && tutorRunRef.current === myRun) {
+          // A voiced turn has audio in flight once the first request goes out — mark it
+          // pending so a send that lands before the phase flip still settles it as skipped.
+          speech = startSpeechStream(activePersona, () => tutorRunRef.current === myRun,
+            () => { pendingAudioTurnRef.current = true })
+        }
+        return speech
+      }
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         full += decoder.decode(value, { stream: true })
         captionRef.current?.set(liveDisplay(full) || '…')
-
-        // Read-aloud OFF ⇒ never split off / fetch the first-sentence clip. The
-        // whole TTS path stays unreached; the text still streams into the caption.
-        if (!firstSentence && readAloudRef.current) {
-          const clean = liveDisplay(full)
-          const m = clean.match(/^\s*(.+?[.!?])(\s|$)/s)
-          // Only split off a first sentence if there's clearly more coming after it
-          if (m && m[1].trim().length >= 8 && clean.length > m[1].length + 1) {
-            firstSentence = m[1].trim()
-            // Voiced turn now has audio in flight — mark it pending so a send that
-            // lands before the phase flip still settles it as skipped.
-            pendingAudioTurnRef.current = true
-            firstPlay = (async () => {
-              try {
-                const url = await fetchTts(firstSentence, activePersona)
-                // If the student already interrupted (newer turn) or muted the coach
-                // mid-turn, don't grab the shared <audio> element / start a new clip.
-                if (tutorRunRef.current !== myRun || !readAloudRef.current) { try { URL.revokeObjectURL(url) } catch {} ; return }
-                await playTtsUrl(url)
-              } catch {}
-            })()
-          }
-        }
+        speechForTurn()?.update(full)
       }
+      // Flush the remainder NOW — before the scaffold parse below, which can await a
+      // network PATCH. The old path fetched the remainder's audio only after that.
+      speechForTurn()?.end(full)
 
       // Parse scaffold tokens and update scaffold state
       // Parse against the LIVE tree, never the closure — see scaffoldRef above.
@@ -1835,33 +1861,15 @@ export default function TutorSession({
       setPhase(hasDictateSignal ? 'dictating' : 'listening')
 
       // Audio plays out unless a newer turn supersedes this one (the student sent
-      // again, interrupting). Each audio step bails if this run is no longer current
-      // so a leftover remainder clip can't hijack the shared <audio> element.
-      // A voiced turn is marked "pending" so the auto-mute heuristic can settle it as
+      // again, interrupting) — the queue checks the run id before every request and
+      // every clip, and stopCurrentAudio cancels it outright. A voiced turn is marked
+      // "pending" (on its first TTS request) so the auto-mute heuristic can settle it as
       // either audio_completed (played to the end) or audio_skipped/interrupted (the
       // student advanced — settled by the send handlers before they supersede).
-      if (firstSentence) {
-        // (pendingAudioTurnRef already set when the first clip started, above.)
-        // Remainder after the first sentence; fetch its audio now (overlaps the
-        // first sentence still playing), then play once the first finishes.
-        const remainder = displayText.slice(firstSentence.length).trim()
-        const remainderUrl = remainder ? fetchTts(remainder, activePersona).catch(() => null) : null
-        await firstPlay
-        if (tutorRunRef.current !== myRun) return
-        if (remainderUrl) {
-          const url = await remainderUrl
-          // Bail if superseded OR the student muted the coach mid-read.
-          if (tutorRunRef.current !== myRun || !readAloudRef.current) { try { URL.revokeObjectURL(url) } catch {} ; return }
-          if (url) await playTtsUrl(url)
-        }
-        if (tutorRunRef.current === myRun) settleAudioTurn('audio_completed')
-      } else if (readAloudRef.current) {
-        if (tutorRunRef.current !== myRun) return
-        pendingAudioTurnRef.current = true
-        // Single short reply (no mid-stream sentence boundary) — speak it whole.
-        await replayAudioOnly(displayText, activePersona)
-        if (tutorRunRef.current === myRun) settleAudioTurn('audio_completed')
-      } else {
+      if (speech) {
+        await speech.done
+        if (tutorRunRef.current === myRun && !speech.cancelled) settleAudioTurn('audio_completed')
+      } else if (!readAloudRef.current) {
         // Read-aloud OFF: this coach turn produced no audio. Record audio_absent —
         // it does NOT count as a skip, and voice-off already precludes an offer.
         pendingAudioTurnRef.current = false
