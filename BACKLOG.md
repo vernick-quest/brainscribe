@@ -986,3 +986,18 @@ beside the voice toggle, turn the coach's voice on first.
 caption is driven from `el.duration`, the clip's length at 1×. At `0.5×` it may finish while
 the coach is still talking — for exactly the students who slowed it down. If it desyncs
 noticeably, that is a real finding worth a fix, not a nitpick.
+
+---
+
+## P3 — Builds depend on Google Fonts being reachable  🔵 added 2026-10-11 SF
+A production deploy FAILED on 2026-10-11 with `Turbopack build failed with 42 errors: Module
+not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'`. `next/font/google`
+downloads the font files at BUILD time, so a transient fetch failure fails the whole build.
+Nothing was wrong with the code: the same commit built locally, and Vercel's Git-triggered
+rebuild of the identical commit went Ready minutes later.
+
+**Impact is bounded** — Vercel only swaps in a build that succeeds, so a failed build never
+takes the site down. The cost is a deploy that has to be retried.
+
+**Fix:** self-host the font files with `next/font/local` so the build has no network dependency.
+Low priority: one failure across many deploys. Do it the next time someone is in `app/layout.js`.
