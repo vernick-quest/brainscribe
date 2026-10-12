@@ -66,7 +66,7 @@
 import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
 import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 import { stripCoachTokens } from '../../lib/coachTokens.js'
-import { resolveWriteIndex, resolveComponentWrite, updateComponentItem, decideDoneWrite } from '../../lib/scaffoldWrite.js'
+import { resolveWriteIndex, resolveComponentWrite, applyDoneWrite } from '../../lib/scaffoldWrite.js'
 import { draftScaffoldTree, splitDraftParagraphs } from '../../lib/startingDraftScaffold.js'
 
 const RUNS = Number(process.env.RUNS ?? 4)
@@ -189,8 +189,8 @@ const sentencesIn = text => {
 const isVerbatim = text => norm(text).length > 0 && norm(DRAFT).includes(norm(text))
 
 // ── Mirror of TutorSession.js parseAndApplyScaffoldTokens: [DONE:], [PARA_DONE:], Net A ──────
-// Same pure functions, same order. The [DONE:] item decision IS the client's: decideDoneWrite
-// (lib/scaffoldWrite.js) — preserve → fragment → dropped → duplicate refusal → write. `assembledIndexes` = sections completed before this turn
+// Same pure functions, same order. The [DONE:] application IS the client's: applyDoneWrite
+// (lib/scaffoldWrite.js) — decideDoneWrite's nets plus the deferred move. `assembledIndexes` = sections completed before this turn
 // (each [PARA_DONE] saves a paragraphs row in the live client).
 export function applyTurn(scaffold, raw) {
   let sc = JSON.parse(JSON.stringify(scaffold))
@@ -212,11 +212,11 @@ export function applyTurn(scaffold, raw) {
       const paraIdx = resolveWriteIndex(sc)
       const target = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
       emissions.push({ componentId, text: inlineText, cursor: paraIdx, landed: target ? `${target.paraIdx}.${target.id}` : 'REFUSED' })
-      if (target) sc = updateComponentItem(sc, target.paraIdx, target.id, item => {
-        const d = decideDoneWrite({ scaffold: sc, target, item, inlineText, paragraphs: [] })
-        emissions[emissions.length - 1].outcome = d.outcome
-        return d.item
-      })
+      if (target) {
+        const applied = applyDoneWrite(sc, target, inlineText, { paragraphs: [] })
+        sc = applied.scaffold
+        emissions[emissions.length - 1].outcome = applied.outcome
+      }
     } else if (type === 'PARA_DONE') {
       const c = payload.indexOf(':')
       if (c === -1) continue

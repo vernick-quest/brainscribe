@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem, findConfirmedDuplicate, refuseDuplicateItem, decideDoneWrite } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem, findConfirmedDuplicate, refuseDuplicateItem, applyDoneWrite, clearDuplicateStamp } from '@/lib/scaffoldWrite'
 import { draftScaffoldTree } from '@/lib/startingDraftScaffold'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
@@ -1587,9 +1587,9 @@ export default function TutorSession({
                 `that text is already in paragraph ${nugDup.paraIdx} (${nugDup.label}). Nothing was changed.`
               )
               duplicateRefusals.push({ to: nugTarget.paraIdx, ...nugDup })
-              return refuseDuplicateItem(item, nugDup)
+              return refuseDuplicateItem(item, nugDup, nuggetText)
             }
-            return { ...item, status: 'candidate', nuggetText, duplicateOf: null }
+            return { ...clearDuplicateStamp(item), status: 'candidate', nuggetText }
           })
           changed = true
           }
@@ -1610,38 +1610,46 @@ export default function TutorSession({
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
         const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
-        // Every net that decides what this [DONE:] does to its item now lives in ONE pure
-        // function (lib/scaffoldWrite.js decideDoneWrite), in the same order it had here:
-        // preserve an inferred target's words → keep the longer version over a quoted fragment
-        // → stamp a write with no text → refuse words already confirmed in ANOTHER part →
-        // write. Inline it was untestable (JSX), and the nets only fail when they compose.
-        if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
-          const decision = decideDoneWrite({ scaffold: sc, target: doneTarget, item, inlineText, paragraphs })
-          if (decision.outcome === 'preserved') {
+        // Every net that decides what this [DONE:] does lives in lib/scaffoldWrite.js:
+        // decideDoneWrite (unchanged → preserve → fragment → dropped → duplicate → write) inside
+        // applyDoneWrite, which also lands a previously REFUSED move when its source part is
+        // rewritten (so a refused move can never become a loss), and banks every replaced text.
+        // The governing invariant is pinned by lib/scaffoldWriteInvariant.test.js.
+        if (doneTarget) {
+          const applied = applyDoneWrite(sc, doneTarget, inlineText, { paragraphs })
+          sc = applied.scaffold
+          if (applied.outcome === 'preserved') {
             // On an INFERRED target (inexact id, or a cross-section redirect) the words already
-            // there outrank our guess about which slot was meant — banked + stamped
-            // (preserveExistingItem), recoverable via Revise/Edit.
+            // there outrank our guess about which slot was meant. Kept + stamped; the incoming
+            // words are banked on the item (refusedText), never discarded.
             console.warn(
               `[token-safety-net] [DONE:${componentId}:…] resolved to an INFERRED target ` +
               `(${doneTarget.crossSection ? `cross-section → paragraph ${doneTarget.paraIdx}` : 'inexact id'}) ` +
               `that already holds the student's words — keeping them rather than overwriting. ` +
-              `The revision did NOT land; it is recoverable via Revise/Edit.`
+              `The revision did NOT land; its words are banked on the item.`
             )
-          } else if (decision.outcome === 'fragment') {
+          } else if (applied.outcome === 'fragment') {
             console.warn(`[token-safety-net] [DONE:${componentId}:…] quoted a fragment of the confirmed text — keeping the longer version`)
-          } else if (decision.outcome === 'duplicate') {
-            // Never a silent no-op: console, an item stamp the Draft panel renders, a line at
-            // the top of the panel, and a note in the coach's next scaffold state.
+          } else if (applied.outcome === 'duplicate') {
+            // Never a silent no-op: console, an item stamp (with the refused words BANKED and an
+            // "add them here anyway" button), a line at the top of the panel, and a note in the
+            // coach's next scaffold state.
             console.error(
               `[duplicate-guard] REFUSED [DONE:${componentId}:…] into paragraph ${doneTarget.paraIdx} — ` +
-              `that text is already confirmed in paragraph ${decision.dup.paraIdx} (${decision.dup.label}). Writing it again ` +
-              `would put the same words in the Draft twice. Nothing was changed.`
+              `that text is already confirmed in paragraph ${applied.dup.paraIdx} (${applied.dup.label}). ` +
+              `Not written a second time; the words are banked on the part.`
             )
-            duplicateRefusals.push({ to: doneTarget.paraIdx, ...decision.dup })
+            duplicateRefusals.push({ to: doneTarget.paraIdx, ...applied.dup })
+          }
+          // A move refused earlier just landed because its source was rewritten (applyDoneWrite).
+          // The student sees words appear somewhere they did not just ask about — say why.
+          for (const m of applied.moved ?? []) {
+            const sec = sc.components?.[m.paraIdx]
+            const where = sec?.items?.length === 1 ? sec.items[0].label : `Paragraph ${m.paraIdx + 1}`
+            setDuplicateNotice(`The words that were moved out of the part you just changed are now in ${where}, so nothing was lost.`)
           }
           // 'dropped' is logged inside resolveDoneText and stamped writeDropped on the item.
-          return decision.item
-        })
+        }
         changed = true
       }
 
@@ -1785,7 +1793,7 @@ export default function TutorSession({
       const r = duplicateRefusals[duplicateRefusals.length - 1]
       const where = sc?.components?.[r.to]
       const toLabel = where?.items?.length === 1 ? where.items[0].label : `Paragraph ${r.to + 1}`
-      setDuplicateNotice(`That text is already in ${r.label ?? `Paragraph ${r.paraIdx + 1}`}, so it wasn't added to ${toLabel} a second time. Nothing you wrote was removed.`)
+      setDuplicateNotice(`Those words are already in ${r.label ?? `Paragraph ${r.paraIdx + 1}`}, so they weren't added to ${toLabel} a second time. They're kept under ${toLabel} — tap "Add them here anyway" there if you meant it.`)
     }
 
     // Persist any change — including when the scaffold was created THIS turn. The
@@ -2175,7 +2183,7 @@ export default function TutorSession({
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
     const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
-      ...item, status: 'confirmed', text: nuggetText,
+      ...clearDuplicateStamp(item), status: 'confirmed', text: nuggetText,
     }))
     applyScaffold(newScaffold)
     await patchScaffold(newScaffold.components)
@@ -2443,7 +2451,7 @@ export default function TutorSession({
     if (newText === oldText) { setEditingComponent(null); return }
 
     const newScaffold = updateComponentItem(live, paraIdx, componentId, i => ({
-      ...i, text: newText, nuggetText: newText, status: 'confirmed',
+      ...clearDuplicateStamp(i), text: newText, nuggetText: newText, status: 'confirmed',
     }))
     applyScaffold(newScaffold)
     setEditingComponent(null)
@@ -3660,7 +3668,7 @@ export default function TutorSession({
                           {para.items.map(item => {
                             const isConfirmed = item.status === 'confirmed'
                             // For completed paragraphs, skip items with no content to show
-                            if (isComplete && !isConfirmed && !item.text && !item.nuggetText) return null
+                            if (isComplete && !isConfirmed && !item.text && !item.nuggetText && !item.duplicateOf) return null
 
                             const statusColors = {
                               locked:    { dot: 'var(--border-strong)',   text: 'var(--text-subtle)' },
@@ -3773,10 +3781,24 @@ export default function TutorSession({
                                       already confirmed in another part. Shown even when this
                                       part is empty — that is the common case. */}
                                   {item.duplicateOf && (
-                                    <p className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
+                                    <div className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
                                       style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
-                                      Those words are already in {item.duplicateOf.label ?? `Paragraph ${item.duplicateOf.paraIdx + 1}`}, so they weren’t added here again.
-                                    </p>
+                                      <p>Those words are already in {item.duplicateOf.label ?? `Paragraph ${item.duplicateOf.paraIdx + 1}`}, so they weren’t added here again.</p>
+                                      {/* The refused words are BANKED on the item (lib/scaffoldWrite.js) —
+                                          one tap puts them here anyway (a refrain, a quote used twice on
+                                          purpose). confirmNugget clears the stamp through the bank and
+                                          tells the coach, exactly like any panel lock-in. */}
+                                      {item.duplicateOf.text && !isEditingThis && (
+                                        <button
+                                          onClick={() => confirmNugget(paraIdx, item.id, item.duplicateOf.text)}
+                                          disabled={phase !== 'listening'}
+                                          className="mt-1 text-[11px] font-semibold rounded-md px-2 transition disabled:opacity-40"
+                                          style={{ color: 'var(--accent-text)', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-accent)', minHeight: 44 }}
+                                        >
+                                          Add them here anyway
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
 
                                   {/* Nugget action buttons — only for current paragraph in listening phase */}
