@@ -4677,3 +4677,37 @@ session with a commitment and no check is normal, and a CTA that over-counts get
 Record the distribution first; a threshold, if ever, comes from the data.
 
 Gate: build green · `test:run` **903** (11 new in `lib/monitorSilence.test.js`).
+
+## 2026-10-11 — The admin hears about access requests and new signups (focus/admin)
+
+Owner: "Right now, I have no notification if someone requested to use the app." Someone asked
+on 2026-09-02 and he heard nothing for 19+ days — `/api/subscribe` only ever wrote to the
+requester. Recipients come from `profiles.role='admin'` (the access-code alert's convention),
+not a hardcoded address.
+
+### Owed: ONE confirmed live send (conductor), nothing else sends in tests
+1. Submit the landing waitlist form with a fresh address → the admin inbox gets **one**
+   "new access request" email: email, Pacific time (PDT/PST printed), source, whether the
+   address already has an account, whether the requester's ack went out, and a link to
+   `/admin?tab=tools#waitlist` that opens on the Waitlist card.
+2. Submit the **same** address again → **no** second admin email, no second ack.
+3. Blog form (`/blog`) with a fresh address → **no** admin email.
+4. New Google account → /welcome → 13+ → code → pick a role → **one** "new <role> signup"
+   email with the code used. Click "← Back" and re-pick a role → **no** second email.
+5. Vercel logs: no `ZERO admin recipients` / `admin alert NOT sent` lines.
+
+### Waitlist count
+The card already derived "resolved" from the account at read time. Hardened: accounts are
+matched case-insensitively (was an exact `.in()`), a failed account read now fails the load
+instead of rendering every row as Waiting, and an account **without access** (signed in, no
+code) is a new `No code` state that still needs action — "has an account" is not "let in".
+
+### Known blind spots, stated on purpose
+- A 13+ who signs in with **no code** stops at the code screen, never picks a role, and
+  never triggers the signup alert. Unless they are also on the waitlist they are invisible.
+- Someone who redeems a code and closes the tab before the role picker: no signup alert.
+- Invited accounts (invite page) and parent-first children (`/coppa/complete`) set
+  `role_confirmed` without confirm-role, so they do not alert — someone inside invited them.
+
+Gate: build green · `test:run` **972** (921 → 972; new `lib/accessAlerts.test.js`, extended
+`lib/waitlist.test.js`).
