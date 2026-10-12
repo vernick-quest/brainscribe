@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { buildWaitlistView, isAccessRequest } from '@/lib/waitlist'
+import { indexAccountsByEmail } from '@/lib/accessAlerts'
 import { purgeSubscriberEmail } from '@/lib/subscribers'
 import { sendWaitlistCode } from '@/lib/notifications'
 import { NextResponse } from 'next/server'
@@ -34,6 +35,25 @@ async function requireAdmin() {
   return { user }
 }
 
+const PAGE = 1000
+
+async function readAllProfiles(service) {
+  const out = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await service
+      .from('profiles')
+      .select('id, email, role, full_name, access_code_used, access_granted, age_bracket, coppa_consent_required')
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) {
+      console.error('[admin/waitlist] account lookup FAILED — refusing to show every row as waiting:', error.message)
+      throw new Error(`account lookup failed: ${error.message}`)
+    }
+    out.push(...(data ?? []))
+    if (!data || data.length < PAGE) return out
+  }
+}
+
 async function loadState(service) {
   // Fail soft on the 066 columns. Between deploying this and pasting the migration by
   // hand there is a real window, and a 400 there would leave the card showing nothing
@@ -54,29 +74,35 @@ async function loadState(service) {
     rows = base.data
   }
 
-  const emails = (rows ?? []).map(r => String(r.email ?? '').toLowerCase()).filter(Boolean)
+  const emails = new Set((rows ?? []).map(r => String(r.email ?? '').trim().toLowerCase()).filter(Boolean))
 
-  // Resolve every address against its account in one read. `.in()` on an empty array
-  // is a query for nothing, so guard it rather than relying on an empty result.
-  const { data: profiles } = emails.length
-    ? await service
-        .from('profiles')
-        .select('id, email, role, full_name, access_code_used, created_at')
-        .in('email', emails)
-    : { data: [] }
+  // Resolve every address against its account. Two ways this used to fail, both in
+  // the OVER-reporting direction (people shown as waiting who are already inside):
+  //   • `.in('email', emails)` is an EXACT match, and a profile email comes from
+  //     Google, not from our lowercasing form — the retention cron already learned
+  //     this (app/api/cron/coppa-cleanup). Matched in JS, lowercased, instead.
+  //   • the read's `error` was dropped, so a failed lookup rendered as "nobody has an
+  //     account" and every row came back Waiting. Now it fails the load, loudly.
+  // Paged, because PostgREST caps a response (1000 rows by default) without saying so.
+  const profiles = emails.size ? await readAllProfiles(service) : []
+  const byEmail = indexAccountsByEmail(profiles)
+  const matched = [...emails].map(e => byEmail[e]).filter(Boolean)
 
   // Activity per matched account. Counting SESSIONS, not messages: a session row is
   // what "started an assignment" means, and it is one indexed read per account on a
   // list this size. Turn counts are the finer signal but not worth N more queries
   // until the list outgrows a screen.
   const accountsByEmail = {}
-  for (const p of profiles ?? []) {
+  for (const p of matched) {
     const { count } = await service
       .from('sessions').select('id', { count: 'exact', head: true }).eq('student_id', p.id)
-    accountsByEmail[String(p.email).toLowerCase()] = {
+    accountsByEmail[String(p.email).trim().toLowerCase()] = {
       role: p.role,
       full_name: p.full_name,
       access_code_used: p.access_code_used,
+      access_granted: p.access_granted,
+      age_bracket: p.age_bracket,
+      coppa_consent_required: p.coppa_consent_required,
       sessionCount: count ?? 0,
       // turnCount is not fetched; classify() treats sessionCount as sufficient for
       // "writing" and stalled is derived from it. Kept in the shape so the pure

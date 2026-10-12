@@ -2416,6 +2416,14 @@ function WaitlistManager() {
   // not share a confirm latch with Dismiss, or one click could arm the other.
   const [confirmForget, setConfirmForget] = useState('')
   const [showAll, setShowAll] = useState(false)
+  // The admin alert emails link to /admin?tab=tools#waitlist. The card renders after
+  // the tab switch, so the browser's own hash scroll has already missed it.
+  const cardRef = useRef(null)
+  useEffect(() => {
+    try {
+      if (window.location.hash === '#waitlist') cardRef.current?.scrollIntoView({ block: 'start' })
+    } catch { /* cosmetic only */ }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -2451,20 +2459,21 @@ function WaitlistManager() {
 
   const STATE_PILL = {
     waiting:   pill('var(--accent-tint)', 'var(--accent-text)'),
+    locked_out:pill('var(--accent-tint)', 'var(--accent-text)'),
     invited:   pill('var(--surface-sunken)', 'var(--text-muted)'),
     signed_up: pill('var(--surface-sunken)', 'var(--text-default)'),
     writing:   pill('var(--status-ok-tint, var(--surface-sunken))', 'var(--text-default)'),
     subscriber:pill('var(--surface-sunken)', 'var(--text-muted)'),
     dismissed: pill('var(--surface-sunken)', 'var(--text-muted)'),
   }
-  const STATE_LABEL = { waiting: 'Waiting', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed', subscriber: 'Blog' }
+  const STATE_LABEL = { waiting: 'Waiting', locked_out: 'No code', invited: 'Code sent', signed_up: 'Signed up', writing: 'Writing', dismissed: 'Dismissed', subscriber: 'Blog' }
 
   const { items, counts, needsAction, codes } = state
   const visible = showAll ? items : items.filter(i => i.needsAction)
   const noCodes = !loading && (codes?.length ?? 0) === 0
 
   return (
-    <div style={cardStyle}>
+    <div id="waitlist" ref={cardRef} style={cardStyle}>
       <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)', gap: 'var(--space-3)' }}>
         <div>
           <h3 style={{ font: 'var(--type-heading)', color: 'var(--text-strong)', margin: 0 }}>
@@ -2475,7 +2484,7 @@ function WaitlistManager() {
           </h3>
           <p style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
             {counts
-              ? `${counts.waiting} waiting · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up${counts.subscriber ? ` · ${counts.subscriber} blog` : ''}`
+              ? `${counts.waiting} waiting${counts.locked_out ? ` · ${counts.locked_out} signed in without a code` : ''} · ${counts.invited} code sent · ${counts.signed_up + counts.writing} signed up${counts.subscriber ? ` · ${counts.subscriber} blog` : ''}`
               : 'Access requests from the site'}
           </p>
         </div>
@@ -2530,6 +2539,8 @@ function WaitlistManager() {
               <span style={{ font: 'var(--type-meta)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 {i.state === 'waiting'
                   ? `${i.daysWaiting}d waiting`
+                  : i.state === 'locked_out'
+                    ? 'signed in · no code yet'
                   : i.account?.stalled
                     ? 'signed up · nothing written'
                     : i.account
@@ -2720,13 +2731,18 @@ function ToolsTab({ demoSeeded, betaCircleCount }) {
 // not the pill bar — the tiles ARE their tab buttons. Keep this list in sync with
 // the tiles' tabId and the search-box visibility.
 const LIST_TABS = ['students', 'parents', 'teachers', 'sessions']
+// Every tab a ?tab= deep link may select. Keep in sync with TABS inside AdminDashboard.
+const ADMIN_TAB_IDS = [...LIST_TABS, 'audit', 'usage', 'tools']
 
-export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers, sessionWarnings = {} }) {
+export default function AdminDashboard({ currentUser, currentProfile, profiles, sessions, relationships, assignmentTeachers, sessionWarnings = {}, initialTab }) {
   // Name the browser tab for this account ("BrainScribe — Elio" / "— ADMIN") so
   // several signed-in tabs are tellable apart. During a remote-in this profile is
   // already the impersonated user's, so the tab names whoever you're viewing.
   useTabTitle(currentProfile?.full_name, currentProfile?.role)
-  const [tab, setTab] = useState('students')
+  // Deep link: /admin?tab=tools (the access-request alert email links here). Passed in
+  // by the server page, so the first render already has it — no hydration flip — and
+  // only a known tab id is honoured; anything else leaves the default.
+  const [tab, setTab] = useState(() => (ADMIN_TAB_IDS.includes(initialTab) ? initialTab : 'students'))
   // Set when a per-assignment warning chip is clicked: switch to Audit and scroll to
   // that assignment's finding. Cleared once the Audit tab has acted on it, so
   // returning to the tab later doesn't re-scroll.

@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { isCoppaProtected } from '@/lib/coppa'
+import { after } from 'next/server'
+import { notifyNewAccount } from '@/lib/accessAlerts'
+import { sendAdminAlert } from '@/lib/notifications'
 
 const ALLOWED_ROLES = ['student', 'parent', 'teacher']
 
@@ -69,12 +72,72 @@ export async function PATCH(request) {
     update.avatar_url = null
   }
 
-  const { error } = await service
+  // Two statements, same net write as one unconditional UPDATE — split so we learn
+  // whether THIS call is the one that confirmed the account for the first time.
+  //
+  // The first only matches while role_confirmed is still false/null. Postgres takes the
+  // row lock and re-checks that predicate, so of two simultaneous first-confirms exactly
+  // one gets the row back; the other falls through to the plain update below (a role
+  // re-pick via "← Back" takes the same path). That return value is what makes the
+  // admin's new-account alert fire ONCE per account rather than once per call.
+  const { data: firstRows, error: firstErr } = await service
     .from('profiles')
     .update(update)
     .eq('id', user.id)
+    .or('role_confirmed.is.null,role_confirmed.eq.false')
+    .select('id')
 
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  // If the conditional statement itself fails, signup must NOT fail with it — that
+  // would trade a missing email for a broken onboarding step. Fall through to the
+  // plain update (the pre-alert behaviour) and say loudly that the alert is lost.
+  if (firstErr) console.error('[confirm-role] first-confirm update FAILED — new-account alert will NOT fire for', user.id, ':', firstErr.message)
+
+  const firstConfirm = !firstErr && (firstRows?.length ?? 0) > 0
+  if (!firstConfirm) {
+    const { data: rows, error: reErr } = await service
+      .from('profiles')
+      .update(update)
+      .eq('id', user.id)
+      .select('id')
+    if (reErr) return Response.json({ error: reErr.message }, { status: 500 })
+    // Zero rows = there is no profile row to confirm (e.g. the signup trigger has not
+    // created it). That used to return ok in silence; it still returns ok (behaviour
+    // unchanged), but no longer quietly.
+    if (!rows?.length) console.error('[confirm-role] update matched ZERO rows — no profile for user', user.id)
+  }
+
+  // A new account just became real: tell the admin. Once per account (see above),
+  // deferred, and fully guarded — a mail problem must never affect the signup.
+  // For 13+ the code step comes before the role picker, so a redeemed code is
+  // already recorded on the profile by now.
+  if (firstConfirm) {
+    after(async () => {
+      try {
+        // A separate read, deliberately NOT folded into the COPPA `existing` select
+        // above: a column problem there nulls `existing` and silently disables the
+        // sticky under-13 check. confirm-role never writes these three columns, so
+        // reading them after the update sees the same values as before it.
+        const { data: acct, error: acctErr } = await service
+          .from('profiles').select('email, access_granted, access_code_used').eq('id', user.id).maybeSingle()
+        if (acctErr) console.error('[confirm-role] new-account alert: profile read failed — alerting with what we have:', acctErr.message)
+        const result = await notifyNewAccount({
+          service,
+          email: acct?.email ?? user.email,
+          role,
+          ageBracket: update.age_bracket ?? existing?.age_bracket ?? null,
+          accessCode: acct ? (acct.access_code_used ?? null) : 'unknown (profile read failed)',
+          accessGranted: acct ? acct.access_granted === true : undefined,
+          sendAlert: sendAdminAlert,
+          siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+        })
+        if (result.alert !== 'sent') {
+          console.error('[confirm-role] admin NOT alerted about new account', user.id, '— reason:', result.alert)
+        }
+      } catch (e) {
+        console.error('[confirm-role] new-account alert threw for', user.id, e)
+      }
+    })
+  }
 
   return Response.json({ ok: true, role, age_bracket })
 }

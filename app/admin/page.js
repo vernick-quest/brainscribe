@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import AdminDashboard from '@/components/AdminDashboard'
 import { attentionForStudent } from '@/lib/attention'
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -200,6 +200,9 @@ export default async function AdminPage() {
       sessionWarnings={warningsBySession}
       relationships={allRelationships ?? []}
       assignmentTeachers={allAssignmentTeachers ?? []}
+      // ?tab=tools — the admin alert emails deep-link to the waitlist card. Validated
+      // against the known tab ids inside AdminDashboard; anything else is ignored.
+      initialTab={(await searchParams)?.tab}
     />
   )
 }

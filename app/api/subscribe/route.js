@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
-import { sendWaitlistAck } from '@/lib/notifications'
+import { sendWaitlistAck, sendAdminAlert } from '@/lib/notifications'
+import { notifyOnSubscribe } from '@/lib/accessAlerts'
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 
@@ -49,20 +50,32 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Something went wrong — please try again.' }, { status: 500 })
   }
 
-  // Acknowledge a genuine new ACCESS request. Someone asked on 2026-07-29 and was still
-  // waiting in silence on 08-16 because this endpoint told nobody, in either direction.
-  //
-  // Scoped to the waitlist source on purpose: the same form also collects blog
-  // subscribers, and "we'll send you a code when there's room" is nonsense to someone
-  // who just wanted new posts.
+  // A genuine new ACCESS request gets told in BOTH directions:
+  //   1. the requester gets an acknowledgment (waitlist source only — the same form
+  //      collects blog subscribers, and "we'll send you a code" is nonsense to them);
+  //   2. the ADMIN gets an alert. Someone asked on 2026-07-29 and waited in silence
+  //      until 08-16; the fix for that built only direction 1, and someone who asked on
+  //      2026-09-02 then went 19+ days with the owner never hearing about it.
+  // A re-submit (empty `inserted`) does neither. Blog-only signups never alert.
+  // The decision lives in lib/accessAlerts.js so it is unit-tested.
   //
   // after() rather than a floating promise — a serverless function can be reclaimed the
   // moment the response returns, and a send that never runs is exactly the silence this
   // is fixing. The requester's response never waits on the mail.
-  if (inserted?.length && source === 'waitlist') {
+  if (inserted?.length) {
     after(async () => {
-      const sent = await sendWaitlistAck({ to: email })
-      if (!sent) console.error('[subscribe] waitlist ack NOT sent to', email)
+      try {
+        const result = await notifyOnSubscribe({
+          email, source, inserted, service: svc,
+          sendAck: sendWaitlistAck, sendAlert: sendAdminAlert,
+          siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+        })
+        if (result.alert !== 'sent' && result.alert !== 'not_access_request') {
+          console.error('[subscribe] admin NOT alerted about', email, '— reason:', result.alert)
+        }
+      } catch (e) {
+        console.error('[subscribe] post-signup notifications threw for', email, e)
+      }
     })
   }
 
