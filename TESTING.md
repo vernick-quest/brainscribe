@@ -5110,3 +5110,58 @@ ever mentions. A "yes" to a finishing question the coach raised unprompted does 
 Gate: build green · `test:run` **1168** · `test:prompts`: the 9 other files green; `min-binding.mjs`
 holds zero-tolerance checks that measure ~2% per sample, so a full run can go red on a real (rare)
 leak — read the printed reply, don't rerun to green.
+
+## 2026-10-11 (late, ~23:10 PDT) — Starting drafts: one whole paragraph per section; duplicates refused; Rule 26 (focus/coach-ai)
+
+What changed: when a student arrives with a starting draft, `[SCAFFOLD:<prose type>:N]` now builds
+N sections of ONE part each ("Paragraph 1", "Paragraph 2"…, ids c0, c1…, count raised to fit every
+draft paragraph). The coach is told exactly that shape. A coach lock whose words are already
+confirmed in a DIFFERENT part is refused (stamp under the part + a line at the top of the Draft
+panel + a REFUSED note the coach sees next turn). New Rule 26: when the student says the Draft looks
+wrong, read the state back literally — no "glitch", no other app/doc, no parent/teacher, no ghostwriting.
+
+### Measured
+- Repro probe (`starting-draft-mapping.mjs`, now in `test:prompts`): keep ¶1+¶2 → one per section,
+  nothing twice, verbatim — **24/24** across six full runs (pre-fix: two paragraphs in section 1 8/8,
+  duplicate on "section 2 is empty" 4/4). One-block draft: 24/24 verbatim, in order, never twice.
+- Simulation, same 3 personas/fixture, BEFORE (20:35) → AFTER (22:59): duplicated sentence-words in
+  the final essay 163 / 111 / 0 → **0 / 0 / 0**; sections holding text 4 / 1 / 1 → 4 / 5 / 4 (engaged /
+  eager / terse); strong draft paragraphs kept exactly: eager S2 0/6 → 6/6; turns containing app/glitch
+  blame, off-platform or parent/teacher hand-offs (eager): 7 / 15 / 6 → 1 / 0 / 0. The one remaining
+  hit is a "try refreshing your Draft tab" hedge — see residuals.
+
+### Manual pass owed (Robert) — React wiring is UNVERIFIED (no jsdom; build + unit tests only)
+1. New assignment WITH a pasted starting draft of 3+ paragraphs (blank lines between them). When
+   the coach builds the structure, the Draft panel should show sections titled **Paragraph 1,
+   Paragraph 2, …** each with a single part — NOT Hook/Context/Reflection/Connection.
+2. Say "keep my first two paragraphs exactly as I wrote them" (after its quick review pass). Expect
+   paragraph 1 in Paragraph 1 and paragraph 2 in Paragraph 2, word for word, both ✓. Nothing twice.
+3. Type "wait section 2 is empty, can you put my second paragraph there?" (when it is NOT empty).
+   Expect the coach to say which section holds it and how it starts — no "glitch", no "refresh", no
+   Google Doc, no "ask your mom/teacher" — and NO second copy appearing anywhere.
+4. Duplicate refusal (only reachable if the coach misfires): if you ever see the line "That text is
+   already in Paragraph N, so it wasn't added to … a second time" at the top of the Draft, check the
+   words really are in Paragraph N exactly once and that ✕ dismisses the line. Report it — it means
+   the prompt let a duplicate attempt through and the net caught it.
+5. "Read me the whole thing" mid-session after one section was DICTATED: every section's words should
+   be read back (the read-back used to show only dictated rows once any existed).
+6. Finish (hand in) the draft-built essay: the transcript shows every paragraph verbatim.
+7. A starting draft pasted as ONE block: sections still single-part; the coach either asks where to
+   break it or (if you insist on keeping it whole) puts the whole block in Paragraph 1.
+
+### Residuals / not done
+- "The panel takes a second to refresh" hedges: ~1–2 of 4 replies in probe C, 1 turn in the sim.
+  Reported as a measured rate, not gated. Rule 26 already says there is no delay.
+- Sessions scaffolded BEFORE this (four-part sections) with a paragraph already misplaced: the coach,
+  asked to "just fix it", usually still tries to lock it again; the refusal held 100% in the probe.
+- `confirmNugget` (student taps "Lock it in") and Revise/Edit are not duplicate-checked: student
+  actions, deliberately left alone.
+- `[PARA_DONE]` still completes a section even when its lock was refused (pre-existing).
+- Audit judge (`lib/auditJudge.js`) has no category for Rule 26 behaviours — optional follow-up.
+- `npm run test:continuation` was NOT run here: it inserts rows into the live DB (this lane was told
+  not to write there). No continuation code changed; its unit coverage in `scaffoldWrite.test.js`
+  is green. Run it before merging.
+
+Gate: build green · `test:run` **1208** · `test:prompts` 11 files: green on re-runs; the final full
+pass went red only on `min-binding` 2e (measured-rate family the pre-change baseline also failed in
+this session) and `oversized-lock` P1 (1/3; re-run 2/3 = the baseline's 2/3). No migration.
