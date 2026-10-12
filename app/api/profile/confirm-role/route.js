@@ -33,11 +33,25 @@ export async function PATCH(request) {
   // NEVER re-declare 13+ to escape the consent gate. Without this, a child could
   // re-open /welcome, pick "13 or older," and reach the coach with no parent
   // approval. Fetch the existing profile and reject any such downgrade outright.
-  const { data: existing } = await service
+  const { data: existing, error: existingErr } = await service
     .from('profiles')
     .select('age_bracket, coppa_consent_required, coppa_consent_given')
     .eq('id', user.id)
     .single()
+
+  // FAIL CLOSED. The error was previously discarded, and isCoppaProtected(null) is
+  // false — so a failed read silently skipped the under-13 lock and let a protected
+  // account re-declare itself 13+, escaping parental consent. A transient read failure
+  // must cost a retry, never a bypass of the most sensitive invariant in the app.
+  // (Found 2026-10-11 by the admin lane while working on this file; it left this read
+  // untouched and reported it rather than folding a COPPA change into an unrelated one.)
+  if (existingErr) {
+    console.error('[confirm-role] COPPA read FAILED — refusing role change rather than guess:', user.id, existingErr.message)
+    return Response.json(
+      { error: 'We could not check your account just now. Please try again.', code: 'coppa_read_failed' },
+      { status: 503 }
+    )
+  }
 
   if (isCoppaProtected(existing) && age_bracket === '13plus') {
     return Response.json(
