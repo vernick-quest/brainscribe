@@ -4869,3 +4869,173 @@ rename cannot affect it — but it is **UNVERIFIED here**, not passed.
 
 Gate: clean `.next` · build green · `test:run` **934** (13 new in `lib/routeSlugs.test.js`) ·
 `next dev` and `next start` both boot and serve.
+---
+
+# Testing checklist — 2026-09-25 · Dark-mode toggle (`focus/coach-visuals`)
+
+Dark mode already shipped as OS-preference-only. This adds the **manual override**
+half the design README specified and the first pass deliberately deferred:
+`theme: 'light' | 'dark' | 'system'`, global, persisted, no flash.
+
+Three states, cycled by one button: **System → Light → Dark → System**. 'System' is
+the ABSENCE of `data-theme`, never a written value — that is what keeps OS-driven
+dark mode working with **scripting turned off**, exactly as it does today.
+
+Worktree was re-synced to `main` (was 151 commits behind) before any of this.
+
+## How it is wired
+- `lib/themePreference.js` — pure logic + the blocking `<head>` script source.
+- `app/layout.js` — inline script in `<head>`, `suppressHydrationWarning` on `<html>`.
+  Per `node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`.
+  **Deliberate divergence from that doc:** it seeds `data-theme="light"` on `<html>`;
+  we do NOT, because that would make `:not([data-theme="light"])` fail for everyone
+  and kill OS-driven dark for every reader who never touches the toggle.
+- `app/globals.css` — the dark token block is now physically duplicated: once under
+  `@media screen and (prefers-color-scheme: dark)` scoped to
+  `:root:not([data-theme="light"])`, once under `@media screen` scoped to
+  `:root[data-theme="dark"]`. CSS cannot give one rule both a media condition and an
+  attribute condition. A test asserts the two blocks are byte-identical.
+- `components/ThemeToggle.js` — in BOTH headers (`Navbar`, `SiteHeader`).
+
+## Automated gate — `npm run test:run` (967 tests, 48 files)
+- [x] ✅ `lib/themePreference.test.js` (32) — cycling, corrupt stored values, and the
+      `<head>` script EXECUTED against a fake window for every stored value,
+      including a `localStorage` that throws.
+- [x] ✅ `lib/theme.test.js` (96) — the two dark blocks byte-identical and
+      declaring the same token set; the manual block inside `@media screen`; the
+      forced-light escape hatch present; the logo override present in BOTH
+      directions; `<html>` carries no default `data-theme`.
+- [x] ✅ `components/ThemeToggle.test.js` — real `<button>`, aria-label naming both
+      the current state and the next one, renders System on the server.
+- [x] ✅ **Gate proven by MUTATION, not by observing green.** Four deliberate breaks,
+      all caught: drifting one token in one block only; un-scoping the manual block
+      from `@media screen`; dropping `:not([data-theme="light"])`; deleting the logo
+      override. Restored green after each.
+
+## The trap this change had to clear
+`components/LogoLockup.js` picks between two raster files with
+`<source media="(prefers-color-scheme: dark)">`, which can **only ever see the OS**.
+A reader forcing Dark on a light machine would have got the NAVY wordmark on a dark
+header — 1.25:1, the exact bug the dark asset exists to fix. Fixed with
+`content: url()` on `img[data-logo-lockup]`, which re-points the rendered image only
+when the override is active.
+- [x] ✅ **Measured in the browser, not assumed.** Forcing Dark on a light OS:
+      `<picture>` resolved to `brainscribe-logo.png` while the painted
+      `content` was `brainscribe-logo-dark.png`. The reverse case inverts correctly.
+- [x] ✅ Costs nothing by default: a clean load with no override fetches exactly
+      ONE lockup file (verified in the network log).
+
+## Verified live (Chromium, both emulated `prefers-color-scheme` values)
+Against the **production build** (`next start`), not dev — see the blocker below.
+
+| OS | Preference | `--bg-page` | `color-scheme` | Logo painted |
+|---|---|---|---|---|
+| light | System | `#fdfbf3` | normal | light (via `<picture>`) |
+| light | **Dark** | `#101a24` | dark | **dark (via override)** |
+| dark | System | `#101a24` | dark | dark (via `<picture>`) |
+| dark | **Light** | `#fdfbf3` | **light** | **light (via override)** |
+
+- [x] ✅ Cycling the real button: System → Light → Dark → System, with `data-theme`
+      and `localStorage` agreeing at every step.
+- [x] ✅ Returning to System **removes** the attribute and clears storage, handing
+      control back to the OS. (The bug this avoids: a stale attribute pins the
+      reader forever and the OS switch silently stops working.)
+- [x] ✅ Tap target is **44×44** (CLAUDE.md minimum) with a 32/36px visible box; the
+      negative margin means adding it did not push its neighbours apart.
+- [x] ✅ Marketing header at 375px wraps without overflow.
+- [x] ✅ No hydration errors; all requests 200/304.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ The toggle on the **signed-in** `Navbar` in a live session — it is the same
+      component and renders in tests, but every Navbar surface needs auth, which
+      cannot be driven headlessly here. Worth one look on `/folder`.
+- [ ] ⬜ Print a transcript while forced to Dark. The manual block is inside
+      `@media screen` precisely so print stays light; asserted in tests, never put
+      on paper.
+- [ ] ⬜ Private/incognito, where `localStorage` throws: the toggle should still
+      switch for the visit and simply not persist.
+- [ ] ⬜ iOS/Android: `color-scheme` should carry form controls and scrollbars.
+
+## 🔴 Pre-existing blocker found (NOT this change — flagged, not fixed)
+`next dev` and `next start` both **fail on every request** on current `main`:
+
+> `Error: You cannot use different slug names for the same dynamic path ('id' !== 'sessionId').`
+
+`app/api/sessions/[sessionId]/starting-draft/route.js` (added by `3374cee`, already
+an ancestor of the deployed `f374564`) collides with `app/api/sessions/[id]/`.
+Reproduced on a clean `.next` rebuild. **`npm run build` exits 0 regardless** — the
+same blind spot recorded for `globals.css`. Production serves fine (Vercel builds its
+own routing), so this is a local-development blocker, not an outage. It belongs to
+whoever owns the starting-draft work; the fix is to fold that route under `[id]`.
+This lane verified by parking that one directory locally and restoring it before
+commit (`git status` confirmed clean).
+
+---
+
+# Testing checklist — 2026-10-11 · Theme in settings too (`focus/coach-visuals`)
+
+Product ask: "Put dark mode in both header and settings." The header button from
+`403bb17` stays exactly where it is. The same setting now ALSO appears as a three-way
+radio group (System / Light / Dark):
+
+- **`/profile`** → "Preferences" card, at the bottom. This is the account page for
+  **students, teachers and admins** (the Navbar avatar sends every non-parent here),
+  so all three roles get it from one mount.
+- **`/parent/settings`** → "Appearance" card, after the co-parent box.
+- **NOT** on `/profile/[studentId]` (a watcher viewing a student), and **NOT** on
+  either page while an admin is remoting in — the page is then someone else's, and
+  the theme is the admin's own browser preference.
+
+**One store.** Both controls go through `components/useThemePreference.js`
+(`useSyncExternalStore`) → `lib/themePreference.js`. The current value is read from
+`data-theme` on `<html>`; the only write path is `setThemePreference` (attribute +
+localStorage + a change event); a `storage` listener applies changes made in other
+tabs. Neither control holds its own copy of the value.
+
+## Automated gate
+- `lib/themePreference.test.js` — "two controls, one setting": settings→header and
+  header→settings through every state, a reload via the real `THEME_INIT_SCRIPT`,
+  storage blocked with a late-mounting control, another tab changing it, `clear()`,
+  tampered values, unsubscribe.
+- `components/ThemePreferenceControl.test.js` — markup, plus SOURCE-level guards:
+  both controls use the hook and contain no `localStorage` / `data-theme` /
+  `THEME_STORAGE_KEY`; a sweep of `app/ components/ lib/` fails if any file other
+  than `lib/themePreference.js` and `app/layout.js` touches the store (with a positive
+  control that the sweep finds the module); the control is mounted only in
+  `app/profile/page.js` (inside `{!imp && (`) and `components/ParentSettings.js`
+  (inside `{!impersonating && (`), and never in `app/profile/[studentId]/page.js`.
+- Mutation-checked: a direct `localStorage.setItem('bs-theme')` in ThemeToggle, a
+  dropped change notification, a mount on the watcher page, and removing the `!imp`
+  gate each turned the suite red.
+
+## Verified live (local `next dev`, OS = dark, real clicks)
+`/profile` and `/parent/settings` need a Google sign-in, which the preview browser
+cannot do. So the REAL `Navbar` and the REAL `ThemePreferenceControl` were mounted
+together in the `/profile` card markup on a temporary public route (deleted before
+commit, never in git):
+- [x] ✅ Settings → Dark: page dark, header reads "Theme: Dark", stored `dark`.
+- [x] ✅ Header click → System: radio moves to System, attribute AND key removed,
+      page follows the OS.
+- [x] ✅ Header click → Light on a DARK OS: radio moves to Light, page cream, light logo.
+- [x] ✅ Reload after each of Dark / Light / System: both controls agree with what
+      was stored.
+- [x] ✅ A second tab (`/about`, marketing header) cycles Light → Dark → System: the
+      first tab repaints and BOTH of its controls follow each step.
+- [x] ✅ Keyboard: arrow keys move the choice (header follows); orange focus ring on
+      the visible tile.
+- [x] ✅ 375px: three tiles fit (87×63px, ≥44px), no horizontal scroll.
+- [x] ✅ No hydration errors in the console.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ **Student** `/profile`: "Preferences" card at the bottom; choose Dark → the
+      header icon turns to the moon at once; reload → both still Dark.
+- [ ] ⬜ **Parent** `/parent/settings`: "Appearance" card; choose Light → header
+      follows; click the header button → the radio follows.
+- [ ] ⬜ **Teacher** and **admin** `/profile`: the card is there (same mount).
+- [ ] ⬜ **Parent/teacher on `/profile/<studentId>`**: there is NO theme card.
+- [ ] ⬜ **Admin remoted into a student AND into a parent**: no theme card on
+      `/profile` or `/parent/settings`; the header button still works for the admin.
+- [ ] ⬜ Private/incognito where storage throws: choosing still switches the page,
+      and the card shows "This browser is blocking saved settings…". (Only the
+      lib's `persisted: false` is unit-tested; the message itself has never rendered
+      in a browser.)

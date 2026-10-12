@@ -10,6 +10,7 @@ import AddChildForm from '@/components/AddChildForm'
 import AddCoParentForm from '@/components/AddCoParentForm'
 import UnlinkChildButton from '@/components/UnlinkChildButton'
 import Icon from '@/components/Icon'
+import ThemePreferenceControl from '@/components/ThemePreferenceControl'
 
 const ROLE_LABELS = {
   student: 'Student',
@@ -287,6 +288,21 @@ export default function ParentSettings({ user, profile, viewerId, children = [],
             since inviting a co-parent isn't managing children. Hidden for a
             co-parent (they can't invite another parent). */}
         {!isCoParent && <AddCoParentForm />}
+
+        {/* Appearance — the same theme setting as the header button, through the
+            same store. Hidden while an admin is remoting in: this page is then the
+            PARENT's, and the theme is the admin's own browser preference, so showing
+            it here would read as changing the parent's setting. The header button
+            is still there for the admin. */}
+        {!impersonating && (
+          <section className="rounded-2xl p-6 space-y-4"
+            style={{ backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Appearance
+            </h2>
+            <ThemePreferenceControl />
+          </section>
+        )}
 
       </main>
     </div>
