@@ -5165,3 +5165,49 @@ wrong, read the state back literally — no "glitch", no other app/doc, no paren
 Gate: build green · `test:run` **1208** · `test:prompts` 11 files: green on re-runs; the final full
 pass went red only on `min-binding` 2e (measured-rate family the pre-change baseline also failed in
 this session) and `oversized-lock` P1 (1/3; re-run 2/3 = the baseline's 2/3). No migration.
+
+## 2026-10-11 (~23:55 PDT) — Round 2: the duplicate refusal could destroy text; fixed + invariant-tested (focus/coach-ai)
+
+An independent adversarial review found that the duplicate refusal from the section above counted
+a SIBLING part of the same prose section as "another part": "make my analysis the evidence, here's
+new analysis" refused the move, then the ordinary revision replaced the analysis, and that paragraph
+existed nowhere. Fixed, plus eight smaller findings. Every finding is a co-located test that failed on
+`af18d99` (`lib/scaffoldWriteRound2.test.js`, 15 of 17 red before the fix; the 2 green were a control
+and a too-weak assertion, tightened).
+
+Governing invariant: `lib/scaffoldWriteInvariant.test.js` runs token sequences through the handler
+as it stood at 2238e2b (frozen) and through today's, and fails if any text the old code kept in the
+Draft is missing from the new Draft + banks. Named cases + 13,500 seeded sequences per run; a stress
+run of 60,000 sequences of up to 14 tokens passed. Against `af18d99`'s real code it fails 9 ways.
+
+New behaviour the student can see:
+- A lock refused as a duplicate keeps its words on that part, with an **"Add them here anyway"**
+  button. The notice at the top of the Draft says where the words are kept (it no longer says
+  "nothing you wrote was removed").
+- If the coach later rewrites the part the words were in (so they left it), the refused words land
+  where they were aimed, and a notice says so.
+
+### Manual pass owed (Robert) — React wiring still UNVERIFIED (no jsdom)
+8. Any essay (no starting draft): ask the coach to "use my analysis as the evidence and here's a new
+   analysis: …". Both texts must be in the Draft afterwards — evidence = old analysis, analysis = new.
+9. Starting-draft session: if a "Those words are already in Paragraph N" note appears under a part,
+   tap **Add them here anyway** → the words appear in that part, the note disappears, and the coach's
+   next reply does not refuse or re-stamp it.
+10. Paste a starting draft written in Google Docs (curly apostrophes). Keep a paragraph, then ask for
+    it to be kept again: no second copy appears, and no "A change didn't apply here" note shows.
+11. Conclusion that restates the thesis word for word ("In conclusion, …"): it locks normally.
+
+### Measured (round 2)
+- `starting-draft-mapping.mjs`: GREEN twice on the final prompt (A/B, C, D, E). E's one `[SCAFFOLD]`
+  re-emit (3/4) re-measured 8/8 clean.
+- Reviewer's P2 probe (full five-section draft, new dictated paragraph): coach locked a non-existent
+  `c5` in 0/3 runs (reviewer measured 1/3 before).
+- `grown-story` P3 regressed to ~8/11 when the scaffold state named finished sections' part ids;
+  ids removed from multi-part openings → 6/6 (pre-change baseline 4/4).
+- Full `test:prompts` on the round-2 prompt: all files green except `min-binding`, whose reds were
+  the documented family (a pause mention matching the offer detector; a completion after a yes to
+  the fixture's own offer, measured 1/24 at 4632d26; "+ Add another section" 2/3 = the pre-change
+  baseline's 2/3) and `grown-story` P3 (fixed above).
+
+Gate: build green · `test:run` **1248** · no migration · `test:continuation` still NOT run here
+(writes the live DB) — run it before merging.
