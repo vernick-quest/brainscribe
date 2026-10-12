@@ -4677,3 +4677,42 @@ session with a commitment and no check is normal, and a CTA that over-counts get
 Record the distribution first; a threshold, if ever, comes from the data.
 
 Gate: build green · `test:run` **903** (11 new in `lib/monitorSilence.test.js`).
+
+## 2026-10-11 — The coach reads the starting draft; a stated minimum binds (focus/coach-ai)
+
+Motivating case (from the DB, numbers only): 350–500 word assignment, 361-word starting draft
+declared at intake, scaffolded as ONE personal_statement section, 177 words confirmed. The coach
+promised "the next two sections" (none existed), estimated "roughly 220", said "You're done …
+No pressure if it feels complete", and the session completed.
+
+### What changed
+- `/api/tutor` reads the starting draft (`fetchStartingDraft`, SERVICE client) and the live word
+  count (`computeActualLive`, SERVICE client) every turn. Both land in the DYNAMIC tail only.
+- `lib/prompts.js`: Rule 12 gate (below a stated MINIMUM: no "done", no `[COMPLETE]`, state the gap,
+  respect a choice to stop), Rule 14 (use the app's count), Rule 14a scoped to above-minimum, Rule 16,
+  Rule 2 sizing to the word target, Rule 20 no phantom sections, a STARTING DRAFT block (present /
+  unknown), and a sizing / too-small line in ASSIGNMENT REQUIREMENTS.
+
+### Manual pass owed (the harness cannot see the live UI)
+1. New assignment with a range ("350–500 words") and a pasted starting draft. First coach turn names
+   the draft and never asks you to paste it. ⚠️ The app's GREETING (written before the draft is saved)
+   still asks "have you written anything? paste it" — answer "it's in my draft" and confirm the coach
+   says it already has it.
+2. Scaffold: count is ≥ 3 for a 350–500 piece (expect ~4).
+3. Lock a few parts, then ask "how many words do I have?" — the number matches the chip **only until
+   you tap Assemble on one section and not another**: the coach now counts what completion will build
+   (`computeActualLive`); the chip still uses `computeActualFromDraft`. See the note below.
+4. Finish all sections under the minimum and say "am I done?" — no `[COMPLETE]`, the gap in words,
+   "+ Add another section" named. Say "I want to stop" — told it's saved and fine to stop.
+5. Positive control: get over the minimum, review, "let's finish" — session completes.
+
+### Known, deliberately not fixed here
+- **Chip vs coach count**: `computeActualFromDraft` (chip, transcript, parent) counts paragraphs rows
+  ALONE once any row exists; rows exist only for sections the student assembled. The coach no longer
+  uses it, because once the count gates completion that undercount would tell a student who met the
+  minimum that they are short. Switching the chip is a coaching-session-lane call.
+- `sessions.requirements.actual` is still stored stale between paragraph saves (dashboard chip in
+  `SessionsList.js` reads it). No new write site was added, by instruction.
+
+Gate: build green · `test:run` **972** · `test:prompts` all 10 files green (two new:
+`starting-draft.mjs`, `min-binding.mjs`).

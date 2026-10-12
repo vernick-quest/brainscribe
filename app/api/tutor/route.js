@@ -9,6 +9,8 @@ import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { parseCommitments, detectLockOverClaim } from '@/lib/coachCommitments'
 import { hasLandedLockToken, stripCoachTokens } from '@/lib/coachTokens'
+import { fetchStartingDraft } from '@/lib/startingDraft'
+import { computeActualLive } from '@/lib/requirements'
 
 const anthropic = new Anthropic()
 
@@ -114,7 +116,68 @@ export async function POST(request) {
     if (agg.checkedCount > 0) scaffold.coachContribRatio = agg.coachContribRatio
   }
 
-  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, { onboarding: isOnboarding, requirements: sessionRow?.requirements, resume: resume === true, continuation: isContinuation })
+  // ── What the student has ACTUALLY written, read fresh every turn ─────────────────
+  // Two reads, in parallel, both with the SERVICE client. Access is already settled
+  // above: a non-admin only reaches this line if RLS returned their session row, and an
+  // admin is trusted. The service client matters because an RLS-filtered read returns
+  // 200 with null/[] — indistinguishable from "no draft" / "no paragraphs" (the trap
+  // documented in lib/startingDraft.js), and both of those answers flatter the student.
+  //
+  // 1. The starting draft (migration 071). Until 2026-10-11 the coach never saw it, so a
+  //    student who declared 361 words had to paste them all into the chat. Classified
+  //    present / absent / no-table / unknown; `unknown` reaches the prompt as its own
+  //    state, so the coach never claims there is no draft on a read it could not make.
+  // 2. The live word count. sessions.requirements.actual is refreshed only on paragraph
+  //    save and on completion — never on a component confirm — so it sat stale for whole
+  //    sessions and the coach estimated instead (said ~220 of a 177-word draft, then let
+  //    it finish under a 350 minimum). Count it here, per turn. Deliberately NOT another
+  //    write site: nothing is persisted.
+  //    computeActualLive, NOT computeActualFromDraft: the latter counts paragraphs rows
+  //    ALONE once any row exists, and rows only appear when a student taps "Assemble" — so
+  //    one assembled section hid every other confirmed section. Harmless-ish on a chip;
+  //    once this count GATES completion (Rule 12) that undercount is the coach telling a
+  //    student who met the minimum that they're short. computeActualLive mirrors what
+  //    /api/sessions/[id]/complete will actually put in the final Draft.
+  //    `scaffold` is the client's live tree (scaffoldRef) — the same one the chip reads.
+  const reqs = sessionRow?.requirements
+  const hasTargets = Array.isArray(reqs?.targets) && reqs.targets.length > 0
+  const svc = createServiceClient()
+  const [startingDraftRead, parasRead] = await Promise.all([
+    fetchStartingDraft(svc, sessionId).catch(err => {
+      console.error(`[tutor] starting-draft read threw for session ${sessionId}:`, err?.message)
+      return { draft: null, state: 'unknown' }
+    }),
+    hasTargets
+      ? svc.from('paragraphs').select('scribed_text, position, paragraph_index').eq('session_id', sessionId)
+          .then(r => r, err => ({ data: null, error: err }))
+      : Promise.resolve({ data: null, error: null }),
+  ])
+  let liveRequirements = reqs
+  let wordCountUnavailable = false
+  if (hasTargets) {
+    if (parasRead.error) {
+      // Never fall back to the stored count: it is the stale number this exists to replace.
+      // The prompt tells the coach the count is unknown instead.
+      console.error(`[tutor] live word count FAILED for session ${sessionId}: ${parasRead.error?.code ?? ''} ${parasRead.error?.message ?? ''} — coach told the count is unknown this turn`)
+      wordCountUnavailable = true
+      liveRequirements = { ...reqs, actual: null }
+    } else {
+      liveRequirements = { ...reqs, actual: computeActualLive(parasRead.data ?? [], scaffold?.components) }
+    }
+  }
+  const sd = startingDraftRead?.draft
+  const startingDraft = startingDraftRead?.state === 'present' && sd
+    ? { state: 'present', content: sd.content, wordCount: sd.word_count, source: sd.source }
+    : { state: startingDraftRead?.state ?? 'unknown' }
+
+  const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, effectiveAssignment, scaffold, {
+    onboarding: isOnboarding,
+    requirements: liveRequirements,
+    wordCountUnavailable,
+    startingDraft,
+    resume: resume === true,
+    continuation: isContinuation,
+  })
 
   const stream = await anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
