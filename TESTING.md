@@ -4969,3 +4969,73 @@ own routing), so this is a local-development blocker, not an outage. It belongs 
 whoever owns the starting-draft work; the fix is to fold that route under `[id]`.
 This lane verified by parking that one directory locally and restoring it before
 commit (`git status` confirmed clean).
+
+---
+
+# Testing checklist — 2026-10-11 · Theme in settings too (`focus/coach-visuals`)
+
+Product ask: "Put dark mode in both header and settings." The header button from
+`403bb17` stays exactly where it is. The same setting now ALSO appears as a three-way
+radio group (System / Light / Dark):
+
+- **`/profile`** → "Preferences" card, at the bottom. This is the account page for
+  **students, teachers and admins** (the Navbar avatar sends every non-parent here),
+  so all three roles get it from one mount.
+- **`/parent/settings`** → "Appearance" card, after the co-parent box.
+- **NOT** on `/profile/[studentId]` (a watcher viewing a student), and **NOT** on
+  either page while an admin is remoting in — the page is then someone else's, and
+  the theme is the admin's own browser preference.
+
+**One store.** Both controls go through `components/useThemePreference.js`
+(`useSyncExternalStore`) → `lib/themePreference.js`. The current value is read from
+`data-theme` on `<html>`; the only write path is `setThemePreference` (attribute +
+localStorage + a change event); a `storage` listener applies changes made in other
+tabs. Neither control holds its own copy of the value.
+
+## Automated gate
+- `lib/themePreference.test.js` — "two controls, one setting": settings→header and
+  header→settings through every state, a reload via the real `THEME_INIT_SCRIPT`,
+  storage blocked with a late-mounting control, another tab changing it, `clear()`,
+  tampered values, unsubscribe.
+- `components/ThemePreferenceControl.test.js` — markup, plus SOURCE-level guards:
+  both controls use the hook and contain no `localStorage` / `data-theme` /
+  `THEME_STORAGE_KEY`; a sweep of `app/ components/ lib/` fails if any file other
+  than `lib/themePreference.js` and `app/layout.js` touches the store (with a positive
+  control that the sweep finds the module); the control is mounted only in
+  `app/profile/page.js` (inside `{!imp && (`) and `components/ParentSettings.js`
+  (inside `{!impersonating && (`), and never in `app/profile/[studentId]/page.js`.
+- Mutation-checked: a direct `localStorage.setItem('bs-theme')` in ThemeToggle, a
+  dropped change notification, a mount on the watcher page, and removing the `!imp`
+  gate each turned the suite red.
+
+## Verified live (local `next dev`, OS = dark, real clicks)
+`/profile` and `/parent/settings` need a Google sign-in, which the preview browser
+cannot do. So the REAL `Navbar` and the REAL `ThemePreferenceControl` were mounted
+together in the `/profile` card markup on a temporary public route (deleted before
+commit, never in git):
+- [x] ✅ Settings → Dark: page dark, header reads "Theme: Dark", stored `dark`.
+- [x] ✅ Header click → System: radio moves to System, attribute AND key removed,
+      page follows the OS.
+- [x] ✅ Header click → Light on a DARK OS: radio moves to Light, page cream, light logo.
+- [x] ✅ Reload after each of Dark / Light / System: both controls agree with what
+      was stored.
+- [x] ✅ A second tab (`/about`, marketing header) cycles Light → Dark → System: the
+      first tab repaints and BOTH of its controls follow each step.
+- [x] ✅ Keyboard: arrow keys move the choice (header follows); orange focus ring on
+      the visible tile.
+- [x] ✅ 375px: three tiles fit (87×63px, ≥44px), no horizontal scroll.
+- [x] ✅ No hydration errors in the console.
+
+## Still to check (needs a real session — conductor / Robert)
+- [ ] ⬜ **Student** `/profile`: "Preferences" card at the bottom; choose Dark → the
+      header icon turns to the moon at once; reload → both still Dark.
+- [ ] ⬜ **Parent** `/parent/settings`: "Appearance" card; choose Light → header
+      follows; click the header button → the radio follows.
+- [ ] ⬜ **Teacher** and **admin** `/profile`: the card is there (same mount).
+- [ ] ⬜ **Parent/teacher on `/profile/<studentId>`**: there is NO theme card.
+- [ ] ⬜ **Admin remoted into a student AND into a parent**: no theme card on
+      `/profile` or `/parent/settings`; the header button still works for the admin.
+- [ ] ⬜ Private/incognito where storage throws: choosing still switches the page,
+      and the card shows "This browser is blocking saved settings…". (Only the
+      lib's `persisted: false` is unit-tested; the message itself has never rendered
+      in a browser.)

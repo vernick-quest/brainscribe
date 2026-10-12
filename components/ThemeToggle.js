@@ -1,21 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import {
-  THEME_STORAGE_KEY, THEME_LABELS, nextTheme, normalizeTheme, themeAttribute,
-} from '@/lib/themePreference'
+import { THEME_LABELS, nextTheme } from '@/lib/themePreference'
+import useThemePreference from '@/components/useThemePreference'
 
 // One button, three states: System → Light → Dark → System.
 //
 // The PAGE theme is never set from here on first load — the blocking script in
 // <head> (THEME_INIT_SCRIPT) has already put `data-theme` on <html> before paint.
-// This component only reads the stored preference back so the icon matches, and
-// writes the attribute on subsequent clicks.
 //
-// Which is why the initial state is 'system' on both server and client: rendering
-// the real preference during hydration would need to read localStorage, which the
-// server cannot do, and a mismatch there is a hydration error. The effect corrects
-// the ICON a tick later. Nothing about the page's colours depends on that tick.
+// This is one of TWO controls for the same setting (the other is the radio group on
+// the account pages, ThemePreferenceControl). Both read and write ONLY through
+// useThemePreference → lib/themePreference.js, and both re-render on every change,
+// so flipping one moves the other. Never add a localStorage/data-theme path here.
 
 function Icon({ theme }) {
   const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
@@ -46,30 +42,7 @@ function Icon({ theme }) {
 const TAP_MIN = 44
 
 export default function ThemeToggle({ size = 36, className = '' }) {
-  const [theme, setTheme] = useState('system')
-
-  useEffect(() => {
-    try {
-      setTheme(normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)))
-    } catch {
-      /* localStorage can throw outright in private modes — stay on 'system'. */
-    }
-  }, [])
-
-  function apply(next) {
-    setTheme(next)
-    const attr = themeAttribute(next)
-    // null means REMOVE: on 'system' the media query must be the only thing
-    // deciding, or the reader stays pinned to their last explicit choice.
-    if (attr) document.documentElement.setAttribute('data-theme', attr)
-    else document.documentElement.removeAttribute('data-theme')
-    try {
-      if (next === 'system') localStorage.removeItem(THEME_STORAGE_KEY)
-      else localStorage.setItem(THEME_STORAGE_KEY, next)
-    } catch {
-      /* Preference won't persist across reloads, but this visit still works. */
-    }
-  }
+  const { theme, choose } = useThemePreference()
 
   const label = `Theme: ${THEME_LABELS[theme]}`
 
@@ -82,7 +55,7 @@ export default function ThemeToggle({ size = 36, className = '' }) {
   return (
     <button
       type="button"
-      onClick={() => apply(nextTheme(theme))}
+      onClick={() => choose(nextTheme(theme))}
       aria-label={`${label}. Switch to ${THEME_LABELS[nextTheme(theme)]}.`}
       title={label}
       className={`flex items-center justify-center ${className}`}

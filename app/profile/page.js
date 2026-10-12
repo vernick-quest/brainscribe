@@ -7,6 +7,7 @@ import ProfileForm from '@/components/ProfileForm'
 import WritingProfileCard from '@/components/WritingProfileCard'
 import InviteParentForm from '@/components/InviteParentForm'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
+import ThemePreferenceControl from '@/components/ThemePreferenceControl'
 import { getImpersonation } from '@/lib/impersonation'
 import { MAX_PARENTS_PER_CHILD } from '@/lib/relationships'
 import { getSubject } from '@/lib/subjects'
@@ -270,6 +271,28 @@ export default async function ProfilePage() {
               />
             </div>
           </>
+        )}
+
+        {/* Preferences — the viewer's OWN theme, the same setting (and the same
+            store) as the header button. Every role whose account page this is gets
+            it: students, and teachers/admins, whose avatar also lands here.
+            NOT while an admin is remoting in: the page is then someone else's
+            profile, and the theme is the admin's browser preference, not theirs.
+            /profile/[studentId] (a watcher viewing a student) never mounts this. */}
+        {!imp && (
+          <div
+            className="rounded-2xl p-6 space-y-4"
+            style={{
+              backgroundColor: 'var(--surface-card)',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Preferences
+            </h2>
+            <ThemePreferenceControl />
+          </div>
         )}
 
       </main>

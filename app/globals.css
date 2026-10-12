@@ -499,6 +499,15 @@ button:hover > [data-theme-toggle-box] {
   color: var(--text-strong);
 }
 
+/* Theme choice tiles on the account pages (ThemePreferenceControl). The native
+   radio is visually hidden, so the keyboard focus ring has to be drawn on the tile
+   the reader can actually see — otherwise focus lands on an invisible input. */
+.theme-choice:has(input:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
 /* ── The logo lockup under a MANUAL theme choice ────────────────────────────
    components/LogoLockup.js picks between two raster files with <picture>, and a
    <source media="(prefers-color-scheme: dark)"> can only ever see the OS setting.
