@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, memo } from 'react'
-import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem } from '@/lib/scaffoldWrite'
+import { resolveWriteIndex, resolveParagraphWriteIndex, updateComponentItem, resolveDoneText, resolveComponentTarget, resolveComponentWrite, shouldPreserveExisting, preserveExistingItem, decideDoneWrite, annotateDuplicates } from '@/lib/scaffoldWrite'
+import { draftScaffoldTree } from '@/lib/startingDraftScaffold'
 import MissingWorkFlag from '@/components/MissingWorkFlag'
 import { useTabTitle } from '@/components/TabTitle'
 import { useRouter } from 'next/navigation'
@@ -473,14 +474,28 @@ function wantsFullReadback(text) {
 
 // Assemble the verbatim read-back text from the same source as the transcript page.
 function assembleReadBackText(scaffold, paragraphs) {
-  const prose = (paragraphs ?? []).filter(p => p?.scribed_text).map(p => p.scribed_text)
-  if (prose.length) return prose.join('\n\n')
-  // Non-prose fallback (e.g. a haiku's lines) — confirmed scaffold line items in order.
-  const lines = (scaffold?.components ?? [])
-    .flatMap(sec => sec.items ?? [])
-    .filter(it => it.status === 'confirmed' && (it.text || it.nuggetText))
-    .map(it => it.text || it.nuggetText)
-  return lines.join('\n')
+  // PER SECTION, the way computeActualLive and completion read it: a section's paragraphs row
+  // wins, otherwise its confirmed parts. This used to be all-or-nothing — one row anywhere hid
+  // every section without one — which is the NORMAL state of a starting-draft session (kept
+  // paragraphs sit verbatim in one-part sections until completion, a dictated one gets a row),
+  // so a read-back would have shown the student one paragraph and silently dropped the rest.
+  const rows = (paragraphs ?? []).filter(p => p?.scribed_text)
+  const sections = scaffold?.components ?? []
+  const idxOf = r => r.paragraph_index ?? r.position
+  const byIdx = new Map()
+  for (const r of rows) if (Number.isInteger(idxOf(r)) && !byIdx.has(idxOf(r))) byIdx.set(idxOf(r), r)
+  const out = []
+  sections.forEach((sec, i) => {
+    if (byIdx.has(i)) { out.push(byIdx.get(i).scribed_text); return }
+    // Non-prose parts (a haiku's lines) stay one per line, as before.
+    const lines = (sec.items ?? [])
+      .filter(it => it.status === 'confirmed' && (it.text || it.nuggetText))
+      .map(it => it.text || it.nuggetText)
+    if (lines.length) out.push(lines.join('\n'))
+  })
+  // Rows that belong to no section (a continuation's dictated addition) are real text too.
+  for (const r of rows) if (!(Number.isInteger(idxOf(r)) && idxOf(r) < sections.length)) out.push(r.scribed_text)
+  return out.join('\n\n')
 }
 
 function buildReadBackMessage(persona, body) {
@@ -1495,7 +1510,13 @@ export default function TutorSession({
           ? parts.slice(2).join(':').split('|').map(s => s.trim()).filter(Boolean)
           : null
         if ((!isNaN(count) && count > 0) || customLabels?.length) {
-          const components = buildComponentTree(assignType, count || 1, customLabels)
+          // A student who arrived with a draft gets ONE whole-paragraph part per section
+          // (lib/startingDraftScaffold.js), so "paragraph 2 goes in section 2" is the right
+          // instinct instead of the one that put two paragraphs into one section's slots and
+          // then locked paragraph 2 a second time. Prose types only; null = normal builder.
+          const draftTree = customLabels?.length ? null
+            : draftScaffoldTree(assignType, count, initialStartingDraft?.content)
+          const components = draftTree ?? buildComponentTree(assignType, count || 1, customLabels)
           const totalParas = components.length
           sc = { assignment_type: assignType, total_paragraphs: totalParas, current_paragraph_index: 0, components, thesis: null }
           newScaffoldCreated = true
@@ -1573,43 +1594,27 @@ export default function TutorSession({
         // names against a custom c0/c1 scaffold). Redirect rather than drop — that dropped
         // 151 words of Baron's Gratitude Letter on 2026-08-04.
         const doneTarget = resolveComponentWrite(sc, paraIdx, componentId, { assembledIndexes })
+        // The decision is lib/scaffoldWrite.js decideDoneWrite — the same decision this handler
+        // made at 2238e2b (preserve → fragment → dropped → write) plus two no-write short-circuits,
+        // proven equal-Draft by lib/scaffoldWriteInvariant.test.js. Duplicates are NEVER refused
+        // here; annotateDuplicates flags them after the turn (observe-only, round 3).
         if (doneTarget) sc = updateComponentItem(sc, doneTarget.paraIdx, doneTarget.id, item => {
-          // On an INFERRED target we are guessing which component was meant, so never let
-          // the guess overwrite real text — confirm what the student already has. Their
-          // words outrank our inference about which slot they belong in. "Inferred" now
-          // includes a CROSS-SECTION redirect: the id matched exactly, but which section
-          // the coach meant is still inference, and that path skipped this guard entirely
-          // (shouldPreserveExisting documents the trade).
-          if (shouldPreserveExisting(doneTarget, item)) {
+          const decision = decideDoneWrite({ target: doneTarget, item, inlineText })
+          if (decision.outcome === 'preserved') {
+            // On an INFERRED target (inexact id, or a cross-section redirect) the words already
+            // there outrank our guess about which slot was meant — banked + stamped
+            // (preserveExistingItem), recoverable via Revise/Edit.
             console.warn(
               `[token-safety-net] [DONE:${componentId}:…] resolved to an INFERRED target ` +
               `(${doneTarget.crossSection ? `cross-section → paragraph ${doneTarget.paraIdx}` : 'inexact id'}) ` +
               `that already holds the student's words — keeping them rather than overwriting. ` +
               `The revision did NOT land; it is recoverable via Revise/Edit.`
             )
-            // Bank the words and stamp the refusal — see preserveExistingItem. (An
-            // earlier draft of this fix returned the item untouched on a cross-section
-            // hit, reasoning that a [DONE:] aimed elsewhere is not approval. Correct in
-            // principle, but it left a candidate as a candidate, and assembly takes
-            // confirmed items only — which is exactly how words go missing from a Final
-            // Draft. Losing writing outranks confirming a beat early.)
-            return preserveExistingItem(item, doneTarget)
-          }
-          // A late recap quoting only part of a confirmed line must not truncate it. Only
-          // guards the case where the new text is contained in the old — a genuine revision
-          // (different words) still wins, which is what revisions are for.
-          if (item.status === 'confirmed' && item.text && inlineText
-              && item.text.length > inlineText.length
-              && item.text.toLowerCase().includes(inlineText.trim().toLowerCase())) {
+          } else if (decision.outcome === 'fragment') {
             console.warn(`[token-safety-net] [DONE:${componentId}:…] quoted a fragment of the confirmed text — keeping the longer version`)
-            return item
           }
-          const { text, dropped } = resolveDoneText(item, inlineText)
-          // Still never confirm a component with no content — a blank "✓" renders as
-          // nothing. But no longer walk away quietly: record the drop on the item so the
-          // integrity check can tell "the coach skipped this" from "we lost this".
-          if (dropped) return { ...item, writeDropped: true }
-          return { ...item, status: 'confirmed', text, writeDropped: false }
+          // 'dropped' is logged inside resolveDoneText and stamped writeDropped on the item.
+          return decision.item
         })
         changed = true
       }
@@ -1745,6 +1750,23 @@ export default function TutorSession({
           }
         }
       }
+    }
+
+    // Duplicate DETECTOR — observe-only (lib/scaffoldWrite.js annotateDuplicates). Runs after
+    // every write of the turn has landed and recomputes from scratch, so a flag appears when the
+    // same words sit in two sections and clears when they no longer do. It only sets/removes
+    // `duplicateOf`; it never changes text, status or the cursor, so it cannot re-route anything.
+    if (sc) {
+      const before = new Set((sc.components ?? []).flatMap((p, i) => (p.items ?? []).filter(it => it.duplicateOf).map(it => `${i}.${it.id}`)))
+      const ann = annotateDuplicates(sc, { paragraphs })
+      for (const f of ann.flagged) {
+        if (before.has(`${f.paraIdx}.${f.id}`)) continue
+        console.error(
+          `[duplicate-detector] paragraph ${f.paraIdx} "${f.id}" holds words already confirmed in ${f.of.label} — ` +
+          `the same text is in the Draft twice. Flagged for the student and the coach; nothing was blocked.`
+        )
+      }
+      if (ann.changed) { sc = ann.scaffold; changed = true }
     }
 
     // Persist any change — including when the scaffold was created THIS turn. The
@@ -2133,9 +2155,9 @@ export default function TutorSession({
   // ── Nugget panel actions ─────────────────────────────────────────────────────
 
   async function confirmNugget(paraIdx, componentId, nuggetText) {
-    const newScaffold = updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
+    const newScaffold = annotateDuplicates(updateComponentItem(scaffoldRef.current ?? scaffold, paraIdx, componentId, item => ({
       ...item, status: 'confirmed', text: nuggetText,
-    }))
+    })), { paragraphs }).scaffold
     applyScaffold(newScaffold)
     await patchScaffold(newScaffold.components)
     const note = {
@@ -2401,9 +2423,11 @@ export default function TutorSession({
     const oldText = item?.text || item?.nuggetText || ''
     if (newText === oldText) { setEditingComponent(null); return }
 
-    const newScaffold = updateComponentItem(live, paraIdx, componentId, i => ({
+    // Recompute duplicate flags now (observe-only) so a note clears the moment the student's
+    // own edit removes the second copy, not a turn later.
+    const newScaffold = annotateDuplicates(updateComponentItem(live, paraIdx, componentId, i => ({
       ...i, text: newText, nuggetText: newText, status: 'confirmed',
-    }))
+    })), { paragraphs }).scaffold
     applyScaffold(newScaffold)
     setEditingComponent(null)
 
@@ -3707,6 +3731,17 @@ export default function TutorSession({
                                     <p className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
                                       style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
                                       A change didn’t apply here — these are still your words as you locked them. Use Revise if you meant to change it.
+                                    </p>
+                                  )}
+
+                                  {/* Duplicate DETECTOR flag (observe-only): these words are also
+                                      confirmed in another section. Nothing was blocked — the
+                                      student decides which copy goes, through Edit/Revise. The flag
+                                      is recomputed every turn and clears when the copy is gone. */}
+                                  {item.duplicateOf && (
+                                    <p className="text-xs leading-snug mt-1 rounded-md px-2 py-1"
+                                      style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-muted)', border: '1px solid var(--border-default)' }}>
+                                      This looks like it’s already in {item.duplicateOf.label ?? `Paragraph ${item.duplicateOf.paraIdx + 1}`} — you can remove one in Edit.
                                     </p>
                                   )}
 

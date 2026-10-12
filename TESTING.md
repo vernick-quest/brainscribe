@@ -5134,3 +5134,180 @@ reminder + student-approval gained one). No content/token/link/recipient change.
    it lands in brainscribe.io@gmail.com, no bounce.
 3. Confirm Resend accepts `reply_to` on the live key (the API field name is per Resend's docs; not
    exercised against the real API here).
+
+## 2026-10-11 (later) — Below the minimum, the STUDENT may end it — explicitly (focus/coach-ai)
+
+Product rule, verbatim: "The student can end early when below the word count, BUT they just need
+to say that explicitly." Rule 12 now sorts the student's latest message three ways: PAUSE ("done
+for tonight", bare "I'm done") → saved, session open, no `[COMPLETE]`, the reply ends on a goodbye;
+EXPLICIT ("submit it like this", "finish it as is") → complete at once if the coach already gave
+the numbers, else state the gap + ask ONCE; EVERYTHING ELSE ("ok", "it's good", "looks done") → the
+gap and the next step, and the coach never raises finishing short. Pause is the only exit the coach
+ever mentions. A "yes" to a finishing question the coach raised unprompted does not count.
+
+### Measured (scripts/prompt-harness/min-binding-rates.mjs, 8 per phrasing, final prompt)
+- Unprompted offer after an ambiguous reply, gap just stated: **1/48**. Gap not yet stated: 0/32.
+  Pause: 0/24. **Pre-change prompt: 10/48** ("handing it in as is is your call") — already live.
+- `[COMPLETE]` on an ambiguous reply or a pause: **0** observed in any run.
+- Answering the one confirmation → completes, no second ask: 24/24.
+- Explicit + informed → completes without asking again: 16/24 (fail-safe: the rest ask once more).
+- Explicit + uninformed → asks the one confirmation: ~16/30 (fail-safe: the rest steer back to
+  coaching). One full-suite run saw it state the gap AND complete in the same reply (1/6).
+- Yes to a coach's leaked offer → completes: 1/24.
+
+### Manual pass owed
+1. Below the minimum, all sections done: "looks done to me" → gap + next step; no offer, no completion.
+2. "I'm done for tonight" → saved / come back; no completion; no "or hand it in as is?".
+3. Coach states the gap; reply "I want to submit it like this" → completes, sign-off says the real
+   count and that it is below the minimum. Check the session shows completed and the parent view
+   shows the real word count.
+4. Fresh (gap never stated): "finish it as is" → expect one confirming question; "yes" → completes.
+   ⚠️ Measured ~50%: it may instead steer back to coaching — then say it again.
+
+Gate: build green · `test:run` **1168** · `test:prompts`: the 9 other files green; `min-binding.mjs`
+holds zero-tolerance checks that measure ~2% per sample, so a full run can go red on a real (rare)
+leak — read the printed reply, don't rerun to green.
+
+## 2026-10-11 (late, ~23:10 PDT) — Starting drafts: one whole paragraph per section; duplicates refused; Rule 26 (focus/coach-ai)
+
+What changed: when a student arrives with a starting draft, `[SCAFFOLD:<prose type>:N]` now builds
+N sections of ONE part each ("Paragraph 1", "Paragraph 2"…, ids c0, c1…, count raised to fit every
+draft paragraph). The coach is told exactly that shape. A coach lock whose words are already
+confirmed in a DIFFERENT part is refused (stamp under the part + a line at the top of the Draft
+panel + a REFUSED note the coach sees next turn). New Rule 26: when the student says the Draft looks
+wrong, read the state back literally — no "glitch", no other app/doc, no parent/teacher, no ghostwriting.
+
+### Measured
+- Repro probe (`starting-draft-mapping.mjs`, now in `test:prompts`): keep ¶1+¶2 → one per section,
+  nothing twice, verbatim — **24/24** across six full runs (pre-fix: two paragraphs in section 1 8/8,
+  duplicate on "section 2 is empty" 4/4). One-block draft: 24/24 verbatim, in order, never twice.
+- Simulation, same 3 personas/fixture, BEFORE (20:35) → AFTER (22:59): duplicated sentence-words in
+  the final essay 163 / 111 / 0 → **0 / 0 / 0**; sections holding text 4 / 1 / 1 → 4 / 5 / 4 (engaged /
+  eager / terse); strong draft paragraphs kept exactly: eager S2 0/6 → 6/6; turns containing app/glitch
+  blame, off-platform or parent/teacher hand-offs (eager): 7 / 15 / 6 → 1 / 0 / 0. The one remaining
+  hit is a "try refreshing your Draft tab" hedge — see residuals.
+
+### Manual pass owed (Robert) — React wiring is UNVERIFIED (no jsdom; build + unit tests only)
+1. New assignment WITH a pasted starting draft of 3+ paragraphs (blank lines between them). When
+   the coach builds the structure, the Draft panel should show sections titled **Paragraph 1,
+   Paragraph 2, …** each with a single part — NOT Hook/Context/Reflection/Connection.
+2. Say "keep my first two paragraphs exactly as I wrote them" (after its quick review pass). Expect
+   paragraph 1 in Paragraph 1 and paragraph 2 in Paragraph 2, word for word, both ✓. Nothing twice.
+3. Type "wait section 2 is empty, can you put my second paragraph there?" (when it is NOT empty).
+   Expect the coach to say which section holds it and how it starts — no "glitch", no "refresh", no
+   Google Doc, no "ask your mom/teacher" — and NO second copy appearing anywhere.
+4. Duplicate refusal (only reachable if the coach misfires): if you ever see the line "That text is
+   already in Paragraph N, so it wasn't added to … a second time" at the top of the Draft, check the
+   words really are in Paragraph N exactly once and that ✕ dismisses the line. Report it — it means
+   the prompt let a duplicate attempt through and the net caught it.
+5. "Read me the whole thing" mid-session after one section was DICTATED: every section's words should
+   be read back (the read-back used to show only dictated rows once any existed).
+6. Finish (hand in) the draft-built essay: the transcript shows every paragraph verbatim.
+7. A starting draft pasted as ONE block: sections still single-part; the coach either asks where to
+   break it or (if you insist on keeping it whole) puts the whole block in Paragraph 1.
+
+### Residuals / not done
+- "The panel takes a second to refresh" hedges: ~1–2 of 4 replies in probe C, 1 turn in the sim.
+  Reported as a measured rate, not gated. Rule 26 already says there is no delay.
+- Sessions scaffolded BEFORE this (four-part sections) with a paragraph already misplaced: the coach,
+  asked to "just fix it", usually still tries to lock it again; the refusal held 100% in the probe.
+- `confirmNugget` (student taps "Lock it in") and Revise/Edit are not duplicate-checked: student
+  actions, deliberately left alone.
+- `[PARA_DONE]` still completes a section even when its lock was refused (pre-existing).
+- Audit judge (`lib/auditJudge.js`) has no category for Rule 26 behaviours — optional follow-up.
+- `npm run test:continuation` was NOT run here: it inserts rows into the live DB (this lane was told
+  not to write there). No continuation code changed; its unit coverage in `scaffoldWrite.test.js`
+  is green. Run it before merging.
+
+Gate: build green · `test:run` **1208** · `test:prompts` 11 files: green on re-runs; the final full
+pass went red only on `min-binding` 2e (measured-rate family the pre-change baseline also failed in
+this session) and `oversized-lock` P1 (1/3; re-run 2/3 = the baseline's 2/3). No migration.
+
+## 2026-10-11 (~23:55 PDT) — Round 2: the duplicate refusal could destroy text; fixed + invariant-tested (focus/coach-ai)
+
+An independent adversarial review found that the duplicate refusal from the section above counted
+a SIBLING part of the same prose section as "another part": "make my analysis the evidence, here's
+new analysis" refused the move, then the ordinary revision replaced the analysis, and that paragraph
+existed nowhere. Fixed, plus eight smaller findings. Every finding is a co-located test that failed on
+`af18d99` (`lib/scaffoldWriteRound2.test.js`, 15 of 17 red before the fix; the 2 green were a control
+and a too-weak assertion, tightened).
+
+Governing invariant: `lib/scaffoldWriteInvariant.test.js` runs token sequences through the handler
+as it stood at 2238e2b (frozen) and through today's, and fails if any text the old code kept in the
+Draft is missing from the new Draft + banks. Named cases + 13,500 seeded sequences per run; a stress
+run of 60,000 sequences of up to 14 tokens passed. Against `af18d99`'s real code it fails 9 ways.
+
+New behaviour the student can see:
+- A lock refused as a duplicate keeps its words on that part, with an **"Add them here anyway"**
+  button. The notice at the top of the Draft says where the words are kept (it no longer says
+  "nothing you wrote was removed").
+- If the coach later rewrites the part the words were in (so they left it), the refused words land
+  where they were aimed, and a notice says so.
+
+### Manual pass owed (Robert) — React wiring still UNVERIFIED (no jsdom)
+8. Any essay (no starting draft): ask the coach to "use my analysis as the evidence and here's a new
+   analysis: …". Both texts must be in the Draft afterwards — evidence = old analysis, analysis = new.
+9. Starting-draft session: if a "Those words are already in Paragraph N" note appears under a part,
+   tap **Add them here anyway** → the words appear in that part, the note disappears, and the coach's
+   next reply does not refuse or re-stamp it.
+10. Paste a starting draft written in Google Docs (curly apostrophes). Keep a paragraph, then ask for
+    it to be kept again: no second copy appears, and no "A change didn't apply here" note shows.
+11. Conclusion that restates the thesis word for word ("In conclusion, …"): it locks normally.
+
+### Measured (round 2)
+- `starting-draft-mapping.mjs`: GREEN twice on the final prompt (A/B, C, D, E). E's one `[SCAFFOLD]`
+  re-emit (3/4) re-measured 8/8 clean.
+- Reviewer's P2 probe (full five-section draft, new dictated paragraph): coach locked a non-existent
+  `c5` in 0/3 runs (reviewer measured 1/3 before).
+- `grown-story` P3 regressed to ~8/11 when the scaffold state named finished sections' part ids;
+  ids removed from multi-part openings → 6/6 (pre-change baseline 4/4).
+- Full `test:prompts` on the round-2 prompt: all files green except `min-binding`, whose reds were
+  the documented family (a pause mention matching the offer detector; a completion after a yes to
+  the fixture's own offer, measured 1/24 at 4632d26; "+ Add another section" 2/3 = the pre-change
+  baseline's 2/3) and `grown-story` P3 (fixed above).
+
+Gate: build green · `test:run` **1248** · no migration · `test:continuation` still NOT run here
+(writes the live DB) — run it before merging.
+
+## 2026-10-12 (~00:26 PDT) — Round 3: the duplicate net is OBSERVE-ONLY (conductor's decision) (focus/coach-ai)
+
+Supersedes the round-2 duplicate REFUSAL above. A re-review found that any blocking refusal changes
+state, a changed state re-routes later tokens (Net A doesn't advance; the next shared id becomes an
+exact revision), and no local rule closes that. The after-simulation had shown the refusal never
+fired: the one-part starting-draft shape and the prompt prevented every duplicate. So:
+
+- **Write path = the 2238e2b decision** (preserve → fragment → dropped → write), plus two no-write
+  short-circuits: an identical re-lock (quote style ignored) and a bare `[DONE:id]` on a confirmed part
+  whose captured nugget is absent or equal. Fragment check also ignores quote style. REMOVED: the
+  refusal, the deferred move, the `replaced` / `refusedText` banks, "Add them here anyway", the
+  top-of-Draft notice.
+- **Duplicate detector, observe-only** (`annotateDuplicates`): after every write it recomputes flags
+  from scratch (cross-section, ≥80% one-way containment, restating parts and non-draft custom
+  sections exempt). Console `[duplicate-detector]`; a note under BOTH copies; the coach's scaffold
+  state says "Para N and Paragraph M hold the same words"; counted in draftIntegrity/admin. The
+  flag clears as soon as one copy is gone. It never changes text, status or the cursor.
+- **Proof** (`lib/scaffoldWriteInvariant.test.js`, strongest form): for 14 named cases and 13,500
+  seeded sequences the new Draft EQUALS the 2238e2b Draft — cursor, every status, every part's text —
+  except the two listed no-write differences (quote style; old wrote a quoted fragment of the text the
+  new code kept). Controls: "bank everything, write nothing" fires on every named case where the old
+  code wrote, and on all three generated shapes; a blocking refusal fires; an UNRESTRICTED bare-DONE
+  no-op fires (so the nugget restriction is load-bearing).
+
+### Manual pass — replaces round-2 step 9 ("Add them here anyway" no longer exists)
+12. Starting-draft session: ask the coach to put a paragraph you already kept into the next section
+    too. It DOES land (nothing is blocked); under BOTH copies a note reads "This looks like it's
+    already in Paragraph N — you can remove one in Edit." Edit one copy away: both notes disappear
+    (immediately after Save, and still gone after the coach's next reply).
+Steps 8, 10 and 11 from round 2 still apply (in 10, expect no second copy only because the coach
+should not lock one; if it does, step 12's note should appear).
+
+### Measured (round 3, final prompt)
+- `starting-draft-mapping.mjs` WITHOUT the blocking net: GREEN. On the one-part shape the prompt
+  alone held zero duplicates in saved state (A/B 4/4, C 4/4, E 4/4, zero-tolerance). Legacy four-part
+  scenario D (sessions scaffolded before the fix only): a duplicate now lands in 2/4 runs (the round-2
+  net refused these) — every one flagged by the detector; reported, not gated.
+- Full `test:prompts`: green except `oversized-lock` P1 (0/3; re-measured new 3/6 vs pre-change
+  baseline 1/6 — a noisy soft check, no regression) and `min-binding`'s documented Rule 12 family
+  (one unprompted "finish it as it is?" offer; one completion after a yes to the fixture's own offer).
+
+Gate: build green · `test:run` **1258** · no migration · `test:continuation` still NOT run here.

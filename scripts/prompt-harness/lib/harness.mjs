@@ -124,7 +124,9 @@ export function check(label, passed, detail = '') {
  * this only when the behaviour itself is legitimately variable.
  *
  * @param produce  async () => result — re-runs the whole turn, so variance is real variance
- * @param checks   [{ label, test(result) }]
+ * @param checks   [{ label, test(result), threshold? }] — a per-check threshold overrides the
+ *                 probe's, so one probe can hold a zero-tolerance check (threshold 1) beside a
+ *                 measured-rate one without splitting the turn into two paid runs
  * @param threshold  minimum fraction that must pass; set it from what you measured
  */
 export async function rateCheck({ label, runs = 3, produce, checks, threshold = 2 / 3 }) {
@@ -140,7 +142,9 @@ export async function rateCheck({ label, runs = 3, produce, checks, threshold = 
   const need = Math.ceil(threshold * runs)
   console.log(`  📊 ${label} — ${runs} runs, need ${need}/${runs}`)
   for (const o of outcomes) {
-    check(`${o.label} [${o.passes}/${runs}]`, o.passes >= need, o.passes === runs ? '' : `rate ${(o.passes / runs * 100).toFixed(0)}%`)
+    const own = o.threshold == null ? need : Math.ceil(o.threshold * runs)
+    const tag = own === need ? '' : ` (need ${own}/${runs})`
+    check(`${o.label} [${o.passes}/${runs}]${tag}`, o.passes >= own, o.passes === runs ? '' : `rate ${(o.passes / runs * 100).toFixed(0)}%`)
   }
   return outcomes
 }
