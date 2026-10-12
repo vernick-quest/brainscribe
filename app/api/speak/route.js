@@ -4,7 +4,14 @@ import { logElevenLabsUsage } from '@/lib/usage'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
-const MODEL_ID = 'eleven_turbo_v2_5'
+// eleven_flash_v2_5 (2026-10-11). ElevenLabs' model docs mark eleven_turbo_v2_5 DEPRECATED and
+// "functionally equivalent" to Flash v2.5 "except the latency on the Flash models is lower on
+// average", recommending Flash "in all use cases". Same list price per character. Measured
+// before switching: all six persona voiceIds return 200 audio/mpeg on Flash; on one 63-char
+// line (n=3) Flash's time-to-complete-clip was 276-348 ms vs turbo 266-506 ms — while the
+// newer eleven_v4_turbo took 735-1108 ms to finish the same clip, which matters because the
+// client waits for the whole clip (res.blob()). Keep scripts/pregen-coach-intros.mjs in step.
+const MODEL_ID = 'eleven_flash_v2_5'
 
 export async function POST(request) {
   const supabase = await createClient()

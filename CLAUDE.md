@@ -68,7 +68,7 @@ find them; being told to assume the author is wrong did.
 - Expensive endpoints are rate-limited (`lib/ratelimit.js`); model/voice spend is logged via `lib/usage.js`.
 
 ## Voice pipeline — historically the most fragile area; change carefully
-- **TTS**: `lib/useCoachVoice.js` → `/api/speak` (ElevenLabs `eleven_turbo_v2_5`, per-persona `voiceId`). Plays through **one gesture-unlocked `<audio>` element** because mobile/desktop block autoplay until a user gesture. Do **not** pause on every gesture — that previously cut the coach off when the student merely scrolled.
+- **TTS**: `lib/useCoachVoice.js` → `/api/speak` (ElevenLabs `eleven_flash_v2_5` — turbo v2.5 is deprecated — per-persona `voiceId`). Plays through **one gesture-unlocked `<audio>` element** because mobile/desktop block autoplay until a user gesture. Do **not** pause on every gesture — that previously cut the coach off when the student merely scrolled.
 - **STT**: `components/MicButton.js` uses `@elevenlabs/client` `Scribe` over a WebSocket, authed with a **single-use token** from `/api/scribe-token`. Don't reintroduce these already-fixed bugs:
   - Final transcript must land in the **writing input field**, not just under the mic button — wire `onInterim` (live) vs `onFinal` (committed) correctly.
   - The SDK logs a noisy `1006` on normal socket close (intentionally suppressed) — leave the suppression in.

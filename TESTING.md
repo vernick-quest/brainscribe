@@ -4711,3 +4711,22 @@ code) is a new `No code` state that still needs action — "has an account" is n
 
 Gate: build green · `test:run` **972** (921 → 972; new `lib/accessAlerts.test.js`, extended
 `lib/waitlist.test.js`).
+
+## 2026-10-11 — TTS model: `eleven_turbo_v2_5` → `eleven_flash_v2_5` (`focus/coaching-session`)
+
+**Why:** ElevenLabs' model docs (fetched 2026-10-11) mark Turbo v2.5 **deprecated** and
+"functionally equivalent" to Flash v2.5 except lower average latency on Flash, recommending
+Flash "in all use cases". Same list price per 1K characters on the pricing page.
+**Measured (≈660 chars total):** all six persona voiceIds → 200 `audio/mpeg` on Flash. One 63-char
+line, n=3, time to the LAST byte (what the client waits for): Flash 276–348 ms, Turbo 266–506 ms,
+`eleven_v4_turbo` 735–1108 ms. n=3 is noise-level for Flash vs Turbo — the case rests on the
+deprecation, not the timing. v4 Turbo was NOT chosen: 2 weeks old, slower to finish a clip, and
+a different model generation is a voice-character change that needs a listening A/B.
+STT unchanged: `scribe_v2_realtime` is still the only realtime STT model in the docs.
+
+- [ ] **Each coach still sounds like themselves.** Send one turn with each of the six coaches
+      (or switch coach mid-session). Flag any voice that sounds different from before.
+- [ ] The coach-picker intro clips (pre-rendered on Turbo, not re-rendered) don't sound
+      noticeably different from the same coach live.
+
+Gate: build green · `test:run` **978** on main dcc50da (2 new in `lib/ttsModel.test.js`: model parity + not-deprecated) · `test:continuation` green.

@@ -5,7 +5,9 @@
 // Re-run whenever a pickerIntro changes. Reads ELEVENLABS_API_KEY from .env.local.
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 
-const MODEL_ID = 'eleven_turbo_v2_5'
+// Keep in step with app/api/speak/route.js. The committed mp3s were rendered on
+// eleven_turbo_v2_5 (documented as functionally equivalent); no re-render needed.
+const MODEL_ID = 'eleven_flash_v2_5'
 const VOICE_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true }
 
 // assetKey (image/color/file key) → voiceId + intro. matilda's assetKey is `tilly`.
