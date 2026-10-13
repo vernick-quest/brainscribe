@@ -15,6 +15,7 @@
 // [COMPLETE] unreachable would strand every continuation session as permanently open.
 
 import { coachTurn, check, report } from './lib/harness.mjs'
+import { growComponents } from '../../lib/scaffoldGrowth.js'
 
 const ASSIGNMENT = `Persuasive essay: should recess be longer at your school?
 300–400 words. Due Friday.`
@@ -104,16 +105,36 @@ check('asks what they want to strengthen or add', /\?/.test(p2))
 // conversation with the flag off as a control: if completion fires without the block
 // and not with it, the block is the thing jamming it shut — not the review gates.
 console.log('\nPROBE 3 — later in the v2: work added, both reviews done, student says finish it')
-// The scaffold is UNCHANGED — that is the real post-addition state, and it is what
-// makes this a hard test. A DICTATED addition never grows the scaffold (growth is the
-// student's separate "+ Add another section" tap, not something dictation triggers), so it
-// lands as a new `paragraphs` row and leaves the components alone: the
-// coach is still staring at "all 3 paragraphs ✓ done, nothing queued" at the exact
-// moment it has to decide whether completing is now allowed. Only the word/paragraph
-// counts in ASSIGNMENT REQUIREMENTS move. (An earlier version of this probe faked a
-// 4-section scaffold — a state the app cannot actually produce, which would have
-// tested a shape that never ships.)
-const ADDED_SCAFFOLD = CARRIED_SCAFFOLD
+// RESTAGED 2026-10-12. The previous fixture had every section already full, the student
+// DICTATING a new paragraph anyway, and a fixture coach line "That's locked in" — over a
+// scaffold that never showed it. The continuation rule in lib/prompts.js says the opposite of
+// that fixture: with every section full "there is no empty section to dictate into YET", and
+// new material lands only after the student taps "+ Add another section". claude-opus-5-5
+// applied that rule (both arms, 1/1 each: "I said the nurse paragraph was locked in, but it
+// never made it into your Draft… every section already had words in it") and corrected the
+// false claim instead of completing — an honest reply to an impossible state, failing a check
+// whose own diagnostic said "restage before blaming the block". Sonnet 4.6 completed over it.
+//
+// So the conversation now takes the path the app actually supports: the coach points at
+// "+ Add another section", the student taps it (the scaffold below is grown by the REAL
+// growComponents — the shape the client would hold), dictates into the new empty section, and
+// the four parts are confirmed there. "That's locked in" is now TRUE and visible in CURRENT
+// SCAFFOLD STATE. The rule under test is unchanged: can [COMPLETE] still fire on a
+// continuation once the student has really added something?
+const NURSE_PARAGRAPH = [
+  'Our school nurse told my class she sees fewer headache visits on the days we get the long recess.',
+  'She keeps a log, and the long-recess days have about half as many visits.',
+  'That shows moving around does something real for how we feel, not just how we act.',
+  'So a longer recess is not just more play time, it is a health choice too.',
+]
+const ADDED_SCAFFOLD = (() => {
+  const { components } = growComponents(CARRIED_SCAFFOLD.components, 1)
+  const grown = components.map((p, i) => i < CARRIED_SCAFFOLD.components.length ? p : {
+    ...p, status: 'complete', summary: 'the school nurse sees fewer headaches on long-recess days',
+    items: p.items.map((it, j) => ({ ...it, status: 'confirmed', text: NURSE_PARAGRAPH[j] ?? NURSE_PARAGRAPH.at(-1) })),
+  })
+  return { ...CARRIED_SCAFFOLD, total_paragraphs: grown.length, current_paragraph_index: grown.length, components: grown }
+})()
 const FINISHING_TURN = {
   assignment: ASSIGNMENT,
   scaffold: ADDED_SCAFFOLD,
@@ -121,9 +142,11 @@ const FINISHING_TURN = {
     { role: 'user', content: "i'm back, my teacher said it was too short" },
     { role: 'assistant', content: "Your whole draft carried over — the recess thesis, your body paragraph about focusing, and the conclusion. What do you want to build on?" },
     { role: 'user', content: 'i want to add the thing about the nurse seeing fewer headaches' },
+    { role: 'assistant', content: "Good idea — that's new evidence. Every section already has words in it, so tap \"+ Add another section\" under your draft to get an empty one. Tell me when it's there." },
+    { role: 'user', content: 'ok i added it' },
     { role: 'assistant', content: "Good — say it out loud, the whole thought." },
-    { role: 'user', content: 'Our school nurse told my class she sees fewer headache visits on the days we get the long recess. That shows moving around does something real for how we feel, not just how we act.' },
-    { role: 'assistant', content: "That's locked in. On that paragraph: you start two sentences in a row with \"Our school\" — worth varying one. And \"real\" is doing a lot of work in that last line; you used \"focus\" earlier, which is sharper. Want to change either, or leave them?" },
+    { role: 'user', content: NURSE_PARAGRAPH.join(' ') },
+    { role: 'assistant', content: "That's all four parts of the new section locked in. On that paragraph: you start two sentences with \"She\" — worth varying one. And \"real\" is doing a lot of work in the third line; you used \"focus\" earlier, which is sharper. Want to change either, or leave them?" },
     { role: 'user', content: "i'll leave them, i like it" },
     // The count below is stated as ALREADY INCLUDING the addition on purpose. Left
     // ambiguous, the coach adds the new paragraph's words on top of the given figure

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { assertComplete, ModelTruncatedError } from '@/lib/modelResponse'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
@@ -70,7 +71,7 @@ export async function POST(request) {
   const thesisNote = thesis ? `\nThe student's thesis is: "${thesis}"\n` : ''
 
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: UTILITY_MODEL,
     // 8000, raised from 2000 on 2026-08-16. This is the WHOLE ESSAY, not one paragraph,
     // and the prompt forbids adding anything — so output length is the sum of what the
     // student already wrote. 2000 tokens is ~1,500 words, which a long narrative or a
@@ -93,7 +94,7 @@ STRICT RULES:
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
+  logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
 
   // This one returns RAW TEXT, so a cut is completely silent — the student would be shown
   // a truncated essay as their finished piece, with the ending simply absent. Refuse.

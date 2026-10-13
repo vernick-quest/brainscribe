@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { assertComplete } from '@/lib/modelResponse'
@@ -70,7 +71,7 @@ export async function POST(request) {
       }
 
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: UTILITY_MODEL,
     // 1024 was a silent data-loss ceiling on the INTAKE path, not a cost knob. This call
     // transcribes the student's OWN existing answers verbatim (see the ALREADY WRITTEN BY
     // THE STUDENT section below), and that section is instructed to come LAST — so a cut
@@ -121,7 +122,7 @@ If no assignment is visible, reply with exactly: NO_ASSIGNMENT_FOUND`,
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
+  logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
 
   // A truncated extraction is a successful API call carrying a partial worksheet, and the
   // partial LOOKS fine — the assignment reads complete and only the student's own answers

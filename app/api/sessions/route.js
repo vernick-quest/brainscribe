@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { getImpersonation } from '@/lib/impersonation'
@@ -37,7 +38,7 @@ const FALLBACK_OUTLINE = [
 // assignment. Per-field fallbacks keep session creation resilient to a bad parse.
 async function generateSessionMeta(assignmentText, userId) {
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: UTILITY_MODEL,
     max_tokens: 2000,
     system: 'You are a precise JSON generator. Output ONLY valid JSON — no explanation, no markdown, no code fences.',
     messages: [{
@@ -77,7 +78,7 @@ ${assignmentText}`,
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId })
+  logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId })
 
   // Did the pass actually produce parseable metadata? This is NOT cosmetic: writing_mode
   // must never infer "no requirements" from targets that are empty because nothing looked

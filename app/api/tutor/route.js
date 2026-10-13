@@ -5,6 +5,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
+import { COACH_MODEL, requestOptionsFor, coachMaxTokens } from '@/lib/models'
+import { createCoachStreamReader, coachTurnAbandoned } from '@/lib/coachStream'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { parseCommitments, detectLockOverClaim } from '@/lib/coachCommitments'
@@ -180,8 +182,12 @@ export async function POST(request) {
   })
 
   const stream = await anthropic.messages.stream({
-    model: 'claude-sonnet-4-6',
-    // 4000, raised from 1000 on 2026-08-16 after it cut a real student's work.
+    model: COACH_MODEL,
+    // Per-model request fields (lib/models.js). On Opus 5.5: output_config.effort 'low' —
+    // thinking can't be disabled there, and the default (medium) is ~15s of dead air before
+    // the first spoken word. No temperature/top_p (400s on that model).
+    ...requestOptionsFor(COACH_MODEL),
+    // History (Sonnet 4.6): 4000, raised from 1000 on 2026-08-16 after it cut a real student's work.
     //
     // A [DONE:id:…] payload carries the student's EXACT words, so the ceiling is not
     // "how much should the coach say" — it is "how long can a section of their writing
@@ -197,7 +203,12 @@ export async function POST(request) {
     //
     // This is a ceiling, not a fix. A long enough section exceeds any number — the real
     // repair is not putting the whole paragraph in a token payload.
-    max_tokens: 4000,
+    //
+    // Opus 5.5: 8000 — its tokenizer needs ~1.25× the tokens for the same words, and its
+    // (un-disableable) thinking spends from the same ceiling before any text. The sizing is
+    // in lib/models.js COACH_MAX_TOKENS; it holds at least as many of the student's words
+    // as 4000 did on Sonnet 4.6.
+    max_tokens: coachMaxTokens(COACH_MODEL),
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicTail },
@@ -224,31 +235,27 @@ export async function POST(request) {
   // keeps the serverless function alive until those writes complete.
   let resolveResult
   const resultReady = new Promise(resolve => { resolveResult = resolve })
+  // Set by cancel() below: the client went away before the turn was fully sent.
+  let clientCancelled = false
 
   const readable = new ReadableStream({
     async start(controller) {
-      let fullText = ''
-      let inputTokens = 0
-      let outputTokens = 0
-      let stopReason = null
+      // lib/coachStream.js: forwards ONLY text_delta — Opus 5.5 streams a thinking block
+      // (thinking_delta + signature_delta) before every reply, and none of it may reach the
+      // client's token parser or the speech queue. It also counts usage, cache tokens
+      // included, and captures stop_reason ('max_tokens' = cut off; 'refusal' = declined).
+      const reader = createCoachStreamReader()
+      const st = reader.state
       try {
         for await (const chunk of stream) {
-          if (chunk.type === 'message_start') inputTokens = chunk.message.usage?.input_tokens ?? 0
-          if (chunk.type === 'message_delta') {
-            outputTokens = chunk.usage?.output_tokens ?? 0
-            // stop_reason arrives on message_delta. 'max_tokens' means the model was
-            // CUT OFF mid-turn — see the truncation note below.
-            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason
-          }
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            fullText += chunk.delta.text
-            controller.enqueue(encoder.encode(chunk.delta.text))
-          }
+          const text = reader.consume(chunk)
+          if (text) controller.enqueue(encoder.encode(text))
         }
         controller.close()
       } catch (err) {
         controller.error(err)
       } finally {
+        const { fullText, stopReason } = st
         const savedText = stripCoachTokens(fullText)
         // ── Truncation detection (audit finding 2026-08-09) ────────────────────
         // EVERY control token is emitted at the END of a coach turn ([DONE:id:words],
@@ -265,14 +272,37 @@ export async function POST(request) {
         // behind, so matching it made no_lock read 0 on the dropped-lock case. See
         // lib/coachTokens.js.
         const hadLockToken = hasLandedLockToken(fullText)
-        resolveResult({ inputTokens, outputTokens, savedText, rawText: fullText, truncated, hadLockToken, stopReason })
+        resolveResult({
+          usage: { inputTokens: st.inputTokens, outputTokens: st.outputTokens, cacheWriteTokens: st.cacheWriteTokens, cacheReadTokens: st.cacheReadTokens },
+          savedText, rawText: fullText, truncated, hadLockToken, stopReason,
+        })
       }
+    },
+    // The client aborted (TutorSession's 45s no-first-text / stalled-stream timeout, or the
+    // student navigated away). Next 16 cancels this source stream when the response closes
+    // early. Stop the model too — Opus output is $20/MTok for words nobody will read — which
+    // also ends the read loop above, so finally{} resolves the result promptly.
+    cancel() {
+      clientCancelled = true
+      try { stream.abort() } catch {}
     },
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText, rawText, truncated, hadLockToken, stopReason } = await resultReady
-    await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+    const { usage, savedText, rawText, truncated, hadLockToken, stopReason } = await resultReady
+    await recordAnthropicUsage({ model: COACH_MODEL, ...usage, sessionId, userId: user.id })
+
+    // A safety-classifier decline is a 200 with stop_reason 'refusal' (Opus 5.5 runs
+    // classifiers). The stream simply ends — possibly mid-sentence, possibly before a
+    // closing [DONE:]/[CARE] — and nothing else marks it. On a child-safety product the
+    // turn most likely to trip one is a student disclosing something, the turn that most
+    // needs an answer, so it is LOUD, never a quietly short reply.
+    if (stopReason === 'refusal') {
+      console.error(
+        `[tutor] 🔴 MODEL REFUSAL (stop_reason=refusal) session=${sessionId} model=${COACH_MODEL} ` +
+        `chars_streamed=${rawText.length} lock_token_present=${hadLockToken} — the coach turn ended without a full reply`
+      )
+    }
 
     // A truncated coach turn is never "just a long answer" — log loudly and record it
     // so the audit can tell a dropped lock from cut prose. no_lock is the discriminator:
@@ -291,6 +321,23 @@ export async function POST(request) {
         p_had_lock_token: hadLockToken,
       })
       if (truncErr) console.error('[tutor] truncation record failed:', truncErr.message)
+    }
+
+    // ── An ABANDONED turn writes nothing but its usage (above) ──────────────────────────
+    // The client aborts a stalled turn and applies NOTHING from it, so neither do we: no
+    // partial coach message (it would reappear on reload), no coach_commitments row (the
+    // integrity detector would flag a promise that was never applied), and no over-claim
+    // record (control tokens come LAST, so a cut turn's "I've saved that" always looks
+    // like an over-claim). No [CARE] is recorded server-side — it is stripped above and
+    // rendered client-side only — so there is nothing to keep. See coachTurnAbandoned.
+    const abandoned = coachTurnAbandoned({ streamCancelled: clientCancelled, signalAborted: request.signal?.aborted === true, stopReason })
+    if (abandoned) {
+      const { components } = parseCommitments(rawText)
+      console.warn(
+        `[tutor] client ABORTED the turn mid-stream session=${sessionId} chars_streamed=${rawText.length} ` +
+        `stream_cancelled=${clientCancelled} — not persisting the partial coach message or its ${components.length} [DONE:] commitment(s)`
+      )
+      return
     }
 
     // Did the coach tell the student more was saved than it actually saved? Rule 25 holds

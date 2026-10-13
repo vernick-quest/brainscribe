@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { scribeSystemPrompt } from '@/lib/prompts'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { assertComplete, ModelTruncatedError } from '@/lib/modelResponse'
@@ -36,7 +37,7 @@ export async function POST(request) {
     : ''
 
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: UTILITY_MODEL,
     // 4000, raised from 1024 on 2026-08-16. This bounds THE STUDENT'S SPOKEN WORDS —
     // scribe returns their dictation cleaned up, so output length is how much they said.
     // A student mid-flow can speak several hundred words in one go, and 1024 tokens is
@@ -48,7 +49,7 @@ export async function POST(request) {
     ],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId, userId: user.id })
+  logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId, userId: user.id })
 
   // A cut reply would usually break JSON.parse below and surface as "Scribe parse error",
   // which tells the student nothing and hides WHY. Worse, if the cut happens to land on a
