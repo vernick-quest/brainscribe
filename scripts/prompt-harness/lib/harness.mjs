@@ -14,6 +14,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { COACH_MODEL, requestOptionsFor, coachMaxTokens, priceCall, usageTokens } from '../../../lib/models.js'
+
+// The coach model is the ROUTE's constant (lib/models.js), so `npm run test:prompts` tests
+// the model that ships. HARNESS_COACH_MODEL overrides it for an old-vs-new comparison run
+// only — never for the gate.
+export const HARNESS_COACH_MODEL = process.env.HARNESS_COACH_MODEL || COACH_MODEL
 
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 
@@ -41,7 +47,7 @@ function loadEnv() {
  * @param opts        the same opts object buildCoachSystemBlocks receives
  * @param messages    conversation so far (defaults to a bare "hi")
  */
-export async function coachTurn({ persona = 'owen', assignment, scaffold = null, opts = {}, messages = [{ role: 'user', content: 'hi' }], maxTokens = 900 } = {}) {
+export async function coachTurn({ persona = 'owen', assignment, scaffold = null, opts = {}, messages = [{ role: 'user', content: 'hi' }], maxTokens = coachMaxTokens(HARNESS_COACH_MODEL) } = {}) {
   const env = loadEnv()
   const { buildCoachSystemBlocks } = await import(path.join(REPO_ROOT, 'lib/prompts.js'))
   const { staticPrefix, dynamicTail } = buildCoachSystemBlocks(persona, assignment, scaffold, opts)
@@ -52,6 +58,7 @@ export async function coachTurn({ persona = 'owen', assignment, scaffold = null,
     { type: 'text', text: dynamicTail },
   ]
 
+  budgetGuard()
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -59,14 +66,29 @@ export async function coachTurn({ persona = 'owen', assignment, scaffold = null,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system, messages }),
+    // Same request shape as the route: the model constant plus its per-model fields
+    // (lib/models.js — effort 'low' on Opus 5.5) and the route's own max_tokens (it bounds
+    // [DONE:] payloads AND, on Opus 5.5, the thinking that precedes them; the harness used
+    // a private 900 before, which a thinking model can spend before saying a word).
+    body: JSON.stringify({ model: HARNESS_COACH_MODEL, ...requestOptionsFor(HARNESS_COACH_MODEL), max_tokens: maxTokens, system, messages }),
   })
   const json = await res.json()
   if (json.error) {
     console.error('[prompt-harness] API error:', JSON.stringify(json.error).slice(0, 300))
     process.exit(2)
   }
-  return { text: json.content.find(b => b.type === 'text')?.text ?? '', dynamicTail, staticPrefix }
+  meter(HARNESS_COACH_MODEL, json)
+  // A safety-classifier decline is a 200 with stop_reason 'refusal'; a cut is 'max_tokens'.
+  // Either one must read as what it is, never as an ordinary (short) coach turn.
+  if (json.stop_reason === 'refusal') {
+    console.error(`[prompt-harness] 🔴 REFUSAL from ${HARNESS_COACH_MODEL}: ${JSON.stringify(json.stop_details ?? null)}`)
+  }
+  if (json.stop_reason === 'max_tokens') {
+    console.error(`[prompt-harness] 🔴 TRUNCATED at max_tokens=${maxTokens} (${HARNESS_COACH_MODEL}) — this turn was cut off`)
+  }
+  // Read by block TYPE: on Opus 5.5 content[0] is a (empty) thinking block.
+  const text = json.content.filter(b => b.type === 'text').map(b => b.text).join('')
+  return { text, dynamicTail, staticPrefix, stopReason: json.stop_reason }
 }
 
 /**
@@ -76,6 +98,7 @@ export async function coachTurn({ persona = 'owen', assignment, scaffold = null,
  */
 export async function callModel({ model, system, user, maxTokens = 4000 }) {
   const env = loadEnv()
+  budgetGuard()
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -83,18 +106,63 @@ export async function callModel({ model, system, user, maxTokens = 4000 }) {
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model, ...requestOptionsFor(model), max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
   })
   const json = await res.json()
   if (json.error) {
     console.error('[prompt-harness] API error:', JSON.stringify(json.error).slice(0, 300))
     process.exit(2)
   }
+  meter(model, json)
   return {
-    text: json.content.find(b => b.type === 'text')?.text ?? '',
+    text: json.content.filter(b => b.type === 'text').map(b => b.text).join(''),
     stopReason: json.stop_reason,
   }
 }
+
+// ── Spend meter — reads the API's own usage fields, never estimates ─────────────────────
+// Prices come from lib/models.js (cache writes/reads included — the coach prefix is cached,
+// so input_tokens alone is a few hundred tokens of a ~42k-token prompt). Printed when the
+// probe exits. HARNESS_SPEND_LOG=<file> also appends one JSON line per call, and
+// HARNESS_BUDGET_USD=<n> (with the log) stops before any call once the LOGGED total, across
+// every probe that wrote to that file, reaches n — a hard cap for a multi-file run.
+// Never written to the live DB (scripts/redteam/lib/logUsage.mjs does that; this does not).
+const spend = { usd: 0, calls: 0, thinking: [], unpriced: new Set() }
+function meter(model, json) {
+  const u = json?.usage ?? {}
+  const usd = priceCall(model, usageTokens(u))
+  spend.calls++
+  if (usd == null) spend.unpriced.add(model); else spend.usd += usd
+  const th = u.output_tokens_details?.thinking_tokens
+  if (th != null) spend.thinking.push(th)
+  if (process.env.HARNESS_SPEND_LOG) {
+    fs.appendFileSync(process.env.HARNESS_SPEND_LOG, JSON.stringify({
+      t: new Date().toISOString(), probe: path.basename(process.argv[1] ?? ''), model,
+      usd, stop: json?.stop_reason ?? null, usage: u,
+    }) + '\n')
+  }
+}
+function loggedTotal() {
+  const f = process.env.HARNESS_SPEND_LOG
+  if (!f || !fs.existsSync(f)) return spend.usd
+  return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).reduce((s, l) => s + (JSON.parse(l).usd ?? 0), 0)
+}
+function budgetGuard() {
+  const cap = Number(process.env.HARNESS_BUDGET_USD)
+  if (!cap) return
+  const total = loggedTotal()
+  if (total >= cap) {
+    console.error(`\n🔴 BUDGET: $${total.toFixed(4)} logged of $${cap.toFixed(2)} — stopping before the next call.`)
+    process.exit(3)
+  }
+}
+process.on('exit', () => {
+  if (!spend.calls) return
+  const th = [...spend.thinking].sort((a, b) => a - b)
+  const thLine = th.length ? ` · thinking tokens min ${th[0]} / median ${th[Math.floor(th.length / 2)]} / max ${th.at(-1)}` : ''
+  console.log(`💲 ${spend.calls} API calls, $${spend.usd.toFixed(4)} (from usage fields; coach = ${HARNESS_COACH_MODEL})${thLine}` +
+    (spend.unpriced.size ? ` · 🔴 UNPRICED: ${[...spend.unpriced].join(', ')}` : ''))
+})
 
 // ── Tiny assertion reporter ──────────────────────────────────────────────────
 // A probe asserts on the CONTENT of the reply, never on "did the call succeed".

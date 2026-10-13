@@ -25,7 +25,9 @@ import { callModel, check, report } from './lib/harness.mjs'
 import { assembleSystemFor, buildAssembleUserMessage, isVerbatimType } from '../../lib/assemblePrompt.js'
 import { FIXTURE_COMPONENTS, FIXTURE_TEXT, fidelityMetrics, diffMetrics, shingleSurvival } from './lib/fidelity.mjs'
 
-const MODEL = 'claude-haiku-4-5-20251001'
+// The route's constant (lib/models.js), so this gates the model that ships.
+import { UTILITY_MODEL } from '../../lib/models.js'
+const MODEL = UTILITY_MODEL
 
 async function assemble(paragraphType) {
   const { userMessage } = buildAssembleUserMessage({ components: FIXTURE_COMPONENTS, paragraphType })

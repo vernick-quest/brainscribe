@@ -64,7 +64,8 @@
 //
 // Fixture is SYNTHETIC (public repo — never real student writing here).
 
-import { coachTurn, check, rateCheck, report } from './lib/harness.mjs'
+import { coachTurn, check, rateCheck, report, HARNESS_COACH_MODEL } from './lib/harness.mjs'
+import { priceCall, usageTokens } from '../../lib/models.js'
 import { detectLockOverClaim } from '../../lib/coachCommitments.js'
 import { stripCoachTokens } from '../../lib/coachTokens.js'
 import { resolveWriteIndex, resolveComponentWrite, updateComponentItem, decideDoneWrite, annotateDuplicates } from '../../lib/scaffoldWrite.js'
@@ -78,8 +79,7 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null
 const want = k => !ONLY || ONLY.includes(k)
 
 // ── Spend meter — reads the API's usage, never estimates ─────────────────────────────────────
-// claude-sonnet-4-6 list price: $3/M input, $15/M output; cache write 1.25×, cache read 0.1×.
-const PRICE = { in: 3, out: 15, cacheWrite: 3.75, cacheRead: 0.3 }
+// Priced from lib/models.js for the model the harness is actually running (cache included).
 let spent = 0, calls = 0
 const realFetch = globalThis.fetch
 globalThis.fetch = async (url, init) => {
@@ -87,8 +87,9 @@ globalThis.fetch = async (url, init) => {
   if (String(url).includes('api.anthropic.com')) {
     const u = (await res.clone().json().catch(() => ({}))).usage ?? {}
     calls++
-    spent += ((u.input_tokens ?? 0) * PRICE.in + (u.output_tokens ?? 0) * PRICE.out +
-      (u.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite + (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead) / 1e6
+    const usd = priceCall(HARNESS_COACH_MODEL, usageTokens(u))
+    if (usd == null) { console.error(`🔴 ${HARNESS_COACH_MODEL} is unpriced in lib/models.js — refusing to run unmetered`); process.exit(3) }
+    spent += usd
   }
   return res
 }
@@ -614,5 +615,5 @@ if (want('E')) await rateCheck({
   ],
 })
 
-console.log(`\n💲 TOTAL: $${spent.toFixed(4)} across ${calls} API calls (claude-sonnet-4-6, from the API's usage fields)`)
+console.log(`\n💲 TOTAL: $${spent.toFixed(4)} across ${calls} API calls (${HARNESS_COACH_MODEL}, from the API's usage fields)`)
 process.exit(report('Starting-draft mapping — kept paragraphs land one per section') === 0 ? 0 : 1)

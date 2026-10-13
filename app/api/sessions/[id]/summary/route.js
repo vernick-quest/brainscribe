@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
@@ -36,7 +37,7 @@ export async function POST(request, { params }) {
   if (!await checkRateLimit(`summary:${user.id}`, 20, 60)) return rateLimited()
 
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: UTILITY_MODEL,
     max_tokens: 400,
     system: 'You are a precise JSON generator. You output ONLY valid JSON arrays — no explanation, no markdown, no code fences.',
     messages: [{
@@ -56,7 +57,7 @@ ${assignmentText}`,
     }],
   })
 
-  logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId: id, userId: user.id })
+  logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, sessionId: id, userId: user.id })
 
   const raw = response.content[0].text.trim()
   const summary = extractJSON(raw)

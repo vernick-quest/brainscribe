@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { logAnthropicUsage } from '@/lib/usage'
+import { UTILITY_MODEL } from '@/lib/models'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 
@@ -83,7 +84,7 @@ export async function POST(request, { params }) {
       : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
 
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: UTILITY_MODEL,
       max_tokens: 1500,
       messages: [{
         role: 'user',
@@ -108,7 +109,7 @@ If there is NO grading rubric visible (e.g. it's just an essay, an assignment pr
       }],
     })
 
-    logAnthropicUsage({ model: 'claude-haiku-4-5-20251001', inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
+    logAnthropicUsage({ model: UTILITY_MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, userId: user.id })
 
     const extracted = (response.content.find(b => b.type === 'text')?.text ?? '').trim()
     if (!extracted || extracted.startsWith('NO_RUBRIC_FOUND')) {

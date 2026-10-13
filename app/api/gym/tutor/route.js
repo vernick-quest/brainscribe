@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
+import { COACH_MODEL, requestOptionsFor, coachMaxTokens } from '@/lib/models'
+import { createCoachStreamReader } from '@/lib/coachStream'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { ageInYears } from '@/lib/coppa'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
@@ -91,13 +93,16 @@ export async function POST(request) {
   })
 
   const stream = await anthropic.messages.stream({
-    model: 'claude-sonnet-4-6',
+    model: COACH_MODEL,
+    // Same per-model fields as /api/tutor (lib/models.js) — effort 'low' on Opus 5.5.
+    ...requestOptionsFor(COACH_MODEL),
     // Matches /api/tutor deliberately. This ceiling is not "how much may the coach say" —
     // a [DONE:id:…] payload carries the STUDENT'S EXACT WORDS, so it is really "how long
     // may a piece of their writing be". Billed on actual output, so ordinary turns are
     // unaffected. Skill Studio pieces are shorter than essays, which is exactly why this
-    // sat unnoticed at 1000; shorter is not short.
-    max_tokens: 4000,
+    // sat unnoticed at 1000; shorter is not short. Sized per model in lib/models.js
+    // (8000 on Opus 5.5: bigger tokenizer + thinking spends from the same ceiling).
+    max_tokens: coachMaxTokens(COACH_MODEL),
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicTail },
@@ -112,34 +117,28 @@ export async function POST(request) {
 
   const readable = new ReadableStream({
     async start(controller) {
-      let fullText = ''
-      let inputTokens = 0
-      let outputTokens = 0
-      let stopReason = null
+      // Same reader as /api/tutor (lib/coachStream.js): only text_delta reaches the client;
+      // Opus 5.5's thinking/signature deltas are dropped. Counts cache tokens + stop_reason.
+      const reader = createCoachStreamReader()
+      const st = reader.state
       try {
         for await (const chunk of stream) {
-          if (chunk.type === 'message_start') inputTokens = chunk.message.usage?.input_tokens ?? 0
-          if (chunk.type === 'message_delta') {
-            outputTokens = chunk.usage?.output_tokens ?? 0
-            // stop_reason arrives on message_delta. 'max_tokens' = cut off mid-turn.
-            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason
-          }
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            fullText += chunk.delta.text
-            controller.enqueue(encoder.encode(chunk.delta.text))
-          }
+          const text = reader.consume(chunk)
+          if (text) controller.enqueue(encoder.encode(text))
         }
         controller.close()
       } catch (err) {
         controller.error(err)
       } finally {
+        const { fullText, stopReason } = st
         // Same discriminator as /api/tutor: a truncated turn that landed NO lock is the
         // one that may have destroyed confirmed student words. The student already saw
         // the text, so we still deliver and persist it — what we refuse is to treat a
         // truncated turn as a clean one.
         const savedText = stripCoachTokens(fullText)
         resolveResult({
-          inputTokens, outputTokens, savedText, stopReason,
+          usage: { inputTokens: st.inputTokens, outputTokens: st.outputTokens, cacheWriteTokens: st.cacheWriteTokens, cacheReadTokens: st.cacheReadTokens },
+          savedText, stopReason, chars: fullText.length,
           truncated: stopReason === 'max_tokens',
           hadLockToken: hasLandedLockToken(fullText),
         })
@@ -148,8 +147,17 @@ export async function POST(request) {
   })
 
   after(async () => {
-    const { inputTokens, outputTokens, savedText, truncated, hadLockToken, stopReason } = await resultReady
-    await recordAnthropicUsage({ model: 'claude-sonnet-4-6', inputTokens, outputTokens, sessionId, userId: user.id })
+    const { usage, savedText, truncated, hadLockToken, stopReason, chars } = await resultReady
+    await recordAnthropicUsage({ model: COACH_MODEL, ...usage, sessionId, userId: user.id })
+
+    // A safety-classifier decline is a 200 with stop_reason 'refusal': the stream simply
+    // ends, possibly mid-sentence. Same reasoning as /api/tutor — loud, never a short reply.
+    if (stopReason === 'refusal') {
+      console.error(
+        `[gym/tutor] 🔴 MODEL REFUSAL (stop_reason=refusal) session=${sessionId} model=${COACH_MODEL} ` +
+        `chars_streamed=${chars} lock_token_present=${hadLockToken} — the coach turn ended without a full reply`
+      )
+    }
 
     // Truncation, recorded against the SAME counter as the assignment path. `sessionId`
     // here is the linked `sessions` row (re-read via RLS and confirmed a gym session
