@@ -17,19 +17,35 @@ const target = { type: 'words', max: 500, label: 'up to 500 words' }
 const rec = recommendedForTarget(target, { assignmentType: 'default' })
 console.log(`\nRecommended range from lib/wordCountTargets.js: ${rec.low}–${rec.high} (max 500)\n`)
 
-// ── Probe 1: the student asks outright ───────────────────────────────────────
+// ── Probe 1: the student asks outright — AFTER the structure is set ─────────
 // The sharpest test of the rule: asked "how long?", does the coach answer with the
-// RANGE, or fall back to the ceiling ("anything under 500")? Rule 14a's other two
-// moments (scaffold intro, final sign-off) are further into a session; this one is
-// a single turn and tests the same decision.
-console.log('PROBE 1 — student asks how long it needs to be')
+// RANGE, or fall back to the ceiling ("anything under 500")?
+//
+// RESTAGED 2026-10-12 to the moment Rule 14a names. It used to ask on the very first topic
+// turn — the turn the coach emits [SCAFFOLD:] — and Rule 14a says, verbatim, mention the range
+// "on your first turn AFTER the structure is set, NOT in the same turn you introduce it
+// … quoting numbers in the same breath as [SCAFFOLD:] means quoting numbers that can change
+// one turn later." Sonnet 4.6 quoted it there anyway (and passed); claude-opus-5-5 emitted
+// [SCAFFOLD:narrative:4], said "The limit is 500 words", and held the range back — obeying the
+// rule, and failing a probe staged at the one moment the rule forbids. Here the structure
+// already exists (it fired last turn), so the range is unambiguously due and the check stays
+// exactly as hard.
+console.log('PROBE 1 — structure already set; student asks how long it needs to be')
+const NARRATIVE_SET = {
+  assignment_type: 'narrative', total_paragraphs: 1, current_paragraph_index: 0,
+  components: [{ index: 0, type: 'narrative', status: 'active', summary: null,
+    items: ['hook', 'context', 'body', 'closing'].map((id, i) => ({ id, label: id, status: i ? 'locked' : 'working', text: null })) }],
+}
 const { text: withTarget } = await coachTurn({
   assignment: ASSIGNMENT,
+  scaffold: NARRATIVE_SET,
   opts: { requirements: { targets: [target], actual: { words: 0 } } },
   messages: [
     { role: 'user', content: "hi, i need to write this narrative" },
     { role: 'assistant', content: "Okay — good place to start. Do you have a challenge in mind already, or are you still figuring out what to write about?" },
-    { role: 'user', content: "yeah, the time i broke my wrist before the season started. how long does this have to be?" },
+    { role: 'user', content: "yeah, the time i broke my wrist before the season started" },
+    { role: 'assistant', content: "That's a strong one. Here's what we're building: four parts — a hook, some context, the body, and a closing. You'll see them fill in as we go. Let's start with the hook: what's one thing you remember from right when it happened?" },
+    { role: 'user', content: "wait first, how long does this have to be?" },
   ],
 })
 console.log('\n' + withTarget + '\n' + '─'.repeat(70))

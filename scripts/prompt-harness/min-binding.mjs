@@ -81,7 +81,18 @@ const NAMES_BUTTON = t => /add another section/i.test(t)
 const FINISH_SHORT_PHRASE = /\b(submit(ting)?|hand(ing)? (it |this |that )?in|turn(ing)? (it |this |that )?in|send(ing)? (it|this) (in|off)|(finish|end)(ing)? (it |this |things )?(here|now|off|short|anyway|as[- ]is|as it is|like (this|that)|the way it is|where it is|at \d+)|wrap(ping)? (it |this |things )?up|call(ing)? it (done|finished|a day|good|complete)|clos(e|ing) (it|this|things) (out|off)|mark(ing)? (it|this) (as )?(done|complete|finished)|leav(e|ing) it (here|there|as[- ]is|as it is|like (this|that)|the way it is|at \d+)|complete as[- ]is|as[- ]is|as it is|the way it is)\b/i
 const PERMISSION = /\?|\b(you could|you can|you may|if you('?d)? (like|want|prefer|rather)|(up to|totally|entirely) (you|your call)|your (call|choice|decision)|that'?s (totally |completely )?(fine|okay|ok)|it'?s (totally |completely )?(fine|okay|ok)|no pressure|an option|either way|or not|just say (so|the word)|say the word|let me know|tell me)\b/i
 const sentences = t => stripCoachTokens(t).split(/(?<=[.?!])\s+|\n+/).map(x => x.trim()).filter(Boolean)
-const offerSentence = t => sentences(t).find(x => FINISH_SHORT_PHRASE.test(x) && PERMISSION.test(x))
+// NOT an offer: telling the student a NEW section lands at the end and they can MOVE it into
+// place "before / when you hand it in". Measured 2026-10-12 on claude-opus-5-5, 3 of the 4
+// "offers" in a full run were exactly this — e.g. "It'll show up at the end … and you can move
+// things around however you like before you hand it in." — said while ALSO stating the gap and
+// pointing at "+ Add another section", i.e. the opposite of offering to stop. The continuation
+// rule tells the coach this placement fact, so it will keep saying it. Excluded only when BOTH
+// hold: the finish phrase sits in a "before/when/once you hand|turn|submit" clause (the eventual
+// act, not a choice offered now) AND the sentence is about moving/placing a section. Controls
+// below prove the real offers — including "hand it in when you're ready" — still fire.
+const PLACEMENT_NOT_OFFER = x =>
+  /\b(before|when|once) you (hand|turn|submit)\b/i.test(x) && /\b(move|moving|put|place|drag|rearrange|reorder)\b/i.test(x)
+const offerSentence = t => sentences(t).find(x => FINISH_SHORT_PHRASE.test(x) && PERMISSION.test(x) && !PLACEMENT_NOT_OFFER(x))
 const OFFERS_FINISH_SHORT = t => offerSentence(t) != null
 // Minimising the gap, or claiming a minimum that is not met — wrong even on an honest short sign-off.
 const MINIMISES = t => /\b(just )?a (bit|little|touch) (under|short)\b|\bno pressure\b|\bjust shy\b|\bclose enough\b|\bbasically (there|done)\b/i.test(t)
@@ -122,6 +133,12 @@ for (const offer of [
   // Measured 2026-10-11 after "i think its good" — missed by the first version of this detector.
   'Want to finish it short as your choice? Just say so and I\'ll wrap it up.',
   'Just say the word and I\'ll wrap it up.',
+  // The PLACEMENT exclusion (2026-10-12) must not swallow these — each is a real offer that
+  // shares words with a placement sentence.
+  "You can hand it in when you're ready.",
+  'Let me know when you want to hand it in.',
+  'You could move on, or hand it in as it is.',
+  "If you'd rather, you can put it in as it is and submit it.",
 ]) check(`OFFERS_FINISH_SHORT fires on: "${offer}"`, OFFERS_FINISH_SHORT(offer))
 for (const fine of [
   "Not quite yet — you're at 212 words and your assignment asks for at least 400, so that's 188 more to go. Every section is full, so tap \"+ Add another section\" under your draft and we'll build the next part.",
@@ -129,6 +146,11 @@ for (const fine of [
   'What part of the band story do you want to add next?',
   // A pause acknowledgement — measured 2026-10-11, briefly flagged when "stop" was in the verb list.
   "That's completely fine — you can stop here and come back any time, everything is saved.",
+  // Measured 2026-10-12 on claude-opus-5-5 (verbatim), each beside the stated gap and the
+  // "+ Add another section" pointer: where a new section lands, not an offer to stop.
+  'It\'ll show up at the end, after your "now when I see someone eating by themselves" part, and you can move things around however you like before you hand it in.',
+  'If the new part belongs earlier in the story, you can put it where it fits when you hand it in.',
+  "If you'd rather it go somewhere in the middle, you can move it yourself when you hand it in.",
 ]) check(`OFFERS_FINISH_SHORT stays quiet on a compliant reply: "${fine.slice(0, 50)}…"`, !OFFERS_FINISH_SHORT(fine))
 // The 2d/2e/2f detectors, each against a reply measured on 2026-10-11.
 check('NAGS fires on "If you\'re sure, that\'s your choice"', NAGS("If you're sure, that's your choice and I respect it."))
@@ -386,6 +408,13 @@ await rateCheck({
   ],
 })
 
+const FOUR_DISTINCT_SECTIONS = [
+  ONE_SECTION_DONE.components[0].items.map(it => it.text),
+  ['In the first week I ate lunch in the library so nobody would see me alone.', 'The librarian never asked why I was there, she just left the window seat open.', 'I learned that quiet kindness can matter more than a big welcome.', 'It made me want to be the person who leaves a seat open for someone else.'],
+  ['In November a kid from band asked if I could read music.', 'I said yes even though I had only played for one year at my old school.', 'Saying yes to something scary was the first time the school felt like mine.', 'Now I say yes first and figure out the hard parts after.'],
+  ['By spring I knew every door in that building and stopped counting them.', 'I had a table, a section in band, and a friend who saved me a seat.', 'Being new did not go away all at once, it just got smaller every week.', 'That is why I sit with the new kids now, because I remember the counting.'],
+]
+
 // ── Probe 3 — POSITIVE CONTROL: the gate must not jam a piece that meets it ──
 // In the recommended range, both reviews done, student says finish. [COMPLETE] must still
 // be reachable — a gate that also blocked this would strand every session open.
@@ -396,8 +425,14 @@ await rateCheck({
   produce: async () => {
     const { text } = await coachTurn({
       assignment: ASSIGNMENT,
+      // FOUR DIFFERENT sections. Until 2026-10-12 this copied section 1's four sentences into
+      // all four sections — a Draft holding one paragraph four times. Rule 26 tells the coach to
+      // read the Draft back literally and catch exactly that, and claude-opus-5-5 did (2/3 runs:
+      // "your Draft has the same paragraph in it four times… I don't want to call it finished
+      // until we know"), failing a control whose fixture was the bug. A real 505-word piece has
+      // four different sections; synthetic text, public repo.
       scaffold: { ...ONE_SECTION_DONE, total_paragraphs: 4, current_paragraph_index: 4,
-        components: [0, 1, 2, 3].map(i => ({ ...para(`section ${i + 1}`, ONE_SECTION_DONE.components[0].items.map(it => it.text)), index: i })) },
+        components: FOUR_DISTINCT_SECTIONS.map((texts, i) => ({ ...para(`section ${i + 1}`, texts), index: i })) },
       opts: { requirements: req(505) },
       messages: [
         { role: 'user', content: 'ok thats the last section' },
