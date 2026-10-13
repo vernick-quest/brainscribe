@@ -6,7 +6,7 @@ import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { sessionCoachContribution } from '@/lib/scaffoldProvenance'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { COACH_MODEL, requestOptionsFor, coachMaxTokens } from '@/lib/models'
-import { createCoachStreamReader } from '@/lib/coachStream'
+import { createCoachStreamReader, coachTurnAbandoned } from '@/lib/coachStream'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
 import { parseCommitments, detectLockOverClaim } from '@/lib/coachCommitments'
@@ -235,6 +235,8 @@ export async function POST(request) {
   // keeps the serverless function alive until those writes complete.
   let resolveResult
   const resultReady = new Promise(resolve => { resolveResult = resolve })
+  // Set by cancel() below: the client went away before the turn was fully sent.
+  let clientCancelled = false
 
   const readable = new ReadableStream({
     async start(controller) {
@@ -276,6 +278,14 @@ export async function POST(request) {
         })
       }
     },
+    // The client aborted (TutorSession's 45s no-first-text / stalled-stream timeout, or the
+    // student navigated away). Next 16 cancels this source stream when the response closes
+    // early. Stop the model too — Opus output is $20/MTok for words nobody will read — which
+    // also ends the read loop above, so finally{} resolves the result promptly.
+    cancel() {
+      clientCancelled = true
+      try { stream.abort() } catch {}
+    },
   })
 
   after(async () => {
@@ -311,6 +321,23 @@ export async function POST(request) {
         p_had_lock_token: hadLockToken,
       })
       if (truncErr) console.error('[tutor] truncation record failed:', truncErr.message)
+    }
+
+    // ── An ABANDONED turn writes nothing but its usage (above) ──────────────────────────
+    // The client aborts a stalled turn and applies NOTHING from it, so neither do we: no
+    // partial coach message (it would reappear on reload), no coach_commitments row (the
+    // integrity detector would flag a promise that was never applied), and no over-claim
+    // record (control tokens come LAST, so a cut turn's "I've saved that" always looks
+    // like an over-claim). No [CARE] is recorded server-side — it is stripped above and
+    // rendered client-side only — so there is nothing to keep. See coachTurnAbandoned.
+    const abandoned = coachTurnAbandoned({ streamCancelled: clientCancelled, signalAborted: request.signal?.aborted === true, stopReason })
+    if (abandoned) {
+      const { components } = parseCommitments(rawText)
+      console.warn(
+        `[tutor] client ABORTED the turn mid-stream session=${sessionId} chars_streamed=${rawText.length} ` +
+        `stream_cancelled=${clientCancelled} — not persisting the partial coach message or its ${components.length} [DONE:] commitment(s)`
+      )
+      return
     }
 
     // Did the coach tell the student more was saved than it actually saved? Rule 25 holds

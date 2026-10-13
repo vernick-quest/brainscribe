@@ -5,7 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { buildCoachSystemBlocks } from '@/lib/prompts'
 import { recordAnthropicUsage } from '@/lib/usage'
 import { COACH_MODEL, requestOptionsFor, coachMaxTokens } from '@/lib/models'
-import { createCoachStreamReader } from '@/lib/coachStream'
+import { createCoachStreamReader, coachTurnAbandoned } from '@/lib/coachStream'
 import { checkRateLimit, rateLimited } from '@/lib/ratelimit'
 import { ageInYears } from '@/lib/coppa'
 import { COACH_GATE_COLUMNS, coachGateFailure } from '@/lib/access'
@@ -114,6 +114,8 @@ export async function POST(request) {
 
   let resolveResult
   const resultReady = new Promise(resolve => { resolveResult = resolve })
+  // Set by cancel() below: the client went away before the turn was fully sent.
+  let clientCancelled = false
 
   const readable = new ReadableStream({
     async start(controller) {
@@ -143,6 +145,14 @@ export async function POST(request) {
           hadLockToken: hasLandedLockToken(fullText),
         })
       }
+    },
+    // The client aborted (TutorSession's 45s no-first-text / stalled-stream timeout, or the
+    // student navigated away). Next 16 cancels this source stream when the response closes
+    // early. Stop the model too — Opus output is $20/MTok for words nobody will read — which
+    // also ends the read loop above, so finally{} resolves the result promptly.
+    cancel() {
+      clientCancelled = true
+      try { stream.abort() } catch {}
     },
   })
 
@@ -175,6 +185,14 @@ export async function POST(request) {
         p_had_lock_token: hadLockToken,
       })
       if (truncErr) console.error('[gym/tutor] truncation record failed:', truncErr.message)
+    }
+    // An ABANDONED turn writes nothing but its usage (above) and any truncation record:
+    // the client aborts a stalled turn and applies NOTHING from it, so the partial coach
+    // message must not reappear on reload. Same rule as /api/tutor (coachTurnAbandoned).
+    const abandoned = coachTurnAbandoned({ streamCancelled: clientCancelled, signalAborted: request.signal?.aborted === true, stopReason })
+    if (abandoned) {
+      console.warn(`[gym/tutor] client ABORTED the turn mid-stream session=${sessionId} chars_streamed=${chars} stream_cancelled=${clientCancelled} — not persisting the partial coach message`)
+      return
     }
     if (savedText) {
       // Persist the coach turn via the SERVICE-ROLE client, not the student's RLS
