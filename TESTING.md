@@ -5409,3 +5409,162 @@ to keep. Pure helper + source-wiring test with positive controls.
 
 Gate: build green · `test:run` **1357** · `test:prompts` 11/11 green on Opus 5.5 · no migration ·
 `test:continuation` NOT run here (writes the live DB) — conductor runs it. API spend this lane: $7.75.
+
+## 2026-10-12 (~16:30 PDT) — Instant acknowledgement clip + "Owen is thinking…" (focus/coaching-session)
+
+Why: the coach model is moving (separate lane) to one with ~4.7s median / ~7.6s p90 to its first
+word (vs ~1.1s). Two covers for that gap: (1) a short pre-rendered clip in the coach's own voice the
+moment a student turn goes to the coach, then the real reply; (2) a visible "Owen is thinking…"
+until the reply's first words appear.
+
+- **Clips**: 8 per coach × 6 = 48 static mp3s, `public/coaches/audio/ack/{asset}-{n}.mp3`, committed
+  (same as the intro clips), rendered by `scripts/pregen-coach-acks.mjs` from `ACK_LINES` in
+  `lib/ackClips.js` (eleven_flash_v2_5, each persona's voiceId, same voice settings as /api/speak).
+  Measured durations 0.68–1.99s at 1×. 866 characters billed once; no per-play TTS cost.
+- **When it plays**: only a turn the STUDENT sent to the coach (typed Send in conversation, or a
+  dictation the scribe routed to the coach as conversation). Never: voice muted; Lock-it-in / panel
+  confirm / skip; direct edits; "Yes, add it to my essay"; "Not quite right"; section done; greeting,
+  resume greeting, coach switch, replay, full read-back. Delay 600ms (also the clip's load window) —
+  if the reply's first visible words arrive inside it, no clip. Load slower than 1.8s → no clip.
+  Rate limit: at most one clip per 20s (from the last one that PLAYED) so quick back-and-forth isn't
+  "Mm, okay" every turn; those turns get the visual indicator only. All tunable in `lib/ackClips.js`.
+- **Sequencing**: the clip plays through `playClip` (the one unlocked element, pace applied). The
+  reply's sentence queue keeps synthesising but holds its FIRST play until the clip ends
+  (`createSpeechStream({ startAfter })`) — never overlapped, never cut. The `stopCurrentAudio()`
+  that runs when /api/tutor's headers arrive now skips this turn's own live clip (headers land
+  inside the clip's window). Every stop (`stopCurrentAudio`: send, mute, coach switch, replay,
+  student speech, unmount) cancels the clip AND the queue; opening the mic cancels the clip.
+  A failed/missing clip or a lost `ended` (8s backstop) never blocks the reply.
+- **Indicator**: `components/CoachThinking.js` inside LiveCaption — coach avatar, three dots in the
+  coach's `--tutor-*` colour (opacity-only pulse, static under reduced motion), "{Name} is
+  thinking…". Same slot and height as the streaming reply bubble (measured 47.09px both). A
+  persistent `role="status"` region announces it. Cleared by the first visible words, by commit,
+  and by the existing error paths.
+
+### Verified (2026-10-12, this lane)
+- `npm run build` green · `npm run test:run` **1355** (was 1311; +44 in `lib/ackClips.test.js` and
+  `components/CoachThinking.test.js`). Lint: new files clean; TutorSession unchanged at its 27
+  pre-existing problems.
+- Positive controls: removing the `startAfter` gate → 4 sequencing tests fail (overlap detected);
+  removing the post-wait cancel re-check → both stop tests fail. Restored, green.
+- `next dev` (worktree, unauthenticated): all 48 clip URLs `200 audio/mpeg`, bytes identical to
+  the files; a nonexistent clip 404s.
+- Real Chromium (desktop browser pane), real clips, real `createAckController` + `createSpeechStream`
+  on ONE `<audio>` element, via a throwaway page (deleted, not committed): reply text arriving
+  mid-clip → clip played to its natural `ended`, first sentence started 31ms later, no pause/cut;
+  stop at 1.1s → clip paused, both queues settled, held sentence never played; reply at 200ms →
+  no clip, sentence played immediately. Indicator rendered for all 6 coaches in light AND dark
+  (dark tokens applied: Owen dots #A172DB; label contrast ≈5.4:1 light, ≈5.1:1 dark).
+
+### UNVERIFIED — needs Robert's manual pass
+TutorSession itself was NOT exercised (Google sign-in can't run in the preview). React wiring,
+real /api/tutor timing, iOS autoplay and the open-mic interplay are unproven. Use a real session.
+1. **Desktop, voice ON, slow reply**: send a typed message. Within ~0.6s you hear a short line in
+   the coach's voice ("Mm, okay.", "Got it.", …) and see "{Coach} is thinking…" with pulsing dots.
+   When the reply streams in, the dots are replaced by the text in the same spot (nothing jumps),
+   and the reply's voice starts right AFTER the clip ends — never on top of it, never cutting it.
+2. **Rate limit**: send again within 20s of the last clip → no clip this time (indicator only).
+   Wait >20s and send → clip again, and not the same line as last time.
+3. **Interrupt mid-clip**: send, and while the clip is playing (a) tap the speaker to mute, (b) on
+   another turn switch coach, (c) on another turn tap the mic. Each time the clip stops at once.
+   After (a) the reply's voice must not start. After (b) whatever the reply does is unchanged from
+   before this change (switching mid-think was never special-cased). For (c) the reply may then read
+   aloud as replies always have with an open mic — check "Mm, okay" is NOT transcribed into the box,
+   and that speaking stops the read-aloud as before.
+4. **Voice OFF**: mute, send → no clip, no /api/speak calls in the Network tab; indicator still shows.
+5. **UI actions get no clip**: Lock it in from the panel, "Yes, add it to my essay", "Not quite
+   right", a direct edit, a section "done" → indicator yes, clip NO.
+6. **Fast reply** (current model, ~1.1s): mostly expect a clip followed promptly by the reply; if
+   the first words beat 0.6s, no clip. Note whether the clip ever feels like it delays the reply.
+7. **iPhone Safari**: steps 1, 3 and 4. Especially: the clip plays after a typed Send on the first
+   turn of a fresh page load (autoplay unlock), and pace (0.75× / 1.25×) applies to the clip too.
+8. **Every coach once** (Owen, Deon, Zoe, Alistair, Tilly, Jade): the clip is that coach's voice,
+   the indicator says that coach's name ("Tilly", never "matilda"), dots in that coach's colour.
+9. **Dark mode + reduced motion** (OS setting): indicator legible in dark; with Reduce Motion on the
+   dots are static.
+10. **Screen reader** (VoiceOver): after Send, "{Coach} is thinking…" is announced once.
+
+Known limits (pre-existing, not changed here): /api/tutor has no client timeout, so a stalled stream
+keeps the indicator (as the old "…" bubble did). If a turn is superseded (e.g. replay tapped while
+thinking) AND the request then errors, the error path's run-id guard skips the reset — phase and
+indicator stay until reload; that guard predates this change.
+
+Gate: build green · `test:run` **1355** · no migration · no Anthropic spend · ElevenLabs 866 chars.
+
+## 2026-10-12 (~16:40 PDT) — No more stuck "thinking": every exit hands Send back; 45s timeout + Try again (focus/coaching-session)
+
+Follow-on to the section above. Two pre-existing ways a coach turn stranded the session on
+"Owen is thinking…" with Send — and every panel action gated on the same phase — disabled
+until a reload:
+
+1. **Replaced turn, then failure.** The exit paths reset the UI only if `tutorRunRef` still
+   held the turn's id, but Replay and the student starting to speak bump that counter too (it
+   is the AUDIO run). Tap Replay while the coach thinks, have the request fail → nothing reset.
+   Now UI ownership is `askTurnRef`, bumped ONLY when `askTutor` starts a turn
+   (`lib/coachTurn.js` `turnExit`). A turn replaced by a NEWER turn still leaves the UI to that
+   turn (it must not reopen Send under one that is still thinking).
+2. **No timeout.** `runCoachTurn` arms a watchdog before the fetch: no reply bytes within
+   `FIRST_TEXT_TIMEOUT_MS` = 45s of the send, or `STALL_TIMEOUT_MS` = 45s of silence between
+   chunks → `AbortController.abort()`. ~6× the new model's 7.6s p90 to first word; no cap on
+   total length (a long healthy reply keeps resetting the stall timer).
+
+On any failure the indicator becomes a gentle inline notice in the same slot —
+"That took too long — tap to try again." / "{Coach} couldn't answer just then — tap to try
+again." / (429) "Lots of messages in a row — give it a few seconds…" — with a 44px **Try again**.
+Try again re-asks with the SAME history: the student's message is already on screen and was
+persisted by the send, so nothing is re-sent or re-persisted; a one-shot slot means a double tap
+asks once. Any new turn (a fresh Send) clears the offer.
+
+**Writes vs. an aborted turn**: a timed-out turn applies NOTHING — the abort errors the read
+loop before the scaffold parse, and `finish()` is re-checked after the loop for a stream that
+closed in the same instant. A late `[DONE:]` cannot write. A turn that was merely superseded
+(Replay, speech, a newer turn) still applies its tokens as before — dropping them would lose a
+lock the coach really made. **Exception, deliberately**: a complete `[CARE]` that arrived before
+the failure still opens the crisis card (display-only, fail-safe; the server only strips it).
+
+Also: the ack clip is `abandon()`ed on failure (not started → never plays after the notice;
+already playing → finishes); a stalled reply's partial read-aloud is stopped unless the audio
+moved on to a Replay; the one-shot resume signal is restored if the turn that carried it failed.
+
+### Verified (2026-10-12)
+- `npm run build` green · `npm run test:run` **1386** (+31: `lib/coachTurn.test.js`, failure-row
+  render tests, `abandon()`; `lib/wiring.test.js` updated to the new shape with the same
+  guarantees + a [CARE] guard). Lint: new files clean; TutorSession unchanged at 27 pre-existing.
+- Positive controls (each broken, saw red, restored): post-loop `finish()` check removed → the
+  "closes in the same instant" late-[DONE:] test fails; watchdog no longer aborts → 3 timeout
+  tests fail; `currentTurn` keyed on `tutorRunRef` (the original bug) → wiring guard fails;
+  ownership ignoring newer turns → 3 tests fail; [CARE] surfacing removed → wiring guard fails.
+- Real Chromium, real `fetch` + `AbortController` against a throwaway local streaming route
+  (deleted, not committed), watchdog shortened to 1.5s by injection: stalled stream → aborted at
+  1.5s, the server's [DONE:] sent at 4s never reached apply; no headers → timeout at 1.5s; HTTP
+  500 → error + retry offered; slow healthy stream (1s gaps, 4s total) → completed and applied.
+  Failure row rendered light + dark (dark: #FBB85A on #17232E), button 44px; a real double-click
+  + third click on Try again → exactly one retry.
+
+### UNVERIFIED — manual pass for Robert (real session; desktop + iPhone)
+TutorSession was not exercised (no Google sign-in in the preview); the 45s timings were only
+tested by injection. To force failures use DevTools → Network → **Offline** or request blocking
+on `/api/tutor`.
+11. **Replay-then-fail**: send; while "{Coach} is thinking…" shows, tap Replay on an earlier coach
+    message, then go Offline. Within a few seconds: the replay keeps playing, the indicator turns
+    into "{Coach} couldn't answer just then — tap to try again.", and Send works again. The panel
+    buttons (Lock it in etc.) are enabled again too.
+12. **Try again**: go back Online, tap Try again (double-tap it). ONE new coach reply arrives; your
+    message appears once in the transcript — reload the page and check it is still there once,
+    not twice.
+13. **Timeout**: block `/api/tutor` with a request-blocking rule that hangs (or throttle to a
+    custom 1 kb/s profile) and wait 45s: "That took too long — tap to try again." Before 45s the
+    indicator must still be showing (a slow reply is never cut early).
+14. **Your words are safe**: type a message, send it, force a failure. Your message bubble stays.
+    Type a NEW message instead of tapping Try again: it sends normally and the notice goes away.
+15. **Voice on, stall mid-reply** (hardest to force; skip if you can't): the partial reply stops
+    reading aloud when the notice appears.
+
+Known limit, NOT fixed here (route owned by another lane): when the client aborts a turn,
+`/api/tutor`'s `finally` still persists whatever text had streamed as an assistant message, and
+records any complete `[DONE:]` in `coach_commitments`. So after a mid-stream timeout, a reload can
+show a partial coach message, and the integrity detector may see a promise the client never
+applied (the retry normally re-locks it). Rare at 45s, but worth a route-side fix (skip the insert
+and commitment when `request.signal.aborted`).
+
+Gate: build green · `test:run` **1386** · no migration · no API spend.

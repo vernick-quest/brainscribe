@@ -24,6 +24,9 @@ import { newSessionGreeting, hasExistingWork } from '@/lib/greeting'
 import { deduceVoiceSuggestion } from '@/lib/voiceDeduce'
 import { nextPace, paceFace, paceAriaLabel, normalizePace, applyPlaybackRate, scaleDurationMs } from '@/lib/coachPace'
 import { createSpeechStream } from '@/lib/speechStream'
+import { shouldPlayAck, createAckPicker, createAckController, ackClipPath } from '@/lib/ackClips'
+import { runCoachTurn, createRetrySlot, turnFailureMessage } from '@/lib/coachTurn'
+import CoachThinking, { thinkingLabel, CoachTurnFailed } from '@/components/CoachThinking'
 import { readDraft, writeDraft, clearDraftIfMatches, sweepExpiredDrafts, getDraftStorage } from '@/lib/composerDraft'
 import StartingDraftCard from '@/components/StartingDraftCard'
 
@@ -513,18 +516,37 @@ function buildReadBackMessage(persona, body) {
 // ── Live caption ──────────────────────────────────────────────────────────────
 // Owns its own text state so the 30ms word-sync updates during audio playback
 // re-render only this small bubble, not the whole TutorSession tree. The parent
-// drives it imperatively via a ref (set/clear) instead of parent state.
-const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref) {
+// drives it imperatively via a ref (set/clear/thinking) instead of parent state.
+//
+// thinking(): "Owen is thinking…" (components/CoachThinking) from the moment a turn goes
+// to the coach until the reply's first visible words — set() replaces it in the same
+// slot, clear() (every error/abort path already calls it) removes it. The status region
+// below is ALWAYS mounted so assistive tech announces the change; a live region that
+// mounts together with its text is often skipped.
+// failed(message): the turn errored or timed out (lib/coachTurn) — the indicator becomes a
+// gentle notice with "Try again" (onRetry) in the same slot. Any next turn replaces it.
+const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef, onRetry }, ref) {
   const [text, setText] = useState('')
+  const [thinking, setThinking] = useState(false)
+  const [failure, setFailure] = useState(null)
   useImperativeHandle(ref, () => ({
-    set: (t) => setText(t),
-    clear: () => setText(''),
+    set: (t) => { setThinking(false); setFailure(null); setText(t) },
+    clear: () => { setThinking(false); setFailure(null); setText('') },
+    thinking: () => { setText(''); setFailure(null); setThinking(true) },
+    failed: (message) => { setText(''); setThinking(false); setFailure(message) },
   }), [])
   useEffect(() => {
-    if (text) bottomRef?.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [text, bottomRef])
-  if (!text) return null
+    if (text || thinking || failure) bottomRef?.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [text, thinking, failure, bottomRef])
+  const status = (
+    <span role="status" aria-live="polite" className="sr-only">
+      {text ? '' : failure ? failure : thinking ? thinkingLabel(persona) : ''}
+    </span>
+  )
+  if (!text && failure) return <>{status}<CoachTurnFailed persona={persona} message={failure} onRetry={onRetry} /></>
+  if (!text) return <>{status}{thinking && <CoachThinking persona={persona} />}</>
   return (
+    <>{status}
     <div className="flex justify-start">
       <PersonaAvatar personaId={persona} size={28} className="mr-2 mt-1 shrink-0" />
       <div className="rounded-2xl rounded-bl-sm px-4 py-3 max-w-lg text-sm leading-relaxed"
@@ -532,6 +554,7 @@ const LiveCaption = forwardRef(function LiveCaption({ persona, bottomRef }, ref)
         {renderMarkdown(text)}<span className="animate-pulse ml-0.5">▋</span>
       </div>
     </div>
+    </>
   )
 })
 
@@ -601,7 +624,7 @@ function CoachPaceButton({ pace, onCycle, saving = false }) {
 // final text. (Note: the previous inline textareas had a duplicate `style` prop,
 // so React dropped the first object and the border/background never rendered;
 // the styles below merge both into the intended design.)
-const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, coachBusy = false, recoveredText = null, onDraftChange = null, noticeLine = null, readAloud = true, onToggleReadAloud, coachPace = 1, onCyclePace, savingVoicePref = false }) {
+const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, onSubmit, onSpeechStart, onMicStart = null, coachBusy = false, recoveredText = null, onDraftChange = null, noticeLine = null, readAloud = true, onToggleReadAloud, coachPace = 1, onCyclePace, savingVoicePref = false }) {
   const [text, setText] = useState('')
   const textareaRef = useRef(null)
   const micRef = useRef(null)
@@ -703,6 +726,10 @@ const ReplyComposer = memo(function ReplyComposer({ mode, assignmentKeyterms, on
   // ignore further interim updates so we don't clobber their changes. A mic
   // (re)start fires onInterim('') which re-enables transcription.
   function handleInterim(t) {
+    // The mic just opened (MicButton fires onInterim('') once per start). Cut the
+    // acknowledgement clip now — an open mic must not transcribe "Mm, okay" into the box.
+    // Before the just-submitted guard: a mic re-opened inside that 600ms still counts.
+    if (t === '') onMicStart?.()
     if (justSubmittedRef.current) return   // ignore the tail of the just-sent utterance
     if (t === '') { editingRef.current = false; spokeRef.current = false; setText(''); return }
     // First real words of this utterance → pause the coach's read-aloud (barge-in on
@@ -964,12 +991,24 @@ export default function TutorSession({
   const audioRef          = useRef(null)   // single persistent <audio>, unlocked on first gesture
   const audioTimerRef     = useRef(null)
   const playSeqRef        = useRef(0)       // bumps each playback; stale playbacks bail
-  const tutorRunRef       = useRef(0)       // bumps each coach turn; a superseded turn's leftover audio bails
+  const tutorRunRef       = useRef(0)       // the AUDIO run: bumps each coach turn AND on Replay / student speech; a superseded turn's leftover audio bails
+  // The TURN counter: bumped ONLY when askTutor starts a turn. Decides which turn owns the
+  // phase, the caption/indicator and the retry offer (lib/coachTurn turnExit). Never key UI
+  // ownership on tutorRunRef — Replay bumps that, and a failed request then reset nothing.
+  const askTurnRef        = useRef(0)
+  const retrySlotRef      = useRef(null)
+  if (retrySlotRef.current === null) retrySlotRef.current = createRetrySlot()
   // The coach's in-flight sentence queue (lib/speechStream). EVERY stop goes through
   // stopCurrentAudio, which cancels it — so a queued sentence can never start after the
   // student interrupted, muted, switched coach or left. Without this, the gap BETWEEN two
   // sentences is a window where a stop pauses nothing and the next clip plays anyway.
   const speechRef         = useRef(null)
+  // The current turn's acknowledgement clip ("Mm, okay…", lib/ackClips) — cancelled by
+  // stopCurrentAudio in the same call as the sentence queue, and on mic start / unmount.
+  // The reply's queue waits on its `done` (startAfter), so the two never overlap.
+  const ackRef            = useRef(null)
+  const ackPickerRef      = useRef(null)   // no-immediate-repeat clip choice, per persona
+  const lastAckAtRef      = useRef(null)   // when the last clip PLAYED (rate limit)
   // True while the component is mounted. Both the detached <audio> (audioRef) and
   // window.speechSynthesis are browser globals that keep playing after unmount, and
   // an in-flight /api/speak can resolve after the student has navigated back to the
@@ -1250,6 +1289,9 @@ export default function TutorSession({
   function stopCurrentAudio() {
     // Cancel the sentence queue FIRST: a late-resolving TTS fetch must find it cancelled.
     if (speechRef.current) { speechRef.current.cancel(); speechRef.current = null }
+    // …and the acknowledgement clip with it. Cancelling releases its `done` gate, but the
+    // queue that waited on it is already cancelled, so nothing starts in its place.
+    cancelAck()
     playSeqRef.current++   // invalidate any in-flight playback
     if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
     const el = audioRef.current
@@ -1268,6 +1310,7 @@ export default function TutorSession({
     return () => {
       mountedRef.current = false
       if (speechRef.current) { speechRef.current.cancel(); speechRef.current = null }
+      if (ackRef.current) { ackRef.current.cancel(); ackRef.current = null }
       playSeqRef.current++
       tutorRunRef.current++
       if (audioTimerRef.current) { clearInterval(audioTimerRef.current); audioTimerRef.current = null }
@@ -1341,7 +1384,7 @@ export default function TutorSession({
   // first. Every clip goes through playClip — the ONE gesture-unlocked element, with the
   // pace re-applied after each source change — never a fresh Audio per sentence.
   // `isCurrent` is the caller's own supersession check (e.g. the coach turn's run id).
-  function startSpeechStream(activePersona, isCurrent = () => true, onFirstDispatch = null) {
+  function startSpeechStream(activePersona, isCurrent = () => true, onFirstDispatch = null, startAfter = null) {
     const speech = createSpeechStream({
       synth:    (chunk) => fetchTts(chunk, activePersona),
       play:     (url) => playClip(url),
@@ -1349,9 +1392,51 @@ export default function TutorSession({
       fallback: (chunk) => speakFallback(chunk),
       isLive:   () => mountedRef.current && readAloudRef.current && isCurrent(),
       onFirstDispatch,
+      startAfter,
     })
     speechRef.current = speech
     return speech
+  }
+
+  // ── Acknowledgement clip (lib/ackClips) ──────────────────────────────────────
+  // A short pre-rendered "Mm, okay…" in the coach's own voice, so the student hears the
+  // coach take their turn while the model works out its first word (~4.7s on the new
+  // model). Decided at send time; returns the turn's controller, or null when skipped.
+  // It plays through playClip — the ONE unlocked element, pace re-applied — and the
+  // reply's sentence queue holds its first play until `done` (never overlap, never cut).
+  function startAck(activePersona, myRun, turnKind) {
+    const decision = shouldPlayAck({
+      turnKind,
+      voiceOn:   readAloudRef.current,
+      now:       Date.now(),
+      lastAckAt: lastAckAtRef.current,
+    })
+    if (!decision.play) return null
+    if (!ackPickerRef.current) ackPickerRef.current = createAckPicker()
+    const path = ackClipPath(activePersona, ackPickerRef.current.pick(activePersona))
+    const ack = createAckController({
+      // Fetched as a blob during the delay window, so play() starts on bytes already here.
+      // A static file outside proxy.js's matcher: no auth, no TTS bill, no rate limit.
+      load: async () => {
+        const res = await fetch(path)
+        if (!res.ok) throw new Error(`ack clip ${res.status}`)
+        return URL.createObjectURL(await res.blob())
+      },
+      play:   (url) => playClip(url),
+      // Only called while the clip is the thing on the element. Bumping playSeqRef
+      // retires the clip's playClip promise, exactly as stopCurrentAudio does.
+      stopPlayback: () => { playSeqRef.current++; try { audioRef.current?.pause() } catch {} },
+      revoke: (url) => { try { URL.revokeObjectURL(url) } catch {} },
+      isLive: () => mountedRef.current && readAloudRef.current && tutorRunRef.current === myRun,
+      onPlay: () => { lastAckAtRef.current = Date.now() },
+    })
+    ackRef.current = ack
+    ack.done.then(() => { if (ackRef.current === ack) ackRef.current = null })
+    return ack
+  }
+
+  function cancelAck() {
+    if (ackRef.current) { ackRef.current.cancel(); ackRef.current = null }
   }
 
   async function playWithSync(text, activePersona = persona) {
@@ -1786,15 +1871,55 @@ export default function TutorSession({
 
   // ── Tutor call ───────────────────────────────────────────────────────────────
 
-  async function askTutor(history, activePersona = persona, displayHistory = null) {
+  // `turnKind`: 'student' ONLY for a turn the student sent (typed Send, committed voice).
+  // Every other caller — panel lock-ins, edits, "Yes, add it to my essay", "Not quite
+  // right", section done, a Try-again tap — is a UI action and gets no acknowledgement clip.
+  //
+  // The turn itself runs in lib/coachTurn.js (runCoachTurn), which owns the parts that
+  // used to strand the session on "thinking" with Send disabled (2026-10-12):
+  //   • UI ownership is decided by askTurnRef — bumped ONLY here — not tutorRunRef, which
+  //     Replay and the student starting to speak also bump (it is the AUDIO run). Keyed on
+  //     the audio run, a request that failed after a Replay tap reset nothing.
+  //   • A watchdog aborts a request with no reply in 45s, or a stream silent for 45s.
+  //     An aborted turn applies NOTHING (no late [DONE:] write); a merely superseded one
+  //     still applies its tokens, as before — those are locks the coach really made.
+  //   • Every failure hands the UI back and offers a one-shot "Try again" that re-asks
+  //     with the SAME history — the student's message is already in the transcript and
+  //     persisted, so a retry never re-sends or re-persists it.
+  async function askTutor(history, activePersona = persona, displayHistory = null, { turnKind = 'ui-action' } = {}) {
     const myRun = ++tutorRunRef.current
+    const myTurn = ++askTurnRef.current
+    retrySlotRef.current.clear()          // a new turn makes any earlier failure moot
     setPhase('tutor-thinking')
-    captionRef.current?.set('…')
+    captionRef.current?.thinking()
+    // After setPhase, before the fetch: the clip's load runs in parallel with the request.
+    // Nothing about the acknowledgement may ever block the reply — a throw here is logged
+    // and the turn proceeds without one.
+    let ack = null
+    try { ack = startAck(activePersona, myRun, turnKind) } catch (err) { console.warn('[ack] skipped:', err?.message) }
 
-    try {
-      const wasResume = resumePendingRef.current
-      resumePendingRef.current = false   // the resume signal is first-turn-only
-      const res = await fetch(tutorEndpoint, {
+    const wasResume = resumePendingRef.current
+    resumePendingRef.current = false   // the resume signal is first-turn-only
+    let speech = null
+    // Read-aloud OFF ⇒ no queue, so the TTS path is never reached (zero /api/speak);
+    // the text still streams into the caption. Created lazily so a student who turns
+    // the voice on mid-stream still hears this reply, as before.
+    const speechForTurn = () => {
+      if (!speech && readAloudRef.current && tutorRunRef.current === myRun) {
+        // A voiced turn has audio in flight once the first request goes out — mark it
+        // pending so a send that lands before the phase flip still settles it as skipped.
+        speech = startSpeechStream(activePersona, () => tutorRunRef.current === myRun,
+          () => { pendingAudioTurnRef.current = true },
+          ack ? ack.done : null)   // first sentence waits for the acknowledgement clip to END
+      }
+      return speech
+    }
+
+    const result = await runCoachTurn({
+      myTurn,
+      currentTurn: () => askTurnRef.current,
+      isMounted:   () => mountedRef.current,
+      request: (signal) => fetch(tutorEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1805,102 +1930,126 @@ export default function TutorSession({
           scaffold: scaffoldRef.current ?? scaffold,
           resume: wasResume,
         }),
-      })
-
-      if (!res.ok) {
-        console.error('Tutor API error:', res.status, await res.text())
-        if (tutorRunRef.current === myRun) { captionRef.current?.clear(); setPhase('listening') }
-        return
-      }
-
-      // Stream the coach's words into the caption as they generate, so the
-      // student gets immediate feedback instead of a static "…". Speech follows the
-      // stream sentence by sentence (lib/speechStream): the first sentence is
-      // synthesised the moment it completes, later ones while earlier ones play. The
-      // queue only ever sees token-free prose (it strips/holds every bracketed span
-      // itself), so a [DONE:…] payload — the student's own words — is never spoken.
-      stopCurrentAudio()
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let full = ''
-      let speech = null
-      // Read-aloud OFF ⇒ no queue, so the TTS path is never reached (zero /api/speak);
-      // the text still streams into the caption. Created lazily so a student who turns
-      // the voice on mid-stream still hears this reply, as before.
-      const speechForTurn = () => {
-        if (!speech && readAloudRef.current && tutorRunRef.current === myRun) {
-          // A voiced turn has audio in flight once the first request goes out — mark it
-          // pending so a send that lands before the phase flip still settles it as skipped.
-          speech = startSpeechStream(activePersona, () => tutorRunRef.current === myRun,
-            () => { pendingAudioTurnRef.current = true })
+        signal,
+      }),
+      // Stream the coach's words into the caption as they generate. Speech follows the
+      // stream sentence by sentence (lib/speechStream): the first sentence is synthesised
+      // the moment it completes, later ones while earlier ones play. The queue only ever
+      // sees token-free prose (it strips/holds every bracketed span itself), so a [DONE:…]
+      // payload — the student's own words — is never spoken.
+      onHeaders: () => {
+        // Stop whatever is still sounding from before this turn — EXCEPT this turn's own
+        // acknowledgement clip. The headers arrive before the first token, i.e. right
+        // inside the clip's window; stopping here would cut it mid-word. On an ack turn the
+        // previous audio was already stopped by the send, and any stop since then
+        // cancelled the ack, which lands us in the ordinary branch.
+        if (!(ack && ackRef.current === ack)) stopCurrentAudio()
+      },
+      onChunk: (full, ownsUi) => {
+        // The thinking indicator holds until there are VISIBLE words — a turn that opens
+        // with hidden tokens ([ACTIVE:…]) is still "thinking" to the student. A turn a
+        // NEWER turn has replaced doesn't paint over that turn's indicator.
+        const shown = liveDisplay(full)
+        if (shown) {
+          if (ownsUi) captionRef.current?.set(shown)
+          ack?.replyStarted()   // inside the delay → skip the clip; already playing → let it finish
         }
-        return speech
-      }
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        full += decoder.decode(value, { stream: true })
-        captionRef.current?.set(liveDisplay(full) || '…')
         speechForTurn()?.update(full)
-      }
-      // Flush the remainder NOW — before the scaffold parse below, which can await a
-      // network PATCH. The old path fetched the remainder's audio only after that.
-      speechForTurn()?.end(full)
+      },
+      // Flush the remainder NOW — before the scaffold parse in apply, which can await a
+      // network PATCH. Only reached by a turn that was NOT aborted.
+      onStreamEnd: (full) => { speechForTurn()?.end(full) },
+      apply: async (full, ownsUi) => {
+        // Parse against the LIVE tree, never the closure — see scaffoldRef above.
+        const live = scaffoldRef.current ?? scaffold
+        const newScaffold = await parseAndApplyScaffoldTokens(full, live)
+        if (newScaffold !== live) applyScaffold(newScaffold)
 
-      // Parse scaffold tokens and update scaffold state
-      // Parse against the LIVE tree, never the closure — see scaffoldRef above.
-      const live = scaffoldRef.current ?? scaffold
-      const newScaffold = await parseAndApplyScaffoldTokens(full, live)
-      if (newScaffold !== live) applyScaffold(newScaffold)
+        if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
 
-      if (full.includes('[COMPLETE]')) markSessionComplete(newScaffold)
+        // Child-safety signal: surface the out-of-band, student-only resource card.
+        // Latches on (never auto-hidden mid-session); the token is stripped from the
+        // displayed + persisted text so it never appears as literal text or lands in
+        // the watcher-readable transcript.
+        if (full.includes('[CARE]')) setShowCrisisCard(true)
 
-      // Child-safety signal: surface the out-of-band, student-only resource card.
-      // Latches on (never auto-hidden mid-session); the token is stripped from the
-      // displayed + persisted text so it never appears as literal text or lands in
-      // the watcher-readable transcript.
-      if (full.includes('[CARE]')) setShowCrisisCard(true)
+        // Research/citations: the coach filed a source the student named. Open the
+        // confirm card so the student checks/edits the citation before it's saved.
+        // Double-gated to research-relevant (essay) forms — even if the coach mis-emits
+        // on a creative form, the card never opens. Gate on the JUST-PARSED scaffold so
+        // a [SOURCE:] arriving on the same turn as [SCAFFOLD:essay:…] isn't missed.
+        if (newScaffold?.assignment_type === 'essay' && full.includes('[SOURCE:')) {
+          for (const desc of extractSourceTokens(full)) enqueueSourceCapture(desc)
+        }
 
-      // Research/citations: the coach filed a source the student named. Open the
-      // confirm card so the student checks/edits the citation before it's saved.
-      // Double-gated to research-relevant (essay) forms — even if the coach mis-emits
-      // on a creative form, the card never opens. Gate on the JUST-PARSED scaffold so
-      // a [SOURCE:] arriving on the same turn as [SCAFFOLD:essay:…] isn't missed.
-      if (newScaffold?.assignment_type === 'essay' && full.includes('[SOURCE:')) {
-        for (const desc of extractSourceTokens(full)) enqueueSourceCapture(desc)
-      }
+        const hasDictateSignal = full.includes('[DICTATE]')
+        const displayText = full.replace(ALL_TOKEN_RE, '').trim()
 
-      const hasDictateSignal = full.includes('[DICTATE]')
-      const displayText = full.replace(ALL_TOKEN_RE, '').trim()
+        // The coach's words are now fully written. Commit the message and reopen the
+        // composer immediately — BEFORE the read-aloud finishes. The audio lags
+        // behind the text, so this lets the student type during the read-aloud and,
+        // by sending, interrupt only the audio — the coach's full reply is already
+        // safely committed and never truncated. The phase and caption belong to the
+        // newest turn: a late reply must not reopen Send under a turn still thinking.
+        setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
+        if (ownsUi()) {
+          captionRef.current?.clear()
+          setPhase(hasDictateSignal ? 'dictating' : 'listening')
+        }
+      },
+      onFailure: ({ failure, ownsUi, offerRetry, partial }) => {
+        // Nothing from a failed turn is applied — EXCEPT the child-safety card. [CARE] is
+        // display-only and fail-safe: if a complete one already arrived before the stream
+        // died (or was aborted), latch the card exactly as a finished turn would. The
+        // server only strips [CARE]; this card is its one surface, so an abort must not
+        // swallow it. Writes ([DONE:] and the rest) stay unapplied.
+        if (mountedRef.current && partial?.includes('[CARE]')) setShowCrisisCard(true)
+        ack?.abandon()   // no "Mm, okay" after the error notice; one already playing finishes
+        // A stream that stalled mid-reply may already be reading its first sentences aloud
+        // — stop that, unless the audio has moved on to something the student asked for
+        // (a Replay). Without a speech queue nothing of this turn is sounding except, at
+        // most, the clip — which abandon() lets finish rather than cutting mid-word.
+        if (speech && tutorRunRef.current === myRun) stopCurrentAudio()
+        if (!ownsUi) return
+        // The coach never heard this turn, so it never got the one-shot resume signal —
+        // hand it to whichever turn goes next (the retry, or a fresh send).
+        if (wasResume) resumePendingRef.current = true
+        setPhase('listening')
+        if (offerRetry) {
+          retrySlotRef.current.offer({ history, activePersona, displayHistory })
+          captionRef.current?.failed(turnFailureMessage(failure, getPersona(activePersona).name))
+        } else {
+          captionRef.current?.clear()
+        }
+      },
+    })
 
-      // The coach's words are now fully written. Commit the message and reopen the
-      // composer immediately — BEFORE the read-aloud finishes. The audio lags
-      // behind the text, so this lets the student type during the read-aloud and,
-      // by sending, interrupt only the audio — the coach's full reply is already
-      // safely committed and never truncated.
-      setMessages([...(displayHistory ?? history), { role: 'assistant', content: displayText, persona: activePersona }])
-      captionRef.current?.clear()
-      setPhase(hasDictateSignal ? 'dictating' : 'listening')
+    if (result.outcome !== 'ok') return
 
-      // Audio plays out unless a newer turn supersedes this one (the student sent
-      // again, interrupting) — the queue checks the run id before every request and
-      // every clip, and stopCurrentAudio cancels it outright. A voiced turn is marked
-      // "pending" (on its first TTS request) so the auto-mute heuristic can settle it as
-      // either audio_completed (played to the end) or audio_skipped/interrupted (the
-      // student advanced — settled by the send handlers before they supersede).
-      if (speech) {
-        await speech.done
-        if (tutorRunRef.current === myRun && !speech.cancelled) settleAudioTurn('audio_completed')
-      } else if (!readAloudRef.current) {
-        // Read-aloud OFF: this coach turn produced no audio. Record audio_absent —
-        // it does NOT count as a skip, and voice-off already precludes an offer.
-        pendingAudioTurnRef.current = false
-        recordAudioOutcome('audio_absent')
-      }
-    } catch (err) {
-      console.error('askTutor failed:', err)
-      if (tutorRunRef.current === myRun) { captionRef.current?.clear(); setPhase('listening') }
+    // Audio plays out unless a newer turn supersedes this one (the student sent
+    // again, interrupting) — the queue checks the run id before every request and
+    // every clip, and stopCurrentAudio cancels it outright. A voiced turn is marked
+    // "pending" (on its first TTS request) so the auto-mute heuristic can settle it as
+    // either audio_completed (played to the end) or audio_skipped/interrupted (the
+    // student advanced — settled by the send handlers before they supersede).
+    if (speech) {
+      await speech.done
+      if (tutorRunRef.current === myRun && !speech.cancelled) settleAudioTurn('audio_completed')
+    } else if (!readAloudRef.current) {
+      // Read-aloud OFF: this coach turn produced no audio. Record audio_absent —
+      // it does NOT count as a skip, and voice-off already precludes an offer.
+      pendingAudioTurnRef.current = false
+      recordAudioOutcome('audio_absent')
     }
+  }
+
+  // "Try again" on a failed turn. take() empties the slot, so a double tap — or a tap
+  // racing a new Send — re-asks at most once. Re-asks with the SAME history: the
+  // student's message is already on screen and persisted; nothing is re-sent or lost.
+  function retryFailedTurn() {
+    const req = retrySlotRef.current.take()
+    if (!req) return
+    askTutor(req.history, req.activePersona, req.displayHistory, { turnKind: 'retry' })
   }
 
   // ── Session actions ──────────────────────────────────────────────────────────
@@ -2472,7 +2621,7 @@ export default function TutorSession({
       }
     }
 
-    askTutor(newHistory)
+    askTutor(newHistory, persona, null, { turnKind: 'student' })
   }
 
   // ── Dictation handler (student speaks their paragraph → scribe) ──────────────
@@ -2543,7 +2692,8 @@ export default function TutorSession({
     if (msgRes?.ok) clearComposerDraft(spokenText)
 
     if (scribed.isMeta || !scribed.paragraph) {
-      askTutor(newHistory)
+      // The student SPOKE this and it goes to the coach as conversation → acknowledged.
+      askTutor(newHistory, persona, null, { turnKind: 'student' })
       return
     }
 
@@ -3231,7 +3381,7 @@ export default function TutorSession({
               )
             ))}
 
-            <LiveCaption ref={captionRef} persona={persona} bottomRef={chatBottomRef} />
+            <LiveCaption ref={captionRef} persona={persona} bottomRef={chatBottomRef} onRetry={retryFailedTurn} />
 
             {phase === 'scribe-thinking' && (
               <div className="flex justify-start">
@@ -3286,6 +3436,7 @@ export default function TutorSession({
           {(phase === 'listening' || phase === 'tutor-thinking' || phase === 'waiting') && (
             <ReplyComposer mode="listening" assignmentKeyterms={assignmentKeyterms} onSubmit={handleConversation}
               onSpeechStart={() => { tutorRunRef.current++; stopCurrentAudio() }}
+              onMicStart={cancelAck}
               recoveredText={recoveredFor('listening')} onDraftChange={handleDraftChange}
               coachBusy={phase !== 'listening'} readAloud={readAloud} onToggleReadAloud={toggleReadAloud}
               coachPace={coachPace} onCyclePace={cycleCoachPace} savingVoicePref={savingVoicePref} />
@@ -3296,6 +3447,7 @@ export default function TutorSession({
               mode="dictating"
               assignmentKeyterms={assignmentKeyterms}
               onSubmit={handleDictation}
+              onMicStart={cancelAck}
               recoveredText={recoveredFor('dictating')}
               onDraftChange={handleDraftChange}
               noticeLine={scribeNotice}

@@ -573,6 +573,28 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* "Owen is thinking…" (components/CoachThinking.js). Three dots in the coach's own
+   --tutor-* colour (currentColor), opacity-only — no bounce, per the brand guide. The
+   dots keep a fixed box so the bubble never resizes while they pulse. Reduced motion:
+   static, mid-opacity (the global rule above would also stop them; this makes the
+   resting state deliberate rather than whatever frame the animation ended on). */
+.coach-thinking-dots { display: inline-flex; align-items: center; gap: 4px; height: 1em; }
+.coach-thinking-dots > span {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.3;
+  animation: coachThinkingDot 1.2s ease-in-out infinite;
+}
+.coach-thinking-dots > span:nth-child(2) { animation-delay: 0.18s; }
+.coach-thinking-dots > span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes coachThinkingDot {
+  0%, 70%, 100% { opacity: 0.3; }
+  35%           { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coach-thinking-dots > span { animation: none; opacity: 0.6; }
+}
+
 /* Section completion celebration toast */
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(-6px); }
